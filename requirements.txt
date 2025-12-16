@@ -1,0 +1,32 @@
+# FastAPI 核心
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.9
+
+# 数据库
+motor>=3.6.0
+pymongo>=4.10.0
+
+# Redis
+redis>=5.2.0
+
+# 认证和安全
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.2.0
+cryptography>=43.0.0
+
+# 数据验证
+pydantic>=2.10.0
+pydantic-settings>=2.6.0
+email-validator>=2.2.0
+
+# HTTP 客户端 (Google OAuth)
+httpx>=0.28.0
+
+# 工具
+python-dotenv>=1.0.0
+
+# 开发工具
+pytest>=8.3.0
+pytest-asyncio>=0.24.0

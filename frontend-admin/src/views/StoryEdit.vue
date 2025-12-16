@@ -1,0 +1,563 @@
+<template>
+  <div class="admin-layout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <img src="/logo.png" alt="Echobot" />
+        <span>管理后台</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <router-link
+          v-for="item in menuItems"
+          :key="item.path"
+          :to="item.path"
+          :class="['nav-item', { active: item.path === '/stories' }]"
+        >
+          <span class="nav-icon">{{ item.icon }}</span>
+          <span class="nav-text">{{ item.name }}</span>
+        </router-link>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button class="logout-btn" @click="handleLogout">退出登录</button>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="back-btn" @click="goBack">返回</button>
+          <h1 class="page-title">编辑故事</h1>
+        </div>
+      </header>
+
+      <main class="content" v-if="story">
+        <div class="edit-grid">
+          <!-- 左侧：视频预览 -->
+          <div class="preview-section">
+            <div class="video-container">
+              <video
+                v-if="story.video_url"
+                :src="story.video_url"
+                :poster="story.thumbnail_url || '/placeholder.svg'"
+                controls
+                class="video-player"
+              ></video>
+              <div v-else class="no-video">
+                <p>暂无视频</p>
+              </div>
+            </div>
+
+            <div class="video-info">
+              <div class="info-item">
+                <span class="info-label">时长</span>
+                <span class="info-value">{{ formatDuration(story.duration) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">创建时间</span>
+                <span class="info-value">{{ formatDate(story.created_at) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右侧：编辑表单 -->
+          <div class="edit-section">
+            <form @submit.prevent="handleSave">
+              <div class="form-group">
+                <label>标题</label>
+                <input v-model="form.title" type="text" class="input" required />
+              </div>
+
+              <div class="form-group">
+                <label>描述</label>
+                <textarea v-model="form.description" class="input textarea"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>分类</label>
+                <select v-model="form.category_id" class="input">
+                  <option value="">选择分类</option>
+                  <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                    {{ cat.name }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>状态</label>
+                <select v-model="form.status" class="input">
+                  <option value="active">正常</option>
+                  <option value="inactive">已下架</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>更换缩略图</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  @change="handleThumbnailSelect"
+                />
+              </div>
+
+              <div class="form-group">
+                <label>更换视频</label>
+                <input
+                  type="file"
+                  accept="video/*"
+                  @change="handleVideoSelect"
+                />
+              </div>
+
+              <p v-if="message" :class="['message', messageType]">{{ message }}</p>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-accent" :disabled="saving">
+                  {{ saving ? '保存中...' : '保存修改' }}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </main>
+
+      <!-- 加载状态 -->
+      <div class="loading-state" v-else-if="loading">
+        <p>加载中...</p>
+      </div>
+
+      <!-- 错误状态 -->
+      <div class="error-state" v-else-if="error">
+        <p>{{ error }}</p>
+        <button class="btn btn-primary" @click="fetchStory">重试</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useAdminStore } from '../stores/admin'
+import api from '../api'
+
+const router = useRouter()
+const route = useRoute()
+const adminStore = useAdminStore()
+
+interface Category {
+  id: string
+  name: string
+}
+
+interface Story {
+  id: string
+  title: string
+  description: string | null
+  video_url: string
+  thumbnail_url: string | null
+  duration: number
+  status: string
+  category: Category | null
+  created_at: string
+}
+
+const story = ref<Story | null>(null)
+const categories = ref<Category[]>([])
+const loading = ref(true)
+const error = ref('')
+const saving = ref(false)
+const message = ref('')
+const messageType = ref<'success' | 'error'>('success')
+
+const form = ref({
+  title: '',
+  description: '',
+  category_id: '',
+  status: 'active',
+  thumbnail: null as File | null,
+  video: null as File | null
+})
+
+const menuItems = [
+  { path: '/dashboard', name: '仪表盘', icon: '仪' },
+  { path: '/users', name: '用户管理', icon: '用' },
+  { path: '/stories', name: '故事管理', icon: '事' }
+]
+
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  })
+}
+
+function goBack() {
+  router.push('/stories')
+}
+
+function handleLogout() {
+  adminStore.logout()
+  router.push('/login')
+}
+
+function handleThumbnailSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files?.[0]) {
+    form.value.thumbnail = input.files[0]
+  }
+}
+
+function handleVideoSelect(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files?.[0]) {
+    form.value.video = input.files[0]
+  }
+}
+
+function showMessage(msg: string, type: 'success' | 'error') {
+  message.value = msg
+  messageType.value = type
+  setTimeout(() => { message.value = '' }, 3000)
+}
+
+async function fetchStory() {
+  const storyId = route.params.id as string
+  if (!storyId) {
+    error.value = '无效的故事ID'
+    loading.value = false
+    return
+  }
+
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await api.get(`/admin/stories/${storyId}`)
+    story.value = response.data.data
+
+    // Populate form
+    form.value.title = story.value!.title
+    form.value.description = story.value!.description || ''
+    form.value.category_id = story.value!.category?.id || ''
+    form.value.status = story.value!.status
+  } catch (err: any) {
+    error.value = err.response?.data?.message || '加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchCategories() {
+  try {
+    const response = await api.get('/stories/categories')
+    categories.value = response.data.data || []
+  } catch (error) {
+    console.error('Failed to fetch categories:', error)
+  }
+}
+
+async function handleSave() {
+  if (!story.value) return
+
+  saving.value = true
+
+  try {
+    const formData = new FormData()
+    formData.append('title', form.value.title)
+    formData.append('status', form.value.status)
+
+    if (form.value.description) {
+      formData.append('description', form.value.description)
+    }
+
+    if (form.value.category_id) {
+      formData.append('category_id', form.value.category_id)
+    }
+
+    if (form.value.thumbnail) {
+      formData.append('thumbnail', form.value.thumbnail)
+    }
+
+    if (form.value.video) {
+      formData.append('video', form.value.video)
+    }
+
+    await api.put(`/admin/stories/${story.value.id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+
+    showMessage('保存成功', 'success')
+    await fetchStory()
+  } catch (err: any) {
+    showMessage(err.response?.data?.message || '保存失败', 'error')
+  } finally {
+    saving.value = false
+  }
+}
+
+onMounted(() => {
+  fetchStory()
+  fetchCategories()
+})
+</script>
+
+<style scoped>
+.admin-layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--color-bg-dark-secondary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sidebar-logo img {
+  width: 32px;
+  height: 32px;
+}
+
+.sidebar-logo span {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: var(--spacing-md) 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.nav-item:hover {
+  background: var(--color-bg-dark-hover);
+  color: var(--color-text-primary);
+}
+
+.nav-item.active {
+  background: var(--color-bg-dark-tertiary);
+  color: var(--color-text-primary);
+  border-left: 3px solid var(--color-accent);
+}
+
+.nav-icon {
+  font-size: var(--font-size-lg);
+}
+
+.sidebar-footer {
+  padding: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.logout-btn {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.logout-btn:hover {
+  background: var(--color-bg-dark-hover);
+  color: var(--color-text-primary);
+}
+
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.back-btn {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.back-btn:hover {
+  background: var(--color-bg-dark-hover);
+  color: var(--color-text-primary);
+}
+
+.page-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+}
+
+.content {
+  flex: 1;
+  padding: var(--spacing-xl);
+  overflow-y: auto;
+}
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-xl);
+}
+
+.preview-section {
+  background: var(--color-bg-dark-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.video-container {
+  margin-bottom: var(--spacing-lg);
+}
+
+.video-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  background: #000;
+}
+
+.no-video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-dark-tertiary);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+}
+
+.video-info {
+  display: flex;
+  gap: var(--spacing-xl);
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.info-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.info-value {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+
+.edit-section {
+  background: var(--color-bg-dark-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+}
+
+.form-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.form-group label {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.message {
+  font-size: var(--font-size-sm);
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.message.success {
+  background: rgba(52, 199, 89, 0.2);
+  color: var(--color-success);
+}
+
+.message.error {
+  background: rgba(255, 59, 48, 0.2);
+  color: var(--color-error);
+}
+
+.form-actions {
+  margin-top: var(--spacing-lg);
+}
+
+.loading-state,
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: var(--spacing-lg);
+}
+
+.loading-state p,
+.error-state p {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+}
+
+@media (max-width: 1024px) {
+  .edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
