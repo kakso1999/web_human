@@ -24,6 +24,24 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/upload-photo',
+    name: 'UploadPhoto',
+    component: () => import('../views/UploadPhoto.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/upload-audio',
+    name: 'UploadAudio',
+    component: () => import('../views/UploadAudio.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/generate',
+    name: 'GenerateAnimation',
+    component: () => import('../views/GenerateAnimation.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('../views/Profile.vue'),

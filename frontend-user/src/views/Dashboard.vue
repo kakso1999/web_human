@@ -281,10 +281,11 @@ onMounted(async () => {
 
 .sidebar {
   width: var(--sidebar-width);
-  background: var(--color-bg-dark-secondary);
+  background: linear-gradient(180deg, #2D6B6B 0%, #1D5B5B 100%);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
 }
 
 .sidebar-logo {
@@ -292,21 +293,24 @@ onMounted(async () => {
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-lg);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .sidebar-logo img {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
 }
 
 .sidebar-logo span {
   font-size: var(--font-size-lg);
   font-weight: 600;
+  color: #fff;
 }
 
 .sidebar-nav {
   padding: var(--spacing-md) 0;
+  flex: 1;
 }
 
 .nav-item {
@@ -314,20 +318,22 @@ onMounted(async () => {
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
-  color: var(--color-text-secondary);
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: all var(--transition-fast);
+  margin: 4px 8px;
+  border-radius: var(--radius-sm);
 }
 
 .nav-item:hover {
-  background: var(--color-bg-dark-hover);
-  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 .nav-item.active {
-  background: var(--color-bg-dark-tertiary);
-  color: var(--color-text-primary);
-  border-left: 3px solid var(--color-accent);
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  box-shadow: inset 3px 0 0 #fff;
 }
 
 .nav-icon {
