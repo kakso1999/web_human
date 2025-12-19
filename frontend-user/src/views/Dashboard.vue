@@ -281,7 +281,7 @@ onMounted(async () => {
 
 .sidebar {
   width: var(--sidebar-width);
-  background: linear-gradient(180deg, #2D6B6B 0%, #1D5B5B 100%);
+  background: #2B5F6C;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
