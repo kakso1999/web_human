@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
     ALLOWED_IMAGE_TYPES: list = ["image/jpeg", "image/png", "image/gif", "image/webp"]
     ALLOWED_VIDEO_TYPES: list = ["video/mp4", "video/webm", "video/quicktime"]
+    ALLOWED_AUDIO_TYPES: list = ["audio/mpeg", "audio/wav", "audio/mp3", "audio/m4a"]
+
+    # APICore 配置
+    APICORE_API_KEY: str = "sk-2lABiLDoSOocQjuwACtRWItGEEvSHM4jt0kgCQPgEb0NPS3O"
+    APICORE_BASE_URL: str = "https://api.apicore.ai"
 
     # CORS 配置
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001"]

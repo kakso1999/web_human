@@ -81,6 +81,7 @@ class StoryService:
             thumbnail_url=s.get("thumbnail_url"),
             duration=s.get("duration", 0),
             is_published=s.get("is_published", False),
+            is_processing=s.get("is_processing", False),
             view_count=s.get("view_count", 0),
             created_at=s["created_at"]
         ).model_dump() for s in stories]
@@ -88,7 +89,7 @@ class StoryService:
         return paginate(items, total, page, page_size)
 
     async def get_story(self, story_id: str) -> StoryResponse:
-        """获取故事详情"""
+        """��取故事详情"""
         story = await self.story_repo.get_by_id(story_id)
 
         if not story:
@@ -103,9 +104,13 @@ class StoryService:
             description_en=story.get("description_en"),
             thumbnail_url=story.get("thumbnail_url"),
             video_url=story.get("video_url"),
+            audio_url=story.get("audio_url"),
             duration=story.get("duration", 0),
             is_published=story.get("is_published", False),
+            is_processing=story.get("is_processing", False),
             view_count=story.get("view_count", 0),
+            subtitles=story.get("subtitles"),
+            subtitle_text=story.get("subtitle_text"),
             created_at=story["created_at"],
             updated_at=story["updated_at"]
         )

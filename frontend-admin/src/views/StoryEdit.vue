@@ -60,6 +60,42 @@
                 <span class="info-value">{{ formatDate(story.created_at) }}</span>
               </div>
             </div>
+
+            <!-- 英文标题 -->
+            <div class="title-en-section" v-if="story.title_en">
+              <div class="section-header">
+                <span class="section-title">英文标题 (AI生成)</span>
+              </div>
+              <p class="title-en-text">{{ story.title_en }}</p>
+            </div>
+
+            <!-- 字幕显示 -->
+            <div class="subtitle-section" v-if="story.subtitles && story.subtitles.length > 0">
+              <div class="section-header">
+                <span class="section-title">字幕内容</span>
+                <span class="subtitle-count">{{ story.subtitles.length }} 条</span>
+              </div>
+              <div class="subtitle-list">
+                <div
+                  v-for="(segment, index) in story.subtitles"
+                  :key="index"
+                  class="subtitle-item"
+                >
+                  <span class="subtitle-time">
+                    {{ formatSubtitleTime(segment.start) }} - {{ formatSubtitleTime(segment.end) }}
+                  </span>
+                  <span class="subtitle-text">{{ segment.text }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 无字幕提示 -->
+            <div class="subtitle-section empty" v-else-if="!story.subtitles">
+              <div class="section-header">
+                <span class="section-title">字幕内容</span>
+              </div>
+              <p class="no-subtitle">字幕正在生成中，请稍后刷新查看...</p>
+            </div>
           </div>
 
           <!-- 右侧：编辑表单 -->
@@ -178,15 +214,25 @@ interface Category {
   name: string
 }
 
+interface SubtitleSegment {
+  start: number
+  end: number
+  text: string
+}
+
 interface Story {
   id: string
   title: string
+  title_en: string | null
   description: string | null
   video_url: string
+  audio_url: string | null
   thumbnail_url: string | null
   duration: number
   status: string
   category: Category | null
+  subtitles: SubtitleSegment[] | null
+  subtitle_text: string | null
   created_at: string
 }
 
@@ -216,6 +262,12 @@ const menuItems = [
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function formatSubtitleTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
@@ -520,6 +572,109 @@ onMounted(() => {
 .info-value {
   font-size: var(--font-size-base);
   color: var(--color-text-primary);
+}
+
+/* 英文标题部分 */
+.title-en-section {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-sm);
+}
+
+.section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.title-en-text {
+  font-size: var(--font-size-lg);
+  color: var(--color-accent);
+  font-weight: 500;
+  margin: 0;
+}
+
+/* 字幕部分 */
+.subtitle-section {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.subtitle-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-dark-tertiary);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.subtitle-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: var(--spacing-sm);
+}
+
+.subtitle-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.subtitle-list::-webkit-scrollbar-track {
+  background: var(--color-bg-dark-tertiary);
+  border-radius: 3px;
+}
+
+.subtitle-list::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+.subtitle-list::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+.subtitle-item {
+  display: flex;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border-dark);
+}
+
+.subtitle-item:last-child {
+  border-bottom: none;
+}
+
+.subtitle-time {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-family: monospace;
+  color: var(--color-accent);
+  background: var(--color-bg-dark-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  height: fit-content;
+}
+
+.subtitle-text {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.no-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 0;
 }
 
 .edit-section {

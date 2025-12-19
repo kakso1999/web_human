@@ -59,13 +59,18 @@
             <tbody>
               <tr v-for="story in stories" :key="story.id">
                 <td>
-                  <img
-                    :src="story.thumbnail_url || '/placeholder.svg'"
-                    class="story-thumb"
-                    :alt="story.title"
-                  />
+                  <div class="thumb-container">
+                    <img
+                      :src="story.thumbnail_url || '/placeholder.svg'"
+                      class="story-thumb"
+                      :alt="story.title"
+                    />
+                    <div v-if="story.status === 'processing'" class="processing-overlay">
+                      <div class="spinner"></div>
+                    </div>
+                  </div>
                 </td>
-                <td>{{ story.title }}</td>
+                <td>{{ story.title || '处理中...' }}</td>
                 <td>{{ formatDuration(story.duration) }}</td>
                 <td>{{ story.category?.name || '-' }}</td>
                 <td>
@@ -120,21 +125,41 @@
 
         <form @submit.prevent="handleCreateStory">
           <div class="form-group">
-            <label>标题</label>
-            <input v-model="newStory.title" type="text" class="input" required />
-          </div>
-
-          <div class="form-group">
-            <label>描述</label>
-            <textarea v-model="newStory.description" class="input textarea"></textarea>
-          </div>
-
-          <div class="form-group">
             <label>视频文件</label>
-            <input type="file" accept="video/*" @change="handleVideoSelect" required />
-            <p v-if="newStory.video" class="file-info">
-              {{ newStory.video.name }} ({{ formatFileSize(newStory.video.size) }})
-            </p>
+            <div class="video-upload-area" @click="triggerVideoInput" :class="{ 'has-file': newStory.video }">
+              <input
+                type="file"
+                ref="videoInput"
+                accept="video/*"
+                @change="handleVideoSelect"
+                hidden
+              />
+              <div v-if="!newStory.video" class="upload-placeholder">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <span>点击选择视频文件</span>
+                <span class="upload-hint">支持 MP4、WebM 格式</span>
+              </div>
+              <div v-else class="file-selected">
+                <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="23 7 16 12 23 17 23 7"/>
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                </svg>
+                <div class="file-details">
+                  <span class="file-name">{{ newStory.video.name }}</span>
+                  <span class="file-size">{{ formatFileSize(newStory.video.size) }}</span>
+                </div>
+                <button type="button" class="remove-file" @click.stop="removeVideo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
@@ -163,12 +188,7 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label class="checkbox-label">
-              <input type="checkbox" v-model="newStory.is_published" />
-              立即发布
-            </label>
-          </div>
+          <p class="upload-tips">上传后将自动提取缩略图、生成字幕和标题</p>
 
           <p v-if="createError" class="error-msg">{{ createError }}</p>
 
@@ -176,7 +196,7 @@
             <button type="button" class="btn btn-outline" @click="closeCreateModal">
               取消
             </button>
-            <button type="submit" class="btn btn-accent" :disabled="creating">
+            <button type="submit" class="btn btn-accent" :disabled="creating || !newStory.video">
               {{ creating ? '上传中...' : '创建' }}
             </button>
           </div>
@@ -187,7 +207,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAdminStore } from '../stores/admin'
 import api from '../api'
@@ -226,13 +246,14 @@ const creating = ref(false)
 const createError = ref('')
 const showNewCategory = ref(false)
 const newCategoryName = ref('')
+const videoInput = ref<HTMLInputElement | null>(null)
 const newStory = ref({
-  title: '',
-  description: '',
   category_id: '',
-  video: null as File | null,
-  is_published: false
+  video: null as File | null
 })
+
+// 自动刷新定时器（处理中的视频）
+let refreshTimer: number | null = null
 
 const menuItems = [
   { path: '/dashboard', name: '仪表盘', icon: '仪' },
@@ -321,6 +342,17 @@ function handleVideoSelect(event: Event) {
   }
 }
 
+function triggerVideoInput() {
+  videoInput.value?.click()
+}
+
+function removeVideo() {
+  newStory.value.video = null
+  if (videoInput.value) {
+    videoInput.value.value = ''
+  }
+}
+
 function toggleNewCategory() {
   showNewCategory.value = !showNewCategory.value
   if (!showNewCategory.value) {
@@ -333,7 +365,10 @@ function closeCreateModal() {
   showNewCategory.value = false
   newCategoryName.value = ''
   createError.value = ''
-  newStory.value = { title: '', description: '', category_id: '', video: null, is_published: false }
+  newStory.value = { category_id: '', video: null }
+  if (videoInput.value) {
+    videoInput.value.value = ''
+  }
 }
 
 function formatFileSize(bytes: number): string {
@@ -356,24 +391,18 @@ async function handleCreateStory() {
     // If creating a new category
     if (showNewCategory.value && newCategoryName.value.trim()) {
       const categoryResponse = await api.post('/admin/categories', {
-        name: newCategoryName.value.trim()
+        name: newCategoryName.value.trim(),
+        name_en: newCategoryName.value.trim()
       })
       categoryId = categoryResponse.data.data.id
     }
 
     const formData = new FormData()
-    formData.append('title', newStory.value.title)
     formData.append('video', newStory.value.video)
-
-    if (newStory.value.description) {
-      formData.append('description', newStory.value.description)
-    }
 
     if (categoryId) {
       formData.append('category_id', categoryId)
     }
-
-    formData.append('is_published', String(newStory.value.is_published))
 
     await api.post('/admin/stories', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
@@ -404,7 +433,35 @@ async function handleDeleteStory(id: string) {
 onMounted(() => {
   fetchStories()
   fetchCategories()
+  startAutoRefresh()
 })
+
+onUnmounted(() => {
+  stopAutoRefresh()
+})
+
+// 检查是否有处理中的视频
+function hasProcessingStories(): boolean {
+  return stories.value.some(s => s.status === 'processing')
+}
+
+// 启动自动刷新
+function startAutoRefresh() {
+  if (refreshTimer) return
+  refreshTimer = window.setInterval(() => {
+    if (hasProcessingStories()) {
+      fetchStories()
+    }
+  }, 5000) // 每5秒检查一次
+}
+
+// 停止自动刷新
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
 </script>
 
 <style scoped>
@@ -532,6 +589,38 @@ onMounted(() => {
   height: 45px;
   object-fit: cover;
   border-radius: var(--radius-sm);
+}
+
+.thumb-container {
+  position: relative;
+  width: 80px;
+  height: 45px;
+}
+
+.processing-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .status-badge {
@@ -680,5 +769,111 @@ onMounted(() => {
   width: 18px;
   height: 18px;
   cursor: pointer;
+}
+
+/* Video Upload Area */
+.video-upload-area {
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.video-upload-area:hover {
+  border-color: var(--color-accent);
+  background: rgba(45, 107, 107, 0.05);
+}
+
+.video-upload-area.has-file {
+  border-style: solid;
+  border-color: var(--color-accent);
+  background: rgba(45, 107, 107, 0.1);
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--color-text-secondary);
+}
+
+.upload-placeholder .upload-icon {
+  width: 48px;
+  height: 48px;
+  stroke: var(--color-text-muted);
+}
+
+.upload-placeholder span {
+  font-size: var(--font-size-base);
+}
+
+.upload-hint {
+  font-size: var(--font-size-sm) !important;
+  color: var(--color-text-muted) !important;
+}
+
+.file-selected {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.file-icon {
+  width: 40px;
+  height: 40px;
+  stroke: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.file-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-details .file-name {
+  display: block;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-details .file-size {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.remove-file {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: rgba(255, 59, 48, 0.2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.remove-file:hover {
+  background: rgba(255, 59, 48, 0.4);
+}
+
+.remove-file svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--color-error);
+}
+
+.upload-tips {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: var(--spacing-md) 0 0;
+  text-align: center;
 }
 </style>

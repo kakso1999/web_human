@@ -243,3 +243,37 @@ def extract_video_thumbnail(video_path: str, output_path: str, time_seconds: int
     except Exception as e:
         print(f"Error extracting thumbnail: {e}")
         return False
+
+
+def extract_audio_from_video(video_path: str, output_path: str) -> bool:
+    """
+    从视频中提取音频
+
+    Args:
+        video_path: 视频文件路径
+        output_path: 输出音频路径 (.mp3)
+
+    Returns:
+        是否成功
+    """
+    try:
+        result = subprocess.run(
+            [
+                'ffmpeg',
+                '-y',  # 覆盖输出文件
+                '-i', video_path,
+                '-vn',  # 不处理视频
+                '-acodec', 'libmp3lame',  # 使用 MP3 编码
+                '-ab', '128k',  # 比特率
+                '-ar', '16000',  # 采样率 16kHz（适合语音识别）
+                '-ac', '1',  # 单声道
+                output_path
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        return result.returncode == 0 and os.path.exists(output_path)
+    except Exception as e:
+        print(f"Error extracting audio: {e}")
+        return False

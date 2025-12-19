@@ -2,19 +2,20 @@
 Admin 模块 - API 路由
 管理后台接口
 """
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+from typing import Optional, List
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, BackgroundTasks
 import os
 
 from core.schemas.base import success_response
 from core.schemas.pagination import paginate
 from core.middleware.auth import require_admin
 from core.config.settings import get_settings
-from core.utils.helpers import generate_filename, ensure_dir, get_video_duration, extract_video_thumbnail
+from core.utils.helpers import generate_filename, ensure_dir, get_video_duration, extract_video_thumbnail, extract_audio_from_video
+from core.services.apicore import get_apicore_service
 
 from modules.user.repository import UserRepository
 from modules.story.service import get_story_service, StoryService
-from modules.story.schemas import StoryCreate, StoryUpdate, CategoryCreate
+from modules.story.schemas import StoryCreate, StoryUpdate, CategoryCreate, SubtitleSegment
 
 settings = get_settings()
 router = APIRouter(prefix="/admin", tags=["管理后台"])
@@ -190,6 +191,95 @@ async def delete_category(
 
 # ========== 故事管理 ==========
 
+async def process_video_ai(story_id: str, video_path: str, api_key: str):
+    """
+    后台处理视频：提取音频、生成字幕、生成标题
+
+    Args:
+        story_id: 故事ID
+        video_path: 视频文件路径
+        api_key: APICore API Key
+    """
+    story_service = get_story_service()
+    apicore = get_apicore_service(api_key)
+
+    try:
+        # 1. 提取音频
+        audio_filename = os.path.basename(video_path).rsplit('.', 1)[0] + '.mp3'
+        audio_dir = os.path.join(settings.UPLOAD_DIR, "audio")
+        ensure_dir(audio_dir)
+        audio_path = os.path.join(audio_dir, audio_filename)
+
+        print(f"[AI Processing] Extracting audio from {video_path}...")
+        if not extract_audio_from_video(video_path, audio_path):
+            print(f"[AI Processing] Failed to extract audio")
+            # 即使失败也要设置 is_processing 为 False
+            await story_service.story_repo.update(story_id, {"is_processing": False})
+            return
+
+        audio_url = f"/uploads/audio/{audio_filename}"
+
+        # 2. 语音转文字
+        print(f"[AI Processing] Transcribing audio...")
+        transcription = await apicore.transcribe_audio(audio_path, response_format="verbose_json")
+
+        # 解析字幕数据
+        subtitles = []
+        subtitle_text = transcription.get("text", "")
+
+        # verbose_json 格式包含 segments
+        segments = transcription.get("segments", [])
+        for seg in segments:
+            subtitles.append({
+                "start": seg.get("start", 0),
+                "end": seg.get("end", 0),
+                "text": seg.get("text", "").strip()
+            })
+
+        print(f"[AI Processing] Transcription complete. {len(subtitles)} segments.")
+
+        # 3. 生成标题（中文和英文）
+        title = ""
+        title_en = ""
+        if subtitle_text:
+            print(f"[AI Processing] Generating titles...")
+            try:
+                # 生成中文标题
+                title = await apicore.generate_chinese_title(subtitle_text)
+                print(f"[AI Processing] Generated Chinese title: {title}")
+
+                # 生成英文标题
+                title_en = await apicore.generate_title(subtitle_text)
+                print(f"[AI Processing] Generated English title: {title_en}")
+            except Exception as e:
+                print(f"[AI Processing] Title generation failed: {e}")
+
+        # 4. 更新数据库
+        update_data = {
+            "audio_url": audio_url,
+            "subtitle_text": subtitle_text,
+            "subtitles": subtitles,
+            "is_processing": False  # 处理完成
+        }
+        if title:
+            update_data["title"] = title
+        if title_en:
+            update_data["title_en"] = title_en
+
+        await story_service.story_repo.update(story_id, update_data)
+        print(f"[AI Processing] Story {story_id} updated successfully!")
+
+    except Exception as e:
+        print(f"[AI Processing] Error processing video: {e}")
+        import traceback
+        traceback.print_exc()
+        # 出错也要设置 is_processing 为 False
+        try:
+            await story_service.story_repo.update(story_id, {"is_processing": False})
+        except:
+            pass
+
+
 @router.get("/stories")
 async def list_stories_admin(
     page: int = Query(1, ge=1),
@@ -220,19 +310,25 @@ async def list_stories_admin(
             item["category"] = {"id": cat_id, "name": cat_map[cat_id]}
         else:
             item["category"] = None
-        # 添加状态字段
-        item["status"] = "active" if item.get("is_published") else "inactive"
+        # 添加状态字段（优先检查处理中状态）
+        if item.get("is_processing"):
+            item["status"] = "processing"
+        elif item.get("is_published"):
+            item["status"] = "active"
+        else:
+            item["status"] = "inactive"
 
     return result
 
 
 @router.post("/stories")
 async def create_story(
-    title: str = Form(...),
+    background_tasks: BackgroundTasks,
     video: UploadFile = File(...),
     category_id: Optional[str] = Form(None),
+    title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
-    is_published: bool = Form(False),
+    api_key: Optional[str] = Form(None),
     _=Depends(require_admin)
 ):
     """
@@ -241,6 +337,8 @@ async def create_story(
     上传视频后会自动：
     1. 从视频第10秒提取缩略图
     2. 获取视频时长
+    3. 提取音频并生成字幕
+    4. 使用 AI 生成标题和英文标题
     """
     story_service = get_story_service()
 
@@ -274,18 +372,31 @@ async def create_story(
     if extract_video_thumbnail(video_path, thumbnail_path, time_seconds=10):
         thumbnail_url = f"/uploads/thumbnails/{thumbnail_filename}"
 
+    # 使用提供的标题或空字符串（AI会生成）
+    effective_title = title or ""
+
+    # 检查是否需要AI处理
+    effective_api_key = api_key or settings.APICORE_API_KEY
+    is_processing = bool(effective_api_key and not title)
+
     # 创建故事数据
     story_data = StoryCreate(
-        title=title,
+        title=effective_title,
         category_id=category_id or "",
         description=description,
         video_url=video_url,
         thumbnail_url=thumbnail_url,
         duration=duration,
-        is_published=is_published
+        is_published=False,
+        is_processing=is_processing
     )
 
     story = await story_service.create_story(story_data)
+
+    if effective_api_key:
+        # 后台处理 AI 任务
+        background_tasks.add_task(process_video_ai, story.id, video_path, effective_api_key)
+
     return success_response(story.model_dump())
 
 
@@ -295,7 +406,7 @@ async def get_story_detail(
     story_service: StoryService = Depends(get_story_service),
     _=Depends(require_admin)
 ):
-    """获取故事详情"""
+    """获取故事详情（包含字幕）"""
     story = await story_service.get_story(story_id)
 
     # 获取分类信息
@@ -308,12 +419,16 @@ async def get_story_detail(
     return success_response({
         "id": story.id,
         "title": story.title,
+        "title_en": story.title_en,
         "description": story.description,
         "video_url": story.video_url,
+        "audio_url": story.audio_url,
         "thumbnail_url": story.thumbnail_url,
         "duration": story.duration,
         "status": "active" if story.is_published else "inactive",
         "category": category,
+        "subtitles": story.subtitles,
+        "subtitle_text": story.subtitle_text,
         "created_at": story.created_at.isoformat() if story.created_at else None
     })
 
