@@ -5,8 +5,10 @@
 import os
 import uuid
 import hashlib
+import subprocess
+import json
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 from pathlib import Path
 
 
@@ -164,3 +166,80 @@ def safe_get(obj: Any, *keys, default: Any = None) -> Any:
         if obj is None:
             return default
     return obj
+
+
+def get_video_duration(video_path: str) -> int:
+    """
+    获取视频时长（秒）
+
+    Args:
+        video_path: 视频文件路径
+
+    Returns:
+        视频时长（秒），失败返回0
+    """
+    try:
+        result = subprocess.run(
+            [
+                'ffprobe',
+                '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'json',
+                video_path
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            duration = float(data.get('format', {}).get('duration', 0))
+            return int(duration)
+    except Exception as e:
+        print(f"Error getting video duration: {e}")
+
+    return 0
+
+
+def extract_video_thumbnail(video_path: str, output_path: str, time_seconds: int = 10) -> bool:
+    """
+    从视频中提取缩略图
+
+    Args:
+        video_path: 视频文件路径
+        output_path: 输出图片路径
+        time_seconds: 截取时间点（秒），默认第10秒
+
+    Returns:
+        是否成功
+    """
+    try:
+        # 先获取视频时长
+        duration = get_video_duration(video_path)
+
+        # 如果视频时长小于指定时间，则取中间时间点
+        if duration > 0 and duration < time_seconds:
+            time_seconds = duration // 2
+
+        # 确保至少从第1秒开始
+        if time_seconds < 1:
+            time_seconds = 1
+
+        result = subprocess.run(
+            [
+                'ffmpeg',
+                '-y',  # 覆盖输出文件
+                '-i', video_path,
+                '-ss', str(time_seconds),  # 跳转到指定时间
+                '-vframes', '1',  # 只提取1帧
+                '-q:v', '2',  # 图片质量
+                output_path
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        return result.returncode == 0 and os.path.exists(output_path)
+    except Exception as e:
+        print(f"Error extracting thumbnail: {e}")
+        return False

@@ -15,8 +15,8 @@
         </div>
       </div>
 
-      <h1 class="auth-title">注册</h1>
-      <p class="auth-subtitle">创建账号，开启AI故事之旅</p>
+      <h1 class="auth-title">Sign Up</h1>
+      <p class="auth-subtitle">Create an account to start your AI story journey</p>
 
       <form class="auth-form" @submit.prevent="handleRegister">
         <div class="form-group">
@@ -29,7 +29,7 @@
               v-model="email"
               type="email"
               class="input"
-              placeholder="邮箱地址"
+              placeholder="Email address"
               required
             />
           </div>
@@ -45,7 +45,7 @@
               v-model="nickname"
               type="text"
               class="input"
-              placeholder="昵称"
+              placeholder="Nickname"
               required
             />
           </div>
@@ -61,7 +61,7 @@
               v-model="password"
               type="password"
               class="input"
-              placeholder="密码 (至少8位，包含大小写字母和数字)"
+              placeholder="Password (min 8 chars, upper/lower case and numbers)"
               required
             />
           </div>
@@ -76,7 +76,7 @@
               v-model="confirmPassword"
               type="password"
               class="input"
-              placeholder="确认密码"
+              placeholder="Confirm password"
               required
             />
           </div>
@@ -85,7 +85,7 @@
         <p v-if="error" class="error-message">{{ error }}</p>
 
         <button type="submit" class="submit-btn" :disabled="loading">
-          <span class="btn-text">{{ loading ? '注册中...' : '创建账号' }}</span>
+          <span class="btn-text">{{ loading ? 'Creating...' : 'Create Account' }}</span>
           <span class="btn-arrow" v-if="!loading">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -95,8 +95,8 @@
       </form>
 
       <p class="auth-link">
-        已有账号？
-        <router-link to="/login">立即登录</router-link>
+        Already have an account?
+        <router-link to="/login">Sign in</router-link>
       </p>
     </div>
   </div>
@@ -136,7 +136,7 @@ async function handleRegister() {
   error.value = ''
 
   if (password.value !== confirmPassword.value) {
-    error.value = '两次输入的密码不一致'
+    error.value = 'Passwords do not match'
     return
   }
 
@@ -146,7 +146,7 @@ async function handleRegister() {
     await userStore.register(email.value, password.value, nickname.value)
     router.push('/dashboard')
   } catch (err: any) {
-    error.value = err.response?.data?.message || '注册失败，请重试'
+    error.value = err.response?.data?.message || 'Registration failed, please try again'
   } finally {
     loading.value = false
   }

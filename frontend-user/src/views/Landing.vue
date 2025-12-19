@@ -19,11 +19,11 @@
       </div>
 
       <h1 class="brand-name">Echobot</h1>
-      <p class="tagline">AI驱动的数字人动画平台</p>
+      <p class="tagline">AI-Powered Digital Avatar Animation Platform</p>
 
       <!-- 进入按钮 -->
       <button class="enter-btn" @click="handleEnter">
-        <span class="btn-text">开始体验</span>
+        <span class="btn-text">Get Started</span>
         <span class="btn-arrow">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -88,7 +88,7 @@
                     <path d="M21 15l-5-5L5 21"/>
                   </svg>
                 </div>
-                <span class="placeholder-text">精彩故事</span>
+                <span class="placeholder-text">Amazing Stories</span>
               </div>
             </div>
           </div>
@@ -416,26 +416,31 @@ onUnmounted(() => {
 .carousel-section {
   position: absolute;
   bottom: 40px;
+  left: 0;
+  right: 0;
   width: 100%;
   height: 220px;
   perspective: 1200px;
   z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .carousel-container {
   width: 100%;
   height: 180px;
   position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .carousel-track {
   width: 200px;
   height: 120px;
-  position: absolute;
-  left: 50%;
-  top: 50%;
+  position: relative;
   transform-style: preserve-3d;
-  transform: translateX(-50%) translateY(-50%);
   transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

@@ -14,7 +14,7 @@
           :class="['nav-item', { active: currentPath === item.path }]"
           @click="navigate(item.path)"
         >
-          <span class="nav-icon">{{ item.icon }}</span>
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" v-html="item.icon"></svg>
           <span class="nav-text">{{ item.name }}</span>
         </a>
       </nav>
@@ -24,7 +24,7 @@
     <div class="main-area">
       <!-- 顶部栏 -->
       <header class="topbar">
-        <h1 class="page-title">故事库管理</h1>
+        <h1 class="page-title">Story Library</h1>
 
         <div class="user-menu" @click="toggleUserMenu">
           <img
@@ -32,55 +32,95 @@
             alt="avatar"
             class="user-avatar"
           />
-          <span class="user-name">{{ user?.nickname || '用户' }}</span>
+          <span class="user-name">{{ user?.nickname || 'User' }}</span>
 
           <div v-if="showUserMenu" class="dropdown-menu">
-            <a class="dropdown-item" @click="goToProfile">个人信息</a>
-            <a class="dropdown-item" @click="handleLogout">退出登录</a>
+            <a class="dropdown-item" @click="goToProfile">Profile</a>
+            <a class="dropdown-item" @click="handleLogout">Sign Out</a>
           </div>
         </div>
       </header>
 
       <!-- 内容区 -->
       <main class="content">
-        <p class="content-desc">管理您的原始动画故事库</p>
-
-        <!-- 故事卡片网格 -->
-        <div class="story-grid">
-          <div
-            v-for="story in stories"
-            :key="story.id"
-            class="story-card"
-            @click="goToStory(story.id)"
+        <!-- 分类筛选器 -->
+        <div class="category-filter">
+          <button
+            :class="['filter-btn', { active: selectedCategory === null }]"
+            @click="selectCategory(null)"
           >
-            <div class="story-thumbnail">
-              <img :src="story.thumbnail_url || '/placeholder.svg'" :alt="story.title" />
-              <span class="story-duration">{{ formatDuration(story.duration) }}</span>
-            </div>
-            <div class="story-info">
-              <h3 class="story-title">{{ story.title }}</h3>
+            All
+          </button>
+          <button
+            v-for="cat in categories"
+            :key="cat.id"
+            :class="['filter-btn', { active: selectedCategory === cat.id }]"
+            @click="selectCategory(cat.id)"
+          >
+            {{ cat.name_en || cat.name }}
+          </button>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="loading" class="loading-state">
+          <p>Loading...</p>
+        </div>
+
+        <!-- 按分类分组显示 -->
+        <template v-else-if="selectedCategory === null">
+          <div v-for="cat in categoriesWithStories" :key="cat.id" class="category-section">
+            <h2 class="category-title">{{ cat.name_en || cat.name }}</h2>
+            <div class="story-grid">
+              <div
+                v-for="story in cat.stories"
+                :key="story.id"
+                class="story-card"
+                @click="goToStory(story.id)"
+              >
+                <div class="story-thumbnail">
+                  <img :src="story.thumbnail_url || '/placeholder.svg'" :alt="story.title" />
+                  <span class="story-duration">{{ formatDuration(story.duration) }}</span>
+                </div>
+                <div class="story-info">
+                  <h3 class="story-title">{{ story.title }}</h3>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- 分页 -->
-        <div class="pagination" v-if="totalPages > 1">
-          <button
-            class="page-btn"
-            :disabled="currentPage === 1"
-            @click="changePage(currentPage - 1)"
-          >
-            上一页
-          </button>
-          <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-          <button
-            class="page-btn"
-            :disabled="currentPage === totalPages"
-            @click="changePage(currentPage + 1)"
-          >
-            下一页
-          </button>
-        </div>
+          <!-- 无内容提示 -->
+          <div v-if="categoriesWithStories.length === 0" class="empty-state">
+            <p>No stories available</p>
+          </div>
+        </template>
+
+        <!-- 单分类显示 -->
+        <template v-else>
+          <div class="category-section">
+            <h2 class="category-title">{{ currentCategoryName }}</h2>
+            <div class="story-grid">
+              <div
+                v-for="story in filteredStories"
+                :key="story.id"
+                class="story-card"
+                @click="goToStory(story.id)"
+              >
+                <div class="story-thumbnail">
+                  <img :src="story.thumbnail_url || '/placeholder.svg'" :alt="story.title" />
+                  <span class="story-duration">{{ formatDuration(story.duration) }}</span>
+                </div>
+                <div class="story-info">
+                  <h3 class="story-title">{{ story.title }}</h3>
+                </div>
+              </div>
+            </div>
+
+            <!-- 无内容提示 -->
+            <div v-if="filteredStories.length === 0" class="empty-state">
+              <p>No stories in this category</p>
+            </div>
+          </div>
+        </template>
       </main>
     </div>
   </div>
@@ -98,25 +138,55 @@ const userStore = useUserStore()
 const user = computed(() => userStore.user)
 const showUserMenu = ref(false)
 const currentPath = ref('/dashboard')
+const loading = ref(true)
+
+interface Category {
+  id: string
+  name: string
+  name_en: string
+  story_count: number
+}
 
 interface Story {
   id: string
   title: string
   thumbnail_url: string | null
   duration: number
+  category_id: string
 }
 
-const stories = ref<Story[]>([])
-const currentPage = ref(1)
-const totalPages = ref(1)
-const pageSize = 20
+interface CategoryWithStories extends Category {
+  stories: Story[]
+}
+
+const categories = ref<Category[]>([])
+const allStories = ref<Story[]>([])
+const filteredStories = ref<Story[]>([])
+const selectedCategory = ref<string | null>(null)
 
 const menuItems = [
-  { path: '/dashboard', name: '故事库管理', icon: '田' },
-  { path: '/upload-photo', name: '上传照片', icon: '图' },
-  { path: '/upload-audio', name: '上传音频', icon: '音' },
-  { path: '/generate', name: '生成动画', icon: '播' }
+  { path: '/dashboard', name: 'Story Library', icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>' },
+  { path: '/upload-photo', name: 'Upload Photo', icon: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>' },
+  { path: '/upload-audio', name: 'Upload Audio', icon: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>' },
+  { path: '/generate', name: 'Generate Animation', icon: '<polygon points="5 3 19 12 5 21 5 3"/>' }
 ]
+
+// 按分类分组的故事
+const categoriesWithStories = computed<CategoryWithStories[]>(() => {
+  return categories.value
+    .map(cat => ({
+      ...cat,
+      stories: allStories.value.filter(s => s.category_id === cat.id)
+    }))
+    .filter(cat => cat.stories.length > 0)
+})
+
+// 当前选中分类的名称
+const currentCategoryName = computed(() => {
+  if (!selectedCategory.value) return 'All'
+  const cat = categories.value.find(c => c.id === selectedCategory.value)
+  return cat ? (cat.name_en || cat.name) : ''
+})
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60)
@@ -126,10 +196,8 @@ function formatDuration(seconds: number): string {
 
 function navigate(path: string) {
   currentPath.value = path
-  if (path === '/dashboard') {
-    // 当前页面
-  } else {
-    // TODO: 其他页面
+  if (path !== '/dashboard') {
+    router.push(path)
   }
 }
 
@@ -150,27 +218,57 @@ function goToStory(id: string) {
   router.push(`/story/${id}`)
 }
 
-async function fetchStories() {
+async function fetchCategories() {
   try {
+    const response = await api.get('/stories/categories')
+    categories.value = response.data.data || []
+  } catch (error) {
+    console.error('Failed to fetch categories:', error)
+  }
+}
+
+async function fetchAllStories() {
+  try {
+    // 获取所有故事（较大的page_size）
     const response = await api.get('/stories', {
-      params: { page: currentPage.value, page_size: pageSize }
+      params: { page: 1, page_size: 100 }
     })
-    const data = response.data.data
-    stories.value = data.items
-    totalPages.value = Math.ceil(data.total / pageSize)
+    allStories.value = response.data.data?.items || []
   } catch (error) {
     console.error('Failed to fetch stories:', error)
   }
 }
 
-function changePage(page: number) {
-  currentPage.value = page
-  fetchStories()
+async function fetchStoriesByCategory(categoryId: string) {
+  try {
+    const response = await api.get('/stories', {
+      params: { category_id: categoryId, page: 1, page_size: 100 }
+    })
+    filteredStories.value = response.data.data?.items || []
+  } catch (error) {
+    console.error('Failed to fetch stories:', error)
+  }
+}
+
+async function selectCategory(categoryId: string | null) {
+  selectedCategory.value = categoryId
+
+  if (categoryId === null) {
+    // 显示全部，使用已加载的数据
+    filteredStories.value = []
+  } else {
+    // 按分类筛选
+    loading.value = true
+    await fetchStoriesByCategory(categoryId)
+    loading.value = false
+  }
 }
 
 onMounted(async () => {
+  loading.value = true
   await userStore.fetchProfile()
-  await fetchStories()
+  await Promise.all([fetchCategories(), fetchAllStories()])
+  loading.value = false
 })
 </script>
 
@@ -233,7 +331,9 @@ onMounted(async () => {
 }
 
 .nav-icon {
-  font-size: var(--font-size-lg);
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .main-area {
@@ -285,6 +385,7 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   overflow: hidden;
   min-width: 120px;
+  z-index: 100;
 }
 
 .dropdown-item {
@@ -305,11 +406,54 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-.content-desc {
-  color: var(--color-text-muted);
+/* 分类筛选器 */
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
   margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
 }
 
+.filter-btn {
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.filter-btn:hover {
+  background: var(--color-bg-dark-hover);
+  color: var(--color-text-primary);
+}
+
+.filter-btn.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+}
+
+/* 分类区块 */
+.category-section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.category-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 2px solid var(--color-accent);
+  display: inline-block;
+}
+
+/* 故事网格 */
 .story-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -359,29 +503,18 @@ onMounted(async () => {
   color: var(--color-text-primary);
 }
 
-.pagination {
+/* 加载和空状态 */
+.loading-state,
+.empty-state {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-xl);
+  padding: var(--spacing-3xl);
+  color: var(--color-text-muted);
 }
 
-.page-btn {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-bg-dark-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
-  cursor: pointer;
-}
-
-.page-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.page-info {
-  color: var(--color-text-secondary);
+.loading-state p,
+.empty-state p {
+  font-size: var(--font-size-lg);
 }
 </style>

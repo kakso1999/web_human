@@ -1,9 +1,9 @@
 <template>
   <div class="profile-page">
     <div class="profile-container">
-      <button class="back-btn" @click="goBack">返回</button>
+      <button class="back-btn" @click="goBack">Back</button>
 
-      <h1 class="profile-title">个人信息</h1>
+      <h1 class="profile-title">Profile</h1>
 
       <div class="profile-content">
         <!-- 头像 -->
@@ -20,47 +20,47 @@
             @change="handleAvatarUpload"
             hidden
           />
-          <button class="btn btn-primary" @click="triggerFileInput">更换头像</button>
+          <button class="btn btn-primary" @click="triggerFileInput">Change Avatar</button>
         </div>
 
         <!-- 表单 -->
         <form class="profile-form" @submit.prevent="handleSave">
           <div class="form-group">
-            <label>邮箱</label>
+            <label>Email</label>
             <input type="email" class="input" :value="user?.email" disabled />
           </div>
 
           <div class="form-group">
-            <label>昵称</label>
+            <label>Nickname</label>
             <input
               v-model="nickname"
               type="text"
               class="input"
-              placeholder="输入昵称"
+              placeholder="Enter nickname"
             />
           </div>
 
           <p v-if="message" :class="['message', messageType]">{{ message }}</p>
 
           <button type="submit" class="btn btn-accent" :disabled="saving">
-            {{ saving ? '保存中...' : '保存修改' }}
+            {{ saving ? 'Saving...' : 'Save Changes' }}
           </button>
         </form>
 
         <!-- 修改密码 -->
         <div class="password-section">
-          <h2>修改密码</h2>
+          <h2>Change Password</h2>
           <form @submit.prevent="handleChangePassword">
             <div class="form-group">
-              <label>原密码</label>
+              <label>Current Password</label>
               <input v-model="oldPassword" type="password" class="input" />
             </div>
             <div class="form-group">
-              <label>新密码</label>
+              <label>New Password</label>
               <input v-model="newPassword" type="password" class="input" />
             </div>
             <button type="submit" class="btn btn-primary" :disabled="changingPassword">
-              {{ changingPassword ? '修改中...' : '修改密码' }}
+              {{ changingPassword ? 'Changing...' : 'Change Password' }}
             </button>
           </form>
         </div>
@@ -110,9 +110,9 @@ async function handleAvatarUpload(event: Event) {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     await userStore.fetchProfile()
-    showMessage('头像更新成功', 'success')
+    showMessage('Avatar updated successfully', 'success')
   } catch (error: any) {
-    showMessage(error.response?.data?.message || '上传失败', 'error')
+    showMessage(error.response?.data?.message || 'Upload failed', 'error')
   }
 }
 
@@ -120,9 +120,9 @@ async function handleSave() {
   saving.value = true
   try {
     await userStore.updateProfile({ nickname: nickname.value })
-    showMessage('保存成功', 'success')
+    showMessage('Saved successfully', 'success')
   } catch (error: any) {
-    showMessage(error.response?.data?.message || '保存失败', 'error')
+    showMessage(error.response?.data?.message || 'Save failed', 'error')
   } finally {
     saving.value = false
   }
@@ -130,7 +130,7 @@ async function handleSave() {
 
 async function handleChangePassword() {
   if (!oldPassword.value || !newPassword.value) {
-    showMessage('请填写完整', 'error')
+    showMessage('Please fill in all fields', 'error')
     return
   }
 
@@ -140,11 +140,11 @@ async function handleChangePassword() {
       old_password: oldPassword.value,
       new_password: newPassword.value
     })
-    showMessage('密码修改成功', 'success')
+    showMessage('Password changed successfully', 'success')
     oldPassword.value = ''
     newPassword.value = ''
   } catch (error: any) {
-    showMessage(error.response?.data?.message || '修改失败', 'error')
+    showMessage(error.response?.data?.message || 'Change failed', 'error')
   } finally {
     changingPassword.value = false
   }

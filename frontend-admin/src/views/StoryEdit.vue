@@ -95,20 +95,46 @@
 
               <div class="form-group">
                 <label>更换缩略图</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  @change="handleThumbnailSelect"
-                />
+                <div class="file-upload">
+                  <input
+                    type="file"
+                    ref="thumbnailInput"
+                    accept="image/*"
+                    @change="handleThumbnailSelect"
+                    hidden
+                  />
+                  <button type="button" class="btn btn-outline" @click="($refs.thumbnailInput as HTMLInputElement)?.click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="upload-icon">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    选择图片
+                  </button>
+                  <span class="file-name" v-if="form.thumbnail">{{ form.thumbnail.name }}</span>
+                </div>
               </div>
 
               <div class="form-group">
                 <label>更换视频</label>
-                <input
-                  type="file"
-                  accept="video/*"
-                  @change="handleVideoSelect"
-                />
+                <div class="file-upload">
+                  <input
+                    type="file"
+                    ref="videoInput"
+                    accept="video/*"
+                    @change="handleVideoSelect"
+                    hidden
+                  />
+                  <button type="button" class="btn btn-outline" @click="($refs.videoInput as HTMLInputElement)?.click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="upload-icon">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    选择视频
+                  </button>
+                  <span class="file-name" v-if="form.video">{{ form.video.name }}</span>
+                </div>
               </div>
 
               <p v-if="message" :class="['message', messageType]">{{ message }}</p>
@@ -533,6 +559,46 @@ onMounted(() => {
 .message.error {
   background: rgba(255, 59, 48, 0.2);
   color: var(--color-error);
+}
+
+.file-upload {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.btn-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-outline:hover {
+  background: var(--color-bg-dark-hover);
+  border-color: var(--color-accent);
+  color: var(--color-text-primary);
+}
+
+.upload-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.file-name {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form-actions {

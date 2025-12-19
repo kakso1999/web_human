@@ -3,7 +3,7 @@
     <div class="story-container" v-if="story">
       <!-- 顶部导航 -->
       <div class="story-header">
-        <button class="back-btn" @click="goBack">返回</button>
+        <button class="back-btn" @click="goBack">Back</button>
         <h1 class="story-title">{{ story.title }}</h1>
       </div>
 
@@ -23,42 +23,42 @@
       <!-- 视频信息 -->
       <div class="story-info">
         <div class="info-row">
-          <span class="info-label">时长</span>
+          <span class="info-label">Duration</span>
           <span class="info-value">{{ formatDuration(story.duration) }}</span>
         </div>
         <div class="info-row" v-if="story.category">
-          <span class="info-label">分类</span>
+          <span class="info-label">Category</span>
           <span class="info-value">{{ story.category.name }}</span>
         </div>
         <div class="info-row">
-          <span class="info-label">创建时间</span>
+          <span class="info-label">Created</span>
           <span class="info-value">{{ formatDate(story.created_at) }}</span>
         </div>
       </div>
 
       <!-- 描述 -->
       <div class="story-description" v-if="story.description">
-        <h3>故事简介</h3>
+        <h3>Description</h3>
         <p>{{ story.description }}</p>
       </div>
 
       <!-- 操作按钮 -->
       <div class="story-actions">
         <button class="btn btn-primary" @click="downloadVideo" :disabled="downloading">
-          {{ downloading ? '下载中...' : '下载视频' }}
+          {{ downloading ? 'Downloading...' : 'Download Video' }}
         </button>
       </div>
     </div>
 
     <!-- 加载状态 -->
     <div class="loading-state" v-else-if="loading">
-      <p>加载中...</p>
+      <p>Loading...</p>
     </div>
 
     <!-- 错误状态 -->
     <div class="error-state" v-else-if="error">
       <p>{{ error }}</p>
-      <button class="btn btn-primary" @click="fetchStory">重试</button>
+      <button class="btn btn-primary" @click="fetchStory">Retry</button>
     </div>
   </div>
 </template>
@@ -105,7 +105,7 @@ function formatDuration(seconds: number): string {
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr)
-  return date.toLocaleDateString('zh-CN', {
+  return date.toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -145,7 +145,7 @@ async function downloadVideo() {
 async function fetchStory() {
   const storyId = route.params.id as string
   if (!storyId) {
-    error.value = '无效的故事ID'
+    error.value = 'Invalid story ID'
     loading.value = false
     return
   }
@@ -157,7 +157,7 @@ async function fetchStory() {
     const response = await api.get(`/stories/${storyId}`)
     story.value = response.data.data
   } catch (err: any) {
-    error.value = err.response?.data?.message || '加载失败'
+    error.value = err.response?.data?.message || 'Failed to load'
   } finally {
     loading.value = false
   }

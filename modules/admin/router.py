@@ -3,14 +3,14 @@ Admin 模块 - API 路由
 管理后台接口
 """
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 import os
 
 from core.schemas.base import success_response
 from core.schemas.pagination import paginate
 from core.middleware.auth import require_admin
 from core.config.settings import get_settings
-from core.utils.helpers import generate_filename, ensure_dir
+from core.utils.helpers import generate_filename, ensure_dir, get_video_duration, extract_video_thumbnail
 
 from modules.user.repository import UserRepository
 from modules.story.service import get_story_service, StoryService
@@ -35,11 +35,46 @@ async def get_dashboard(
     total_stories = await story_service.story_repo.count()
     published_stories = await story_service.story_repo.count({"is_published": True})
 
+    # 获取最近注册的用户
+    recent_users_raw = await user_repo.list_users(skip=0, limit=5)
+    recent_users = []
+    for u in recent_users_raw:
+        recent_users.append({
+            "id": u["id"],
+            "email": u["email"],
+            "nickname": u.get("nickname"),
+            "role": u["role"],
+            "created_at": u["created_at"].isoformat() if u.get("created_at") else None
+        })
+
+    # 获取最近上传的故事
+    recent_stories_raw = await story_service.story_repo.get_many(
+        filter={},
+        skip=0,
+        limit=5,
+        sort=[("created_at", -1)]
+    )
+    recent_stories = []
+    for s in recent_stories_raw:
+        recent_stories.append({
+            "id": s["id"],
+            "title": s["title"],
+            "duration": s.get("duration", 0),
+            "status": "active" if s.get("is_published") else "inactive",
+            "created_at": s["created_at"].isoformat() if s.get("created_at") else None
+        })
+
+    # 订阅用户数（订阅计划不为free的用户）
+    active_subscribers = await user_repo.count({"subscription.plan": {"$ne": "free"}})
+
     return success_response({
         "total_users": total_users,
         "total_stories": total_stories,
         "published_stories": published_stories,
-        # TODO: 添加更多统计数据
+        "active_subscribers": active_subscribers,
+        "monthly_revenue": 0,  # TODO: 从订单模块获取
+        "recent_users": recent_users,
+        "recent_stories": recent_stories
     })
 
 
@@ -173,28 +208,190 @@ async def list_stories_admin(
         is_published=is_published,
         search=search
     )
+
+    # 获取所有分类信息
+    categories = await story_service.category_repo.list_all()
+    cat_map = {c["id"]: c["name"] for c in categories}
+
+    # 为每个故事添加分类信息
+    for item in result["data"]["items"]:
+        cat_id = item.get("category_id")
+        if cat_id and cat_id in cat_map:
+            item["category"] = {"id": cat_id, "name": cat_map[cat_id]}
+        else:
+            item["category"] = None
+        # 添加状态字段
+        item["status"] = "active" if item.get("is_published") else "inactive"
+
     return result
 
 
 @router.post("/stories")
 async def create_story(
-    data: StoryCreate,
+    title: str = Form(...),
+    video: UploadFile = File(...),
+    category_id: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    is_published: bool = Form(False),
+    _=Depends(require_admin)
+):
+    """
+    创建故事 - 支持直接上传视频文件
+
+    上传视频后会自动：
+    1. 从视频第10秒提取缩略图
+    2. 获取视频时长
+    """
+    story_service = get_story_service()
+
+    # 验证视频格式
+    if video.content_type not in settings.ALLOWED_VIDEO_TYPES:
+        return {"code": 10001, "message": "Unsupported video format", "data": None}
+
+    # 保存视频文件
+    video_filename = generate_filename(video.filename)
+    video_dir = os.path.join(settings.UPLOAD_DIR, "videos")
+    ensure_dir(video_dir)
+
+    video_path = os.path.join(video_dir, video_filename)
+    content = await video.read()
+    with open(video_path, "wb") as f:
+        f.write(content)
+
+    video_url = f"/uploads/videos/{video_filename}"
+
+    # 获取视频时长
+    duration = get_video_duration(video_path)
+
+    # 自动生成缩略图（从第10秒提取）
+    thumbnail_filename = video_filename.rsplit('.', 1)[0] + '.jpg'
+    thumbnail_dir = os.path.join(settings.UPLOAD_DIR, "thumbnails")
+    ensure_dir(thumbnail_dir)
+
+    thumbnail_path = os.path.join(thumbnail_dir, thumbnail_filename)
+    thumbnail_url = None
+
+    if extract_video_thumbnail(video_path, thumbnail_path, time_seconds=10):
+        thumbnail_url = f"/uploads/thumbnails/{thumbnail_filename}"
+
+    # 创建故事数据
+    story_data = StoryCreate(
+        title=title,
+        category_id=category_id or "",
+        description=description,
+        video_url=video_url,
+        thumbnail_url=thumbnail_url,
+        duration=duration,
+        is_published=is_published
+    )
+
+    story = await story_service.create_story(story_data)
+    return success_response(story.model_dump())
+
+
+@router.get("/stories/{story_id}")
+async def get_story_detail(
+    story_id: str,
     story_service: StoryService = Depends(get_story_service),
     _=Depends(require_admin)
 ):
-    """创建故事"""
-    story = await story_service.create_story(data)
-    return success_response(story.model_dump())
+    """获取故事详情"""
+    story = await story_service.get_story(story_id)
+
+    # 获取分类信息
+    category = None
+    if story.category_id:
+        cat_data = await story_service.category_repo.get_by_id(story.category_id)
+        if cat_data:
+            category = {"id": cat_data["id"], "name": cat_data["name"]}
+
+    return success_response({
+        "id": story.id,
+        "title": story.title,
+        "description": story.description,
+        "video_url": story.video_url,
+        "thumbnail_url": story.thumbnail_url,
+        "duration": story.duration,
+        "status": "active" if story.is_published else "inactive",
+        "category": category,
+        "created_at": story.created_at.isoformat() if story.created_at else None
+    })
 
 
 @router.put("/stories/{story_id}")
 async def update_story(
     story_id: str,
-    data: StoryUpdate,
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    category_id: Optional[str] = Form(None),
+    status: Optional[str] = Form(None),
+    thumbnail: Optional[UploadFile] = File(None),
+    video: Optional[UploadFile] = File(None),
     story_service: StoryService = Depends(get_story_service),
     _=Depends(require_admin)
 ):
-    """更新故事"""
+    """更新故事（支持更新缩略图和视频）"""
+    update_data = {}
+    if title:
+        update_data["title"] = title
+    if description is not None:
+        update_data["description"] = description
+    if category_id:
+        update_data["category_id"] = category_id
+    if status:
+        update_data["is_published"] = (status == "active")
+
+    # 处理缩略图上传
+    if thumbnail and thumbnail.filename:
+        if thumbnail.content_type not in settings.ALLOWED_IMAGE_TYPES:
+            return {"code": 10001, "message": "不支持的图片格式", "data": None}
+
+        thumb_filename = generate_filename(thumbnail.filename)
+        thumb_dir = os.path.join(settings.UPLOAD_DIR, "thumbnails")
+        ensure_dir(thumb_dir)
+
+        thumb_path = os.path.join(thumb_dir, thumb_filename)
+        content = await thumbnail.read()
+        with open(thumb_path, "wb") as f:
+            f.write(content)
+
+        update_data["thumbnail_url"] = f"/uploads/thumbnails/{thumb_filename}"
+
+    # 处理视频上传
+    if video and video.filename:
+        if video.content_type not in settings.ALLOWED_VIDEO_TYPES:
+            return {"code": 10001, "message": "不支持的视频格式", "data": None}
+
+        video_filename = generate_filename(video.filename)
+        video_dir = os.path.join(settings.UPLOAD_DIR, "videos")
+        ensure_dir(video_dir)
+
+        video_path = os.path.join(video_dir, video_filename)
+        content = await video.read()
+        with open(video_path, "wb") as f:
+            f.write(content)
+
+        video_url = f"/uploads/videos/{video_filename}"
+        update_data["video_url"] = video_url
+
+        # 获取视频时长
+        duration = get_video_duration(video_path)
+        if duration:
+            update_data["duration"] = duration
+
+        # 自动生成新缩略图（如果没有单独上传）
+        if "thumbnail_url" not in update_data:
+            new_thumb_filename = video_filename.rsplit('.', 1)[0] + '.jpg'
+            new_thumb_dir = os.path.join(settings.UPLOAD_DIR, "thumbnails")
+            ensure_dir(new_thumb_dir)
+            new_thumb_path = os.path.join(new_thumb_dir, new_thumb_filename)
+            if extract_video_thumbnail(video_path, new_thumb_path, time_seconds=10):
+                update_data["thumbnail_url"] = f"/uploads/thumbnails/{new_thumb_filename}"
+
+    if not update_data:
+        return {"code": 10001, "message": "没有要更新的数据", "data": None}
+
+    data = StoryUpdate(**update_data)
     story = await story_service.update_story(story_id, data)
     return success_response(story.model_dump())
 

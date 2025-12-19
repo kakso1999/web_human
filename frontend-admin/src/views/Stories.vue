@@ -114,7 +114,7 @@
     </div>
 
     <!-- 创建故事弹窗 -->
-    <div v-if="showCreateModal" class="modal-overlay" @click.self="showCreateModal = false">
+    <div v-if="showCreateModal" class="modal-overlay" @click.self="closeCreateModal">
       <div class="modal">
         <h2 class="modal-title">新建故事</h2>
 
@@ -132,24 +132,52 @@
           <div class="form-group">
             <label>视频文件</label>
             <input type="file" accept="video/*" @change="handleVideoSelect" required />
+            <p v-if="newStory.video" class="file-info">
+              {{ newStory.video.name }} ({{ formatFileSize(newStory.video.size) }})
+            </p>
           </div>
 
           <div class="form-group">
             <label>分类</label>
-            <select v-model="newStory.category_id" class="input">
-              <option value="">选择分类</option>
-              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
-                {{ cat.name }}
-              </option>
-            </select>
+            <div class="category-select">
+              <select v-model="newStory.category_id" class="input" v-if="!showNewCategory">
+                <option value="">选择分类</option>
+                <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                  {{ cat.name }}
+                </option>
+              </select>
+              <input
+                v-else
+                v-model="newCategoryName"
+                type="text"
+                class="input"
+                placeholder="输入新分类名称"
+              />
+              <button
+                type="button"
+                class="btn btn-outline btn-sm"
+                @click="toggleNewCategory"
+              >
+                {{ showNewCategory ? '选择已有' : '+ 新建分类' }}
+              </button>
+            </div>
           </div>
 
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" v-model="newStory.is_published" />
+              立即发布
+            </label>
+          </div>
+
+          <p v-if="createError" class="error-msg">{{ createError }}</p>
+
           <div class="modal-actions">
-            <button type="button" class="btn btn-outline" @click="showCreateModal = false">
+            <button type="button" class="btn btn-outline" @click="closeCreateModal">
               取消
             </button>
             <button type="submit" class="btn btn-accent" :disabled="creating">
-              {{ creating ? '创建中...' : '创建' }}
+              {{ creating ? '上传中...' : '创建' }}
             </button>
           </div>
         </form>
@@ -195,11 +223,15 @@ let searchTimeout: number | null = null
 
 const showCreateModal = ref(false)
 const creating = ref(false)
+const createError = ref('')
+const showNewCategory = ref(false)
+const newCategoryName = ref('')
 const newStory = ref({
   title: '',
   description: '',
   category_id: '',
-  video: null as File | null
+  video: null as File | null,
+  is_published: false
 })
 
 const menuItems = [
@@ -289,12 +321,46 @@ function handleVideoSelect(event: Event) {
   }
 }
 
+function toggleNewCategory() {
+  showNewCategory.value = !showNewCategory.value
+  if (!showNewCategory.value) {
+    newCategoryName.value = ''
+  }
+}
+
+function closeCreateModal() {
+  showCreateModal.value = false
+  showNewCategory.value = false
+  newCategoryName.value = ''
+  createError.value = ''
+  newStory.value = { title: '', description: '', category_id: '', video: null, is_published: false }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 async function handleCreateStory() {
   if (!newStory.value.video) return
 
   creating.value = true
+  createError.value = ''
 
   try {
+    let categoryId = newStory.value.category_id
+
+    // If creating a new category
+    if (showNewCategory.value && newCategoryName.value.trim()) {
+      const categoryResponse = await api.post('/admin/categories', {
+        name: newCategoryName.value.trim()
+      })
+      categoryId = categoryResponse.data.data.id
+    }
+
     const formData = new FormData()
     formData.append('title', newStory.value.title)
     formData.append('video', newStory.value.video)
@@ -303,19 +369,22 @@ async function handleCreateStory() {
       formData.append('description', newStory.value.description)
     }
 
-    if (newStory.value.category_id) {
-      formData.append('category_id', newStory.value.category_id)
+    if (categoryId) {
+      formData.append('category_id', categoryId)
     }
+
+    formData.append('is_published', String(newStory.value.is_published))
 
     await api.post('/admin/stories', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
 
-    showCreateModal.value = false
-    newStory.value = { title: '', description: '', category_id: '', video: null }
+    closeCreateModal()
     await fetchStories()
-  } catch (error) {
+    await fetchCategories()
+  } catch (error: any) {
     console.error('Failed to create story:', error)
+    createError.value = error.response?.data?.message || '创建失败，请重试'
   } finally {
     creating.value = false
   }
@@ -573,5 +642,43 @@ onMounted(() => {
   justify-content: flex-end;
   gap: var(--spacing-md);
   margin-top: var(--spacing-lg);
+}
+
+.category-select {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.category-select select,
+.category-select input {
+  flex: 1;
+}
+
+.file-info {
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.error-msg {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
 }
 </style>
