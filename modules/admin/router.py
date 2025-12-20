@@ -238,21 +238,25 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
 
         print(f"[AI Processing] Transcription complete. {len(subtitles)} segments.")
 
-        # 3. 生成标题（中文和英文）
+        # 3. 生成英文标题和英文描述
         title = ""
-        title_en = ""
+        description = ""
         if subtitle_text:
-            print(f"[AI Processing] Generating titles...")
+            print(f"[AI Processing] Generating English title...")
             try:
-                # 生成中文标题
-                title = await apicore.generate_chinese_title(subtitle_text)
-                print(f"[AI Processing] Generated Chinese title: {title}")
-
-                # 生成英文标题
-                title_en = await apicore.generate_title(subtitle_text)
-                print(f"[AI Processing] Generated English title: {title_en}")
+                # 生成英文标题作为主标题
+                title = await apicore.generate_title(subtitle_text)
+                print(f"[AI Processing] Generated English title: {title}")
             except Exception as e:
                 print(f"[AI Processing] Title generation failed: {e}")
+
+            print(f"[AI Processing] Generating English description...")
+            try:
+                # 生成英文描述
+                description = await apicore.generate_description(subtitle_text)
+                print(f"[AI Processing] Generated English description: {description}")
+            except Exception as e:
+                print(f"[AI Processing] Description generation failed: {e}")
 
         # 4. 更新数据库
         update_data = {
@@ -263,8 +267,8 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
         }
         if title:
             update_data["title"] = title
-        if title_en:
-            update_data["title_en"] = title_en
+        if description:
+            update_data["description"] = description
 
         await story_service.story_repo.update(story_id, update_data)
         print(f"[AI Processing] Story {story_id} updated successfully!")

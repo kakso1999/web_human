@@ -158,6 +158,56 @@ Respond with ONLY the title, nothing else."""
             title = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             return title.strip().strip('"\'《》')
 
+    async def generate_description(self, subtitle_text: str) -> str:
+        """
+        使用 Gemini 2.5 Flash 生成英文描述
+
+        Args:
+            subtitle_text: 字幕文本（故事内容）
+
+        Returns:
+            生成的英文描述
+        """
+        url = f"{self.base_url}/v1/chat/completions"
+
+        prompt = f"""Based on the following story content (subtitles), generate a brief English description for this children's story.
+The description should be:
+- 1-2 sentences (50-100 words)
+- Child-friendly and engaging
+- Summarize the main plot or theme
+- Appeal to parents looking for stories for their children
+
+Story content:
+{subtitle_text[:3000]}
+
+Respond with ONLY the description, nothing else."""
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                url,
+                json={
+                    "model": "gemini-2.5-flash",
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "stream": False,
+                    "temperature": 0.7,
+                    "max_tokens": 150
+                },
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"Description generation failed: {response.status_code} - {response.text}")
+
+            result = response.json()
+            # 提取生成的描述
+            desc = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return desc.strip().strip('"\'')
+
 
 # 服务单例
 _apicore_service: Optional[APICoreService] = None
