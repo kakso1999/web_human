@@ -5,6 +5,8 @@ Admin 模块 - API 路由
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, BackgroundTasks
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from core.schemas.base import success_response
 from core.schemas.pagination import paginate
@@ -19,6 +21,11 @@ from modules.story.schemas import StoryCreate, StoryUpdate, CategoryCreate, Subt
 
 settings = get_settings()
 router = APIRouter(prefix="/admin", tags=["管理后台"])
+
+# 批量处理线程池（最大5线程）
+batch_executor = ThreadPoolExecutor(max_workers=5)
+# 用于追踪批量上传任务的状态
+batch_upload_tasks = {}
 
 
 # ========== 数据统计 ==========
@@ -592,3 +599,299 @@ async def upload_video(
 
     url = f"/uploads/videos/{filename}"
     return success_response({"url": url})
+
+
+# ========== 批量操作 ==========
+
+async def process_single_video(
+    video_content: bytes,
+    video_filename: str,
+    category_id: str,
+    api_key: str,
+    batch_id: str,
+    index: int
+):
+    """
+    处理单个视频（用于批量上传）
+
+    Args:
+        video_content: 视频文件内容
+        video_filename: 原始文件名
+        category_id: 分类ID
+        api_key: APICore API Key
+        batch_id: 批量任务ID
+        index: 在批次中的索引
+    """
+    story_service = get_story_service()
+
+    try:
+        # 更新任务状态
+        if batch_id in batch_upload_tasks:
+            batch_upload_tasks[batch_id]["items"][index]["status"] = "uploading"
+
+        # 保存视频文件
+        new_filename = generate_filename(video_filename)
+        video_dir = os.path.join(settings.UPLOAD_DIR, "videos")
+        ensure_dir(video_dir)
+
+        video_path = os.path.join(video_dir, new_filename)
+        with open(video_path, "wb") as f:
+            f.write(video_content)
+
+        video_url = f"/uploads/videos/{new_filename}"
+
+        # 获取视频时长
+        duration = get_video_duration(video_path)
+
+        # 自动生成缩略图（从第10秒提取）
+        thumbnail_filename = new_filename.rsplit('.', 1)[0] + '.jpg'
+        thumbnail_dir = os.path.join(settings.UPLOAD_DIR, "thumbnails")
+        ensure_dir(thumbnail_dir)
+
+        thumbnail_path = os.path.join(thumbnail_dir, thumbnail_filename)
+        thumbnail_url = None
+
+        if extract_video_thumbnail(video_path, thumbnail_path, time_seconds=10):
+            thumbnail_url = f"/uploads/thumbnails/{thumbnail_filename}"
+
+        # 创建故事数据
+        story_data = StoryCreate(
+            title="",  # AI会生成
+            category_id=category_id or "",
+            description=None,
+            video_url=video_url,
+            thumbnail_url=thumbnail_url,
+            duration=duration,
+            is_published=False,
+            is_processing=True
+        )
+
+        story = await story_service.create_story(story_data)
+
+        # 更新任务状态为处理中
+        if batch_id in batch_upload_tasks:
+            batch_upload_tasks[batch_id]["items"][index]["status"] = "processing"
+            batch_upload_tasks[batch_id]["items"][index]["story_id"] = story.id
+
+        # 执行 AI 处理
+        await process_video_ai(story.id, video_path, api_key)
+
+        # 更新任务状态为完成
+        if batch_id in batch_upload_tasks:
+            batch_upload_tasks[batch_id]["items"][index]["status"] = "completed"
+            batch_upload_tasks[batch_id]["completed"] += 1
+
+        return {"success": True, "story_id": story.id}
+
+    except Exception as e:
+        print(f"[Batch Upload] Error processing {video_filename}: {e}")
+        import traceback
+        traceback.print_exc()
+
+        if batch_id in batch_upload_tasks:
+            batch_upload_tasks[batch_id]["items"][index]["status"] = "failed"
+            batch_upload_tasks[batch_id]["items"][index]["error"] = str(e)
+            batch_upload_tasks[batch_id]["failed"] += 1
+
+        return {"success": False, "error": str(e)}
+
+
+async def run_batch_upload(
+    videos_data: List[dict],
+    category_id: str,
+    api_key: str,
+    batch_id: str
+):
+    """
+    运行批量上传任务（最多5个并发）
+
+    Args:
+        videos_data: 视频数据列表 [{"content": bytes, "filename": str}, ...]
+        category_id: 分类ID
+        api_key: APICore API Key
+        batch_id: 批量任务ID
+    """
+    semaphore = asyncio.Semaphore(5)  # 最多5个并发
+
+    async def process_with_semaphore(video_data, index):
+        async with semaphore:
+            return await process_single_video(
+                video_content=video_data["content"],
+                video_filename=video_data["filename"],
+                category_id=category_id,
+                api_key=api_key,
+                batch_id=batch_id,
+                index=index
+            )
+
+    # 并发处理所有视频
+    tasks = [
+        process_with_semaphore(video_data, i)
+        for i, video_data in enumerate(videos_data)
+    ]
+
+    await asyncio.gather(*tasks)
+
+    # 标记批量任务完成
+    if batch_id in batch_upload_tasks:
+        batch_upload_tasks[batch_id]["status"] = "completed"
+
+
+@router.post("/stories/batch")
+async def batch_create_stories(
+    background_tasks: BackgroundTasks,
+    videos: List[UploadFile] = File(...),
+    category_id: Optional[str] = Form(None),
+    _=Depends(require_admin)
+):
+    """
+    批量上传视频创建故事
+
+    - 支持同时上传多个视频文件
+    - 所有视频将被分配到同一分类
+    - AI处理最多5个并发执行
+    """
+    import uuid
+
+    # 验证视频格式
+    for video in videos:
+        if video.content_type not in settings.ALLOWED_VIDEO_TYPES:
+            return {"code": 10001, "message": f"不支持的视频格式: {video.filename}", "data": None}
+
+    # 生成批量任务ID
+    batch_id = str(uuid.uuid4())
+
+    # 初始化任务状态
+    batch_upload_tasks[batch_id] = {
+        "status": "processing",
+        "total": len(videos),
+        "completed": 0,
+        "failed": 0,
+        "items": [
+            {"filename": v.filename, "status": "pending", "story_id": None, "error": None}
+            for v in videos
+        ]
+    }
+
+    # 读取所有视频内容
+    videos_data = []
+    for video in videos:
+        content = await video.read()
+        videos_data.append({
+            "content": content,
+            "filename": video.filename
+        })
+
+    # 获取 API Key
+    api_key = settings.APICORE_API_KEY
+
+    # 在后台执行批量上传
+    background_tasks.add_task(
+        run_batch_upload,
+        videos_data,
+        category_id or "",
+        api_key,
+        batch_id
+    )
+
+    return success_response({
+        "batch_id": batch_id,
+        "total": len(videos),
+        "message": f"已开始批量上传 {len(videos)} 个视频"
+    })
+
+
+@router.get("/stories/batch/{batch_id}")
+async def get_batch_status(
+    batch_id: str,
+    _=Depends(require_admin)
+):
+    """获取批量上传任务状态"""
+    if batch_id not in batch_upload_tasks:
+        return {"code": 10001, "message": "任务不存在", "data": None}
+
+    return success_response(batch_upload_tasks[batch_id])
+
+
+@router.post("/stories/batch-publish")
+async def batch_publish_stories(
+    story_ids: List[str],
+    _=Depends(require_admin)
+):
+    """
+    批量上架故事
+
+    Args:
+        story_ids: 要上架的故事ID列表
+    """
+    story_service = get_story_service()
+
+    success_count = 0
+    for story_id in story_ids:
+        try:
+            await story_service.story_repo.update(story_id, {"is_published": True})
+            success_count += 1
+        except Exception as e:
+            print(f"Failed to publish story {story_id}: {e}")
+
+    return success_response({
+        "total": len(story_ids),
+        "success": success_count,
+        "message": f"成功上架 {success_count} 个故事"
+    })
+
+
+@router.post("/stories/batch-unpublish")
+async def batch_unpublish_stories(
+    story_ids: List[str],
+    _=Depends(require_admin)
+):
+    """
+    批量下架故事
+
+    Args:
+        story_ids: 要下架的故事ID列表
+    """
+    story_service = get_story_service()
+
+    success_count = 0
+    for story_id in story_ids:
+        try:
+            await story_service.story_repo.update(story_id, {"is_published": False})
+            success_count += 1
+        except Exception as e:
+            print(f"Failed to unpublish story {story_id}: {e}")
+
+    return success_response({
+        "total": len(story_ids),
+        "success": success_count,
+        "message": f"成功下架 {success_count} 个故事"
+    })
+
+
+@router.delete("/stories/batch")
+async def batch_delete_stories(
+    story_ids: List[str],
+    _=Depends(require_admin)
+):
+    """
+    批量删除故事
+
+    Args:
+        story_ids: 要删除的故事ID列表
+    """
+    story_service = get_story_service()
+
+    success_count = 0
+    for story_id in story_ids:
+        try:
+            await story_service.delete_story(story_id)
+            success_count += 1
+        except Exception as e:
+            print(f"Failed to delete story {story_id}: {e}")
+
+    return success_response({
+        "total": len(story_ids),
+        "success": success_count,
+        "message": f"成功删除 {success_count} 个故事"
+    })
