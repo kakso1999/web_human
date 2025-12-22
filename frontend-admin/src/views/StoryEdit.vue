@@ -14,13 +14,13 @@
           :to="item.path"
           :class="['nav-item', { active: item.path === '/stories' }]"
         >
-          <span class="nav-icon">{{ item.icon }}</span>
+          <span class="nav-icon" v-html="item.icon"></span>
           <span class="nav-text">{{ item.name }}</span>
         </router-link>
       </nav>
 
       <div class="sidebar-footer">
-        <button class="logout-btn" @click="handleLogout">退出登录</button>
+        <button class="logout-btn" @click="handleLogout">退出</button>
       </div>
     </aside>
 
@@ -254,9 +254,21 @@ const form = ref({
 })
 
 const menuItems = [
-  { path: '/dashboard', name: '仪表盘', icon: '仪' },
-  { path: '/users', name: '用户管理', icon: '用' },
-  { path: '/stories', name: '故事管理', icon: '事' }
+  {
+    path: '/dashboard',
+    name: '仪表盘',
+    icon: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>'
+  },
+  {
+    path: '/users',
+    name: '用户管理',
+    icon: '<svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>'
+  },
+  {
+    path: '/stories',
+    name: '故事管理',
+    icon: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>'
+  }
 ]
 
 function formatDuration(seconds: number): string {
@@ -395,82 +407,6 @@ onMounted(() => {
   display: flex;
   width: 100%;
   min-height: 100vh;
-}
-
-.sidebar {
-  width: var(--sidebar-width);
-  background: var(--color-bg-dark-secondary);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-}
-
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-lg);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.sidebar-logo img {
-  width: 32px;
-  height: 32px;
-}
-
-.sidebar-logo span {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-}
-
-.sidebar-nav {
-  flex: 1;
-  padding: var(--spacing-md) 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
-  color: var(--color-text-secondary);
-  transition: all var(--transition-fast);
-}
-
-.nav-item:hover {
-  background: var(--color-bg-dark-hover);
-  color: var(--color-text-primary);
-}
-
-.nav-item.active {
-  background: var(--color-bg-dark-tertiary);
-  color: var(--color-text-primary);
-  border-left: 3px solid var(--color-accent);
-}
-
-.nav-icon {
-  font-size: var(--font-size-lg);
-}
-
-.sidebar-footer {
-  padding: var(--spacing-lg);
-  border-top: 1px solid var(--color-border);
-}
-
-.logout-btn {
-  width: 100%;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.logout-btn:hover {
-  background: var(--color-bg-dark-hover);
-  color: var(--color-text-primary);
 }
 
 .main-area {

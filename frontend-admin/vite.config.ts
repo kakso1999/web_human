@@ -9,11 +9,11 @@ export default defineConfig({
     allowedHosts: ['localhost', '.ngrok-free.app'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8000',
         changeOrigin: true
       },
       '/uploads': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8000',
         changeOrigin: true
       }
     }

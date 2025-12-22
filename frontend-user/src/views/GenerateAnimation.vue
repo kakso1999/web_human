@@ -18,6 +18,10 @@
           <span class="nav-text">{{ item.name }}</span>
         </a>
       </nav>
+
+      <div class="sidebar-footer">
+        <button class="logout-btn" @click="handleLogout">Sign Out</button>
+      </div>
     </aside>
 
     <!-- 主内容区 -->
@@ -123,44 +127,50 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+  height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
 .sidebar-logo {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .sidebar-logo img {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 
 .sidebar-logo span {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
   font-weight: 600;
-  color: #fff;
+  color: #E8E4D4;
 }
 
 .sidebar-nav {
-  padding: var(--spacing-md) 0;
+  padding: var(--spacing-sm) 0;
   flex: 1;
+  overflow-y: auto;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
-  color: rgba(255, 255, 255, 0.7);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: rgba(232, 228, 212, 0.85);
   cursor: pointer;
   transition: all var(--transition-fast);
-  margin: 4px 8px;
+  margin: 2px var(--spacing-sm);
   border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  border-left: 3px solid transparent;
 }
 
 .nav-item:hover {
@@ -171,13 +181,37 @@ onMounted(async () => {
 .nav-item.active {
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
-  box-shadow: inset 3px 0 0 #fff;
+  border-left-color: #E8E4D4;
 }
 
 .nav-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
+}
+
+.sidebar-footer {
+  padding: var(--spacing-md);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.logout-btn {
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--font-size-sm);
+}
+
+.logout-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 .main-area {
