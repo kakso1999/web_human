@@ -331,29 +331,7 @@
           </div>
         </div>
 
-        <!-- 上传进度 -->
-        <div v-if="batchUpload.uploading" class="batch-progress">
-          <div class="progress-header">
-            <span>上传进度</span>
-            <span>{{ batchUpload.completed }} / {{ batchUpload.total }}</span>
-          </div>
-          <div class="progress-bar">
-            <div
-              class="progress-fill"
-              :style="{ width: `${(batchUpload.completed / batchUpload.total) * 100}%` }"
-            ></div>
-          </div>
-          <div class="progress-items">
-            <div
-              v-for="(item, index) in batchUpload.items"
-              :key="index"
-              :class="['progress-item', item.status]"
-            >
-              <span class="item-name">{{ item.filename }}</span>
-              <span class="item-status">{{ getUploadStatusLabel(item.status) }}</span>
-            </div>
-          </div>
-        </div>
+        <p class="upload-tips">上传后视频将在后台处理，您可以在故事列表中查看处理进度</p>
 
         <p v-if="batchUpload.error" class="error-msg">{{ batchUpload.error }}</p>
 
@@ -364,7 +342,7 @@
             @click="closeBatchUploadModal"
             :disabled="batchUpload.uploading"
           >
-            {{ batchUpload.uploading ? '上传中...' : '取消' }}
+            取消
           </button>
           <button
             type="button"
@@ -405,13 +383,6 @@ interface Story {
   status: string
   category: Category | null
   created_at: string
-}
-
-interface BatchUploadItem {
-  filename: string
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
-  story_id: string | null
-  error: string | null
 }
 
 const stories = ref<Story[]>([])
@@ -457,7 +428,6 @@ const batchUpload = ref({
 
 // 自动刷新定时器（处理中的视频）
 let refreshTimer: number | null = null
-let batchStatusTimer: number | null = null
 
 const menuItems = [
   { path: '/dashboard', name: '仪表盘', icon: '仪' },
@@ -476,17 +446,6 @@ function getStatusLabel(status: string): string {
     active: '正常',
     inactive: '已下架',
     processing: '处理中'
-  }
-  return labels[status] || status
-}
-
-function getUploadStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    pending: '等待中',
-    uploading: '上传中',
-    processing: '处理中',
-    completed: '完成',
-    failed: '失败'
   }
   return labels[status] || status
 }
@@ -748,11 +707,16 @@ function toggleBatchNewCategory() {
 }
 
 function closeBatchUploadModal() {
-  if (batchUpload.value.uploading) return
-
   showBatchUploadModal.value = false
   showBatchNewCategory.value = false
   batchNewCategoryName.value = ''
+
+  // 如果正在上传，刷新列表查看处理中的视频
+  if (batchUpload.value.uploading) {
+    fetchStories()
+  }
+
+  // 重置状态
   batchUpload.value = {
     category_id: '',
     videos: [],
@@ -766,10 +730,6 @@ function closeBatchUploadModal() {
   }
   if (batchVideoInput.value) {
     batchVideoInput.value.value = ''
-  }
-  if (batchStatusTimer) {
-    clearInterval(batchStatusTimer)
-    batchStatusTimer = null
   }
 }
 
@@ -804,49 +764,34 @@ async function handleBatchUpload() {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
 
-    const { batch_id, total } = response.data.data
-    batchUpload.value.batch_id = batch_id
-    batchUpload.value.total = total
-    batchUpload.value.items = batchUpload.value.videos.map(v => ({
-      filename: v.name,
-      status: 'pending' as const,
-      story_id: null,
-      error: null
-    }))
+    // 上传请求成功后，关闭弹窗并刷新列表
+    // 视频会在后台处理，用户可以在故事列表中看到"处理中"状态
+    showBatchUploadModal.value = false
+    showBatchNewCategory.value = false
+    batchNewCategoryName.value = ''
+    batchUpload.value = {
+      category_id: '',
+      videos: [],
+      uploading: false,
+      batch_id: '',
+      total: 0,
+      completed: 0,
+      failed: 0,
+      items: [],
+      error: ''
+    }
+    if (batchVideoInput.value) {
+      batchVideoInput.value.value = ''
+    }
 
-    // 开始轮询状态
-    startBatchStatusPolling()
+    // 刷新故事列表，显示处理中的视频
+    await fetchStories()
 
   } catch (error: any) {
     console.error('Failed to start batch upload:', error)
     batchUpload.value.error = error.response?.data?.message || '批量上传失败，请重试'
     batchUpload.value.uploading = false
   }
-}
-
-function startBatchStatusPolling() {
-  batchStatusTimer = window.setInterval(async () => {
-    try {
-      const response = await api.get(`/admin/stories/batch/${batchUpload.value.batch_id}`)
-      const data = response.data.data
-
-      batchUpload.value.completed = data.completed
-      batchUpload.value.failed = data.failed
-      batchUpload.value.items = data.items
-
-      // 如果全部完成，停止轮询
-      if (data.status === 'completed') {
-        if (batchStatusTimer) {
-          clearInterval(batchStatusTimer)
-          batchStatusTimer = null
-        }
-        batchUpload.value.uploading = false
-        await fetchStories()
-      }
-    } catch (error) {
-      console.error('Failed to get batch status:', error)
-    }
-  }, 2000)
 }
 
 async function handleDeleteStory(id: string) {
@@ -868,9 +813,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAutoRefresh()
-  if (batchStatusTimer) {
-    clearInterval(batchStatusTimer)
-  }
 })
 
 // 检查是否有处理中的视频

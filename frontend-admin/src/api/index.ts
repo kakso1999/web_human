@@ -3,7 +3,7 @@ import router from '../router'
 
 const api = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000,
+  timeout: 600000, // 10 minutes for large file uploads
   headers: {
     'Content-Type': 'application/json'
   }

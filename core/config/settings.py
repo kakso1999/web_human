@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
     ALLOWED_IMAGE_TYPES: list = ["image/jpeg", "image/png", "image/gif", "image/webp"]
-    ALLOWED_VIDEO_TYPES: list = ["video/mp4", "video/webm", "video/quicktime"]
+    ALLOWED_VIDEO_TYPES: list = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/x-matroska", "video/avi", "video/mpeg", "application/octet-stream"]
     ALLOWED_AUDIO_TYPES: list = ["audio/mpeg", "audio/wav", "audio/mp3", "audio/m4a"]
 
     # APICore 配置

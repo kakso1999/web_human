@@ -6,13 +6,14 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     port: 3000,
+    allowedHosts: ['localhost', '.ngrok-free.app'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8080',
         changeOrigin: true
       },
       '/uploads': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8080',
         changeOrigin: true
       }
     }

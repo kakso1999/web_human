@@ -201,14 +201,14 @@ def get_video_duration(video_path: str) -> int:
     return 0
 
 
-def extract_video_thumbnail(video_path: str, output_path: str, time_seconds: int = 10) -> bool:
+def extract_video_thumbnail(video_path: str, output_path: str, time_seconds: int = 20) -> bool:
     """
     从视频中提取缩略图
 
     Args:
         video_path: 视频文件路径
         output_path: 输出图片路径
-        time_seconds: 截取时间点（秒），默认第10秒
+        time_seconds: 截取时间点（秒），默认第20秒
 
     Returns:
         是否成功

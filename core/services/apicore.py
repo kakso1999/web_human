@@ -86,7 +86,7 @@ Respond with ONLY the title, nothing else."""
             response = await client.post(
                 url,
                 json={
-                    "model": "gemini-2.5-flash",
+                    "model": "gpt-4o-mini",
                     "messages": [
                         {"role": "user", "content": prompt}
                     ],
@@ -136,7 +136,7 @@ Respond with ONLY the title, nothing else."""
             response = await client.post(
                 url,
                 json={
-                    "model": "gemini-2.5-flash",
+                    "model": "gpt-4o-mini",
                     "messages": [
                         {"role": "user", "content": prompt}
                     ],
@@ -186,7 +186,7 @@ Respond with ONLY the description, nothing else."""
             response = await client.post(
                 url,
                 json={
-                    "model": "gemini-2.5-flash",
+                    "model": "gpt-4o-mini",
                     "messages": [
                         {"role": "user", "content": prompt}
                     ],
