@@ -121,7 +121,7 @@ const displayStories = computed(() => {
 })
 
 // 生成粒子样式
-function getParticleStyle(index: number) {
+function getParticleStyle(_index: number) {
   const size = Math.random() * 6 + 3
   const left = Math.random() * 100
   const animationDuration = Math.random() * 12 + 6

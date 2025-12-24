@@ -10,7 +10,6 @@
       <!-- 视频播放器 -->
       <div class="video-section">
         <video
-          ref="videoPlayer"
           class="video-player"
           :src="story.video_url"
           :poster="story.thumbnail_url || '/placeholder.svg'"
@@ -91,7 +90,6 @@ const story = ref<Story | null>(null)
 const loading = ref(true)
 const error = ref('')
 const downloading = ref(false)
-const videoPlayer = ref<HTMLVideoElement>()
 
 function goBack() {
   router.push('/dashboard')

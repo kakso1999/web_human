@@ -106,7 +106,7 @@ async function handleAvatarUpload(event: Event) {
   formData.append('file', input.files[0])
 
   try {
-    const response = await api.post('/user/avatar', formData, {
+    await api.post('/user/avatar', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     await userStore.fetchProfile()
