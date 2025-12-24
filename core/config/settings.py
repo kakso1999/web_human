@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     API_V1_PREFIX: str = "/api/v1"
 
+    # 端口配置
+    BACKEND_PORT: int = 8000
+
     # 安全配置
     SECRET_KEY: str = "your-secret-key-change-in-production"
     AES_KEY: str = "your-aes-key-change-in-production-32b"
@@ -52,6 +55,9 @@ class Settings(BaseSettings):
 
     # CORS 配置
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001"]
+
+    # 语音克隆服务配置
+    VOICE_CLONE_SERVICE_URL: str = "http://localhost:3002"
 
     class Config:
         env_file = ".env"

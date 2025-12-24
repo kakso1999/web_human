@@ -1,0 +1,36 @@
+# 语音克隆服务完整依赖
+# 安装方式：
+# 1. 创建虚拟环境: python -m venv venv
+# 2. 激活环境: venv\Scripts\activate
+# 3. 安装依赖: pip install -r requirements.txt --proxy socks5://192.168.0.221:8800
+
+# ============ 模型核心依赖 (大文件，需要代理) ============
+# PyTorch
+torch==2.6.0
+torchaudio==2.6.0
+
+# Transformers
+transformers==4.46.3
+huggingface-hub==0.36.0
+safetensors==0.5.3
+
+# Chatterbox TTS
+chatterbox-tts==0.1.6
+resemble-perth==1.0.1
+
+# 音频处理
+librosa==0.11.0
+soundfile==0.13.1
+scipy==1.16.3
+numpy==1.25.2
+
+# ============ 服务依赖 (小文件) ============
+fastapi==0.125.0
+uvicorn==0.34.3
+python-multipart==0.0.20
+pydantic==2.12.1
+aiofiles==24.1.0
+python-dotenv==1.0.1
+
+# ============ 代理支持 ============
+pysocks==1.7.1

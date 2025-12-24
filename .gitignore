@@ -29,3 +29,27 @@ uploads/*
 
 # Logs
 *.log
+
+# Models (大文件)
+models/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.ckpt
+
+# Voice Clone Server
+voice_clone_server/venv/
+voice_clone_server/uploads/
+voice_clone_server/outputs/
+
+# Temporary files
+nul
+*.tmp
+*.temp
+
+# Test files
+test_*.py
+test_*.wav
+outside_video/
