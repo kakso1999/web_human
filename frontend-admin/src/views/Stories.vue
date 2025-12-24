@@ -422,7 +422,7 @@ const batchUpload = ref({
   total: 0,
   completed: 0,
   failed: 0,
-  items: [] as BatchUploadItem[],
+  items: [] as any[],
   error: ''
 })
 
@@ -772,7 +772,7 @@ async function handleBatchUpload() {
       formData.append('category_id', categoryId)
     }
 
-    const response = await api.post('/admin/stories/batch', formData, {
+    await api.post('/admin/stories/batch', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
 

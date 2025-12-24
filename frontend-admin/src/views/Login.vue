@@ -84,7 +84,7 @@ const password = ref('')
 const error = ref('')
 const loading = ref(false)
 
-function getParticleStyle(index: number) {
+function getParticleStyle(_index: number) {
   const size = Math.random() * 4 + 2
   const left = Math.random() * 100
   const animationDuration = Math.random() * 15 + 8
