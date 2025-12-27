@@ -27,7 +27,7 @@
     <!-- 主内容区 -->
     <div class="main-area">
       <header class="topbar">
-        <h1 class="page-title">Generate Animation</h1>
+        <h1 class="page-title">Audiobook</h1>
         <div class="user-menu" @click="toggleUserMenu">
           <img :src="user?.avatar_url || '/default-avatar.svg'" alt="avatar" class="user-avatar" />
           <span class="user-name">{{ user?.nickname || 'User' }}</span>
@@ -39,33 +39,54 @@
       </header>
 
       <main class="content">
-        <div class="placeholder-container">
-          <div class="placeholder-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
+        <div class="audiobook-container">
+          <!-- Coming Soon 提示 -->
+          <div class="coming-soon">
+            <div class="coming-soon-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                <path d="M8 7h8"/>
+                <path d="M8 11h6"/>
+                <path d="M8 15h4"/>
+              </svg>
+            </div>
+            <h2 class="coming-soon-title">Audiobook Feature Coming Soon</h2>
+            <p class="coming-soon-desc">
+              Generate complete audiobooks with your cloned voice.
+              Select from our library of stories and let your voice bring them to life.
+            </p>
+
+            <div class="feature-preview">
+              <h3>Planned Features:</h3>
+              <ul class="feature-list">
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>Full-length story narration with cloned voice</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>Multi-character voice support</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>Digital avatar video overlay</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <span>Synchronized lip movements</span>
+                </li>
+              </ul>
+            </div>
           </div>
-          <h2 class="placeholder-title">Generate Animation</h2>
-          <p class="placeholder-desc">Combine your avatar and voice to create personalized animated stories</p>
-          <div class="placeholder-features">
-            <div class="feature-item">
-              <span class="feature-check">*</span>
-              <span>Select from story library</span>
-            </div>
-            <div class="feature-item">
-              <span class="feature-check">*</span>
-              <span>Apply your digital avatar</span>
-            </div>
-            <div class="feature-item">
-              <span class="feature-check">*</span>
-              <span>Use your cloned voice</span>
-            </div>
-            <div class="feature-item">
-              <span class="feature-check">*</span>
-              <span>AI-powered video generation</span>
-            </div>
-          </div>
-          <button class="coming-soon-btn" disabled>Coming Soon</button>
         </div>
       </main>
     </div>
@@ -82,7 +103,7 @@ const userStore = useUserStore()
 
 const user = computed(() => userStore.user)
 const showUserMenu = ref(false)
-const currentPath = ref('/generate')
+const currentPath = ref('/audiobook')
 
 const menuItems = [
   { path: '/dashboard', name: 'Story Library', icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>' },
@@ -281,56 +302,77 @@ onMounted(async () => {
 
 .content {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: var(--spacing-xl);
+  overflow-y: auto;
 }
 
-.placeholder-container {
+/* Audiobook Container */
+.audiobook-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Coming Soon */
+.coming-soon {
+  background: var(--color-bg-dark-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-2xl);
   text-align: center;
-  max-width: 400px;
 }
 
-.placeholder-icon {
-  width: 120px;
-  height: 120px;
-  margin: 0 auto var(--spacing-xl);
-  background: #2B5F6C;
-  border-radius: 24px;
+.coming-soon-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--spacing-lg);
+  background: rgba(43, 95, 108, 0.2);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.placeholder-icon svg {
-  width: 60px;
-  height: 60px;
-  color: #fff;
+.coming-soon-icon svg {
+  width: 40px;
+  height: 40px;
+  color: #2B5F6C;
 }
 
-.placeholder-title {
+.coming-soon-title {
   font-size: var(--font-size-2xl);
   font-weight: 600;
   margin-bottom: var(--spacing-md);
   color: var(--color-text-primary);
 }
 
-.placeholder-desc {
+.coming-soon-desc {
   color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-xl);
+  font-size: var(--font-size-base);
+  max-width: 500px;
+  margin: 0 auto var(--spacing-xl);
   line-height: 1.6;
 }
 
-.placeholder-features {
-  text-align: left;
-  margin-bottom: var(--spacing-xl);
-  padding: var(--spacing-lg);
+.feature-preview {
   background: var(--color-bg-dark-tertiary);
   border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  text-align: left;
 }
 
-.feature-item {
+.feature-preview h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin-bottom: var(--spacing-md);
+  color: var(--color-text-primary);
+}
+
+.feature-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.feature-list li {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -338,18 +380,10 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 
-.feature-check {
-  color: var(--color-accent);
-  font-weight: bold;
-}
-
-.coming-soon-btn {
-  padding: var(--spacing-md) var(--spacing-2xl);
-  background: var(--color-bg-dark-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-base);
-  cursor: not-allowed;
+.feature-list li svg {
+  width: 20px;
+  height: 20px;
+  color: var(--color-success);
+  flex-shrink: 0;
 }
 </style>
