@@ -55,6 +55,8 @@ class APICoreClient:
         if "files" in kwargs:
             headers.pop("Content-Type", None)
 
+        logger.info(f"APICore request: {method} {url}")
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.request(
                 method=method,
@@ -63,9 +65,12 @@ class APICoreClient:
                 **kwargs
             )
 
+            logger.info(f"APICore response: {response.status_code}")
+            logger.debug(f"Response text: {response.text[:500] if response.text else 'empty'}")
+
             if response.status_code != 200:
                 logger.error(f"APICore request failed: {response.status_code} - {response.text}")
-                raise Exception(f"APICore request failed: {response.status_code}")
+                raise Exception(f"APICore request failed: {response.status_code} - {response.text}")
 
             return response
 

@@ -56,9 +56,9 @@ class StoryGenerationService:
     ) -> Dict[str, Any]:
         """创建故事生成任务"""
         # 获取故事信息
-        from modules.story.repository import get_story_repository
-        story_repo = get_story_repository()
-        story = await story_repo.get_story_by_id(story_id)
+        from modules.story.repository import StoryRepository
+        story_repo = StoryRepository()
+        story = await story_repo.get_by_id(story_id)
 
         if not story:
             raise ValueError(f"Story not found: {story_id}")
@@ -135,11 +135,15 @@ class StoryGenerationService:
             if not audio_url:
                 raise Exception("Failed to extract audio from video")
 
-            # Step 2: 分离人声
+            # Step 2: 尝试分离人声（可选，失败则跳过）
             await self._update_progress(job_id, StoryJobStep.SEPARATING_VOCALS, 15)
             vocals_url, instrumental_url = await self._separate_vocals(job_id, audio_url)
+
+            # 如果分离失败，使用原始音频
             if not vocals_url:
-                raise Exception("Failed to separate vocals")
+                logger.warning(f"[{job_id}] Vocal separation failed, using original audio")
+                vocals_url = audio_url
+                instrumental_url = None  # 没有背景音乐
 
             # Step 3: 语音识别生成字幕
             await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 30)
@@ -153,20 +157,21 @@ class StoryGenerationService:
             await self.repository.update_job_field(job_id, "subtitle_srt_content", srt_content)
 
             # Step 4: 生成克隆语音
-            await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 45)
+            await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 50)
             cloned_audio_url = await self._generate_cloned_voice(job_id, subtitles)
             if not cloned_audio_url:
                 raise Exception("Failed to generate cloned voice")
 
-            # Step 5: 生成数字人视频
-            await self._update_progress(job_id, StoryJobStep.GENERATING_DIGITAL_HUMAN, 60)
-            digital_human_url = await self._generate_digital_human(job_id, cloned_audio_url)
-            if not digital_human_url:
-                raise Exception("Failed to generate digital human video")
+            # Step 5: 跳过数字人生成（太贵），直接合成视频
+            # await self._update_progress(job_id, StoryJobStep.GENERATING_DIGITAL_HUMAN, 60)
+            # digital_human_url = await self._generate_digital_human(job_id, cloned_audio_url)
 
-            # Step 6: 合成最终视频
-            await self._update_progress(job_id, StoryJobStep.COMPOSITING_VIDEO, 80)
-            final_video_url = await self._composite_video(job_id, instrumental_url, digital_human_url)
+            # Step 6: 合成最终视频（原视频 + 克隆语音 + 背景音乐）
+            await self._update_progress(job_id, StoryJobStep.COMPOSITING_VIDEO, 70)
+            final_video_url = await self._composite_video_with_audio(job_id, instrumental_url)
+
+            if not final_video_url:
+                raise Exception("Failed to composite video")
 
             # 完成
             await self.repository.update_job_status(
@@ -218,21 +223,33 @@ class StoryGenerationService:
 
         try:
             import httpx
-            import subprocess
 
-            # 下载视频
-            logger.info(f"[{job_id}] Downloading video: {video_url}")
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.get(video_url)
-                if response.status_code != 200:
-                    logger.error(f"[{job_id}] Failed to download video: {response.status_code}")
-                    return None
-                video_bytes = response.content
-
-            # 保存视频
             video_path = self.upload_dir / f"{job_id}_video.mp4"
-            with open(video_path, 'wb') as f:
-                f.write(video_bytes)
+
+            # 检查是否是本地路径
+            if video_url.startswith("/uploads/"):
+                # 本地路径，直接复制
+                local_video_path = Path(settings.UPLOAD_DIR).parent / video_url.lstrip("/")
+                logger.info(f"[{job_id}] Using local video: {local_video_path}")
+                if local_video_path.exists():
+                    import shutil
+                    shutil.copy(str(local_video_path), str(video_path))
+                else:
+                    logger.error(f"[{job_id}] Local video not found: {local_video_path}")
+                    return None
+            elif video_url.startswith("http"):
+                # 下载视频
+                logger.info(f"[{job_id}] Downloading video: {video_url}")
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.get(video_url)
+                    if response.status_code != 200:
+                        logger.error(f"[{job_id}] Failed to download video: {response.status_code}")
+                        return None
+                    with open(video_path, 'wb') as f:
+                        f.write(response.content)
+            else:
+                logger.error(f"[{job_id}] Invalid video URL: {video_url}")
+                return None
 
             # 使用 FFmpeg 提取音频
             audio_path = self.upload_dir / f"{job_id}_audio.mp3"
@@ -269,6 +286,8 @@ class StoryGenerationService:
 
         except Exception as e:
             logger.error(f"[{job_id}] Extract audio error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     # ===================== Step 2: 分离人声 =====================
@@ -321,11 +340,50 @@ class StoryGenerationService:
         logger.info(f"[{job_id}] Transcribing audio to SRT")
 
         try:
-            srt_content = await self.apicore.transcribe_audio_url(
-                audio_url=audio_url,
-                response_format="srt",
-                language="zh"
-            )
+            import httpx
+
+            # 获取音频数据
+            audio_path = self.upload_dir / f"{job_id}_audio.mp3"
+
+            if audio_path.exists():
+                # 使用本地文件
+                with open(audio_path, 'rb') as f:
+                    audio_bytes = f.read()
+                logger.info(f"[{job_id}] Using local audio file: {len(audio_bytes)} bytes")
+            elif audio_url.startswith("http"):
+                # 下载音频
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.get(audio_url)
+                    if response.status_code != 200:
+                        logger.error(f"[{job_id}] Failed to download audio: {response.status_code}")
+                        return None
+                    audio_bytes = response.content
+            else:
+                logger.error(f"[{job_id}] Invalid audio source")
+                return None
+
+            # 调用 Whisper API
+            headers = {
+                "Authorization": f"Bearer {settings.APICORE_API_KEY}"
+            }
+
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                response = await client.post(
+                    f"{settings.APICORE_BASE_URL}/v1/audio/transcriptions",
+                    headers=headers,
+                    files={"file": ("audio.mp3", audio_bytes, "audio/mpeg")},
+                    data={
+                        "model": "whisper-1",
+                        "response_format": "srt",
+                        "language": "en"  # 自动检测语言
+                    }
+                )
+
+                if response.status_code != 200:
+                    logger.error(f"[{job_id}] Whisper API error: {response.status_code} - {response.text}")
+                    return None
+
+                srt_content = response.text
 
             if not srt_content:
                 return None
@@ -344,6 +402,8 @@ class StoryGenerationService:
 
         except Exception as e:
             logger.error(f"[{job_id}] Transcribe error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _parse_srt(self, srt_content: str) -> List[Dict[str, Any]]:
@@ -382,15 +442,19 @@ class StoryGenerationService:
         job_id: str,
         subtitles: List[Dict[str, Any]]
     ) -> Optional[str]:
-        """生成克隆语音"""
+        """
+        生成克隆语音 - 按字幕时间轴对齐
+
+        流程：
+        1. 对每段字幕生成克隆语音
+        2. 使用 FFmpeg atempo 调整每段语音时长匹配原始时间
+        3. 按时间轴拼接所有片段（空白处用静音填充）
+        """
         logger.info(f"[{job_id}] Generating cloned voice for {len(subtitles)} subtitles")
 
         try:
             job = await self.repository.get_job(job_id)
             voice_profile_id = job.get("voice_profile_id")
-
-            # 合并所有字幕文本
-            full_text = " ".join(sub["text"] for sub in subtitles)
 
             # 获取声音档案
             from modules.voice_clone.repository import voice_profile_repository
@@ -415,27 +479,140 @@ class StoryGenerationService:
             if not voice_ready:
                 return None
 
-            # 合成语音
+            # 创建片段目录
+            segments_dir = self.upload_dir / f"{job_id}_segments"
+            segments_dir.mkdir(parents=True, exist_ok=True)
+
+            # 获取总时长（用于生成最终音频长度）
+            total_duration = max(sub["end_time"] for sub in subtitles) if subtitles else 0
+            logger.info(f"[{job_id}] Total duration: {total_duration:.2f}s, {len(subtitles)} segments")
+
+            # 对每段字幕生成克隆语音
             from dashscope.audio.tts_v2 import SpeechSynthesizer
+            segment_files = []
 
-            def synthesize_sync():
-                synthesizer = SpeechSynthesizer(
-                    model='cosyvoice-v2',
-                    voice=voice_id
-                )
-                return synthesizer.call(full_text)
+            for i, sub in enumerate(subtitles):
+                text = sub["text"]
+                start_time = sub["start_time"]
+                end_time = sub["end_time"]
+                target_duration = end_time - start_time
 
-            audio_data = await asyncio.to_thread(synthesize_sync)
+                logger.info(f"[{job_id}] Segment {i+1}/{len(subtitles)}: {start_time:.2f}s - {end_time:.2f}s ({target_duration:.2f}s) - '{text[:30]}...'")
 
-            if not audio_data:
+                # 生成克隆语音
+                segment_path = segments_dir / f"segment_{i:03d}_raw.mp3"
+                adjusted_path = segments_dir / f"segment_{i:03d}_adjusted.mp3"
+
+                def synthesize_segment(txt):
+                    synthesizer = SpeechSynthesizer(
+                        model='cosyvoice-v2',
+                        voice=voice_id
+                    )
+                    return synthesizer.call(txt)
+
+                audio_data = await asyncio.to_thread(synthesize_segment, text)
+
+                if not audio_data:
+                    logger.warning(f"[{job_id}] Failed to generate segment {i+1}")
+                    continue
+
+                # 保存原始片段
+                with open(segment_path, 'wb') as f:
+                    f.write(audio_data)
+
+                # 获取生成音频的时长
+                generated_duration = await self._get_audio_duration(str(segment_path))
+                logger.info(f"[{job_id}] Segment {i+1} generated: {generated_duration:.2f}s (target: {target_duration:.2f}s)")
+
+                # 智能调整时长（保持自然语速）
+                if generated_duration > 0 and target_duration > 0:
+                    speed_ratio = generated_duration / target_duration
+
+                    if speed_ratio <= 1.0:
+                        # 生成的比目标短或相等，不需要调整，后面会自动留空白
+                        logger.info(f"[{job_id}] Segment {i+1}: shorter than target, keeping original")
+                        segment_files.append({
+                            "path": str(segment_path),
+                            "start_time": start_time,
+                            "end_time": start_time + generated_duration  # 实际结束时间
+                        })
+                    elif speed_ratio <= 1.3:
+                        # 需要加速，但在可接受范围内（最多1.3倍）
+                        logger.info(f"[{job_id}] Segment {i+1}: speeding up {speed_ratio:.2f}x")
+                        success = await self._adjust_audio_duration(
+                            str(segment_path),
+                            str(adjusted_path),
+                            generated_duration,
+                            target_duration
+                        )
+                        if success:
+                            segment_files.append({
+                                "path": str(adjusted_path),
+                                "start_time": start_time,
+                                "end_time": end_time
+                            })
+                        else:
+                            segment_files.append({
+                                "path": str(segment_path),
+                                "start_time": start_time,
+                                "end_time": start_time + generated_duration
+                            })
+                    else:
+                        # 超过1.3倍，加速到1.3倍然后截断
+                        logger.info(f"[{job_id}] Segment {i+1}: too long ({speed_ratio:.2f}x), speeding up 1.3x and trimming")
+                        # 先加速到 1.3 倍
+                        new_duration = generated_duration / 1.3
+                        success = await self._adjust_audio_duration(
+                            str(segment_path),
+                            str(adjusted_path),
+                            generated_duration,
+                            new_duration
+                        )
+                        if success:
+                            # 如果加速后还是超过目标时长，截断
+                            if new_duration > target_duration:
+                                trimmed_path = segments_dir / f"segment_{i:03d}_trimmed.mp3"
+                                await self._trim_audio(str(adjusted_path), str(trimmed_path), target_duration)
+                                segment_files.append({
+                                    "path": str(trimmed_path),
+                                    "start_time": start_time,
+                                    "end_time": end_time
+                                })
+                            else:
+                                segment_files.append({
+                                    "path": str(adjusted_path),
+                                    "start_time": start_time,
+                                    "end_time": start_time + new_duration
+                                })
+                        else:
+                            # 调整失败，截断原始文件
+                            trimmed_path = segments_dir / f"segment_{i:03d}_trimmed.mp3"
+                            await self._trim_audio(str(segment_path), str(trimmed_path), target_duration)
+                            segment_files.append({
+                                "path": str(trimmed_path),
+                                "start_time": start_time,
+                                "end_time": end_time
+                            })
+
+            if not segment_files:
+                logger.error(f"[{job_id}] No segments generated")
                 return None
 
-            # 保存并上传
-            audio_path = self.upload_dir / f"{job_id}_cloned_audio.mp3"
-            with open(audio_path, 'wb') as f:
-                f.write(audio_data)
+            # 按时间轴拼接所有片段
+            final_audio_path = self.upload_dir / f"{job_id}_cloned_audio.mp3"
+            success = await self._concat_audio_segments(
+                job_id,
+                segment_files,
+                str(final_audio_path),
+                total_duration
+            )
 
-            audio_url = await self._upload_to_media_bed(str(audio_path))
+            if not success:
+                logger.error(f"[{job_id}] Failed to concat audio segments")
+                return None
+
+            # 上传到媒体床
+            audio_url = await self._upload_to_media_bed(str(final_audio_path))
             await self.repository.update_job_field(job_id, "cloned_audio_url", audio_url)
 
             logger.info(f"[{job_id}] Cloned voice generated: {audio_url}")
@@ -446,6 +623,161 @@ class StoryGenerationService:
             import traceback
             traceback.print_exc()
             return None
+
+    async def _get_audio_duration(self, audio_path: str) -> float:
+        """获取音频时长（秒）"""
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            audio_path
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        try:
+            return float(stdout.decode().strip())
+        except:
+            return 0.0
+
+    async def _adjust_audio_duration(
+        self,
+        input_path: str,
+        output_path: str,
+        current_duration: float,
+        target_duration: float
+    ) -> bool:
+        """
+        使用 FFmpeg atempo 调整音频时长
+
+        atempo 范围是 0.5-2.0，超出范围需要链式调用
+        """
+        if current_duration <= 0 or target_duration <= 0:
+            return False
+
+        # 计算速度比率
+        speed_ratio = current_duration / target_duration
+
+        # atempo 只支持 0.5-2.0 范围，超出需要链式调用
+        atempo_filters = []
+        remaining_ratio = speed_ratio
+
+        while remaining_ratio > 2.0:
+            atempo_filters.append("atempo=2.0")
+            remaining_ratio /= 2.0
+
+        while remaining_ratio < 0.5:
+            atempo_filters.append("atempo=0.5")
+            remaining_ratio /= 0.5
+
+        atempo_filters.append(f"atempo={remaining_ratio:.4f}")
+
+        filter_str = ",".join(atempo_filters)
+
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-filter:a', filter_str,
+            '-vn',
+            output_path
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        return process.returncode == 0
+
+    async def _trim_audio(
+        self,
+        input_path: str,
+        output_path: str,
+        duration: float
+    ) -> bool:
+        """截断音频到指定时长"""
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-t', str(duration),
+            '-acodec', 'copy',
+            output_path
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        return process.returncode == 0
+
+    async def _concat_audio_segments(
+        self,
+        job_id: str,
+        segments: List[Dict[str, Any]],
+        output_path: str,
+        total_duration: float
+    ) -> bool:
+        """
+        按时间轴拼接音频片段
+
+        使用 FFmpeg 的 adelay 和 amix 滤镜
+        """
+        if not segments:
+            return False
+
+        # 构建 FFmpeg 复杂滤镜
+        # 方案：为每个片段添加延迟，然后混合
+        inputs = []
+        filter_parts = []
+        mix_inputs = []
+
+        for i, seg in enumerate(segments):
+            inputs.extend(['-i', seg["path"]])
+            delay_ms = int(seg["start_time"] * 1000)
+            # adelay 为音频添加延迟
+            filter_parts.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
+            mix_inputs.append(f"[a{i}]")
+
+        # 混合所有音轨
+        mix_filter = "".join(mix_inputs) + f"amix=inputs={len(segments)}:duration=longest:dropout_transition=0[out]"
+        full_filter = ";".join(filter_parts) + ";" + mix_filter
+
+        cmd = [
+            'ffmpeg', '-y',
+            *inputs,
+            '-filter_complex', full_filter,
+            '-map', '[out]',
+            '-t', str(total_duration),  # 限制输出时长
+            '-ac', '2',
+            '-ar', '44100',
+            output_path
+        ]
+
+        logger.info(f"[{job_id}] Concatenating {len(segments)} segments...")
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            logger.error(f"[{job_id}] FFmpeg concat error: {stderr.decode()[:500]}")
+            return False
+
+        return True
 
     async def _create_voice_from_url(self, job_id: str, audio_url: str) -> Optional[str]:
         """从音频 URL 创建 voice"""
@@ -578,36 +910,190 @@ class StoryGenerationService:
 
     # ===================== Step 6: 视频合成 =====================
 
+    async def _composite_video_with_audio(
+        self,
+        job_id: str,
+        instrumental_url: Optional[str]
+    ) -> Optional[str]:
+        """
+        合成最终视频：原视频画面 + 克隆语音 (+ 背景音乐)
+
+        使用 FFmpeg 实现:
+        1. 如果有背景音乐：混合克隆语音和背景音乐
+        2. 将音频替换到原视频中
+        """
+        logger.info(f"[{job_id}] Compositing video with cloned audio")
+
+        try:
+            job = await self.repository.get_job(job_id)
+            cloned_audio_url = job.get("cloned_audio_url")
+
+            if not cloned_audio_url:
+                logger.error(f"[{job_id}] No cloned audio available")
+                return None
+
+            import httpx
+            import shutil
+
+            # 准备文件路径
+            video_path = self.upload_dir / f"{job_id}_video.mp4"
+            cloned_audio_path = self.upload_dir / f"{job_id}_cloned.mp3"
+            output_path = self.upload_dir / f"{job_id}_final.mp4"
+
+            # 检查视频文件
+            if not video_path.exists():
+                logger.error(f"[{job_id}] Video file not found: {video_path}")
+                return None
+
+            # 获取克隆语音文件
+            logger.info(f"[{job_id}] Getting cloned audio from: {cloned_audio_url}")
+
+            # 检查是否是本地生成的文件（直接使用本地文件）
+            local_cloned_audio = self.upload_dir / f"{job_id}_cloned_audio.mp3"
+            if local_cloned_audio.exists():
+                logger.info(f"[{job_id}] Using local cloned audio file")
+                shutil.copy(str(local_cloned_audio), str(cloned_audio_path))
+            elif cloned_audio_url.startswith("/files/"):
+                # 媒体床相对路径，需要拼接完整 URL
+                full_url = f"{self.media_bed_url}{cloned_audio_url}"
+                logger.info(f"[{job_id}] Downloading from media bed: {full_url}")
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.get(full_url)
+                    if response.status_code != 200:
+                        logger.error(f"[{job_id}] Failed to download cloned audio: {response.status_code}")
+                        return None
+                    with open(cloned_audio_path, 'wb') as f:
+                        f.write(response.content)
+            elif cloned_audio_url.startswith("http"):
+                # 完整 URL
+                logger.info(f"[{job_id}] Downloading cloned audio from URL")
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.get(cloned_audio_url)
+                    if response.status_code != 200:
+                        logger.error(f"[{job_id}] Failed to download cloned audio")
+                        return None
+                    with open(cloned_audio_path, 'wb') as f:
+                        f.write(response.content)
+            else:
+                logger.error(f"[{job_id}] Invalid cloned audio URL format: {cloned_audio_url}")
+                return None
+
+            # 决定最终使用的音频
+            final_audio_path = cloned_audio_path
+
+            # 如果有背景音乐，混合音频
+            if instrumental_url:
+                logger.info(f"[{job_id}] Mixing with background music...")
+                instrumental_path = self.upload_dir / f"{job_id}_instrumental.mp3"
+                mixed_audio_path = self.upload_dir / f"{job_id}_mixed_audio.mp3"
+
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.get(instrumental_url)
+                    if response.status_code == 200:
+                        with open(instrumental_path, 'wb') as f:
+                            f.write(response.content)
+
+                        # 混合音频：克隆语音 + 背景音乐（音量降低）
+                        mix_cmd = [
+                            'ffmpeg', '-y',
+                            '-i', str(cloned_audio_path),
+                            '-i', str(instrumental_path),
+                            '-filter_complex',
+                            '[0:a]volume=1.0[voice];[1:a]volume=0.3[bgm];[voice][bgm]amix=inputs=2:duration=longest[out]',
+                            '-map', '[out]',
+                            '-ac', '2',
+                            '-ar', '44100',
+                            str(mixed_audio_path)
+                        ]
+
+                        process = await asyncio.create_subprocess_exec(
+                            *mix_cmd,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        stdout, stderr = await process.communicate()
+
+                        if process.returncode == 0:
+                            final_audio_path = mixed_audio_path
+                        else:
+                            logger.warning(f"[{job_id}] Audio mix failed, using cloned audio only")
+
+            # 合成最终视频：原视频画面 + 音频
+            logger.info(f"[{job_id}] Compositing final video...")
+            composite_cmd = [
+                'ffmpeg', '-y',
+                '-i', str(video_path),
+                '-i', str(final_audio_path),
+                '-c:v', 'copy',  # 直接复制视频流
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-map', '0:v:0',
+                '-map', '1:a:0',
+                '-shortest',  # 以最短的流为准
+                str(output_path)
+            ]
+
+            process = await asyncio.create_subprocess_exec(
+                *composite_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+
+            if process.returncode != 0:
+                logger.error(f"[{job_id}] Video composite error: {stderr.decode()}")
+                return None
+
+            # 检查输出文件
+            if not output_path.exists():
+                logger.error(f"[{job_id}] Output file not created")
+                return None
+
+            logger.info(f"[{job_id}] Final video created: {output_path}, size: {output_path.stat().st_size} bytes")
+
+            # 上传到图床
+            final_url = await self._upload_to_media_bed(str(output_path))
+            logger.info(f"[{job_id}] Final video uploaded: {final_url}")
+
+            return final_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Composite video error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _get_video_duration(self, video_path: str) -> float:
+        """获取视频时长（秒）"""
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            video_path
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+
+        try:
+            return float(stdout.decode().strip())
+        except:
+            return 0.0
+
     async def _composite_video(
         self,
         job_id: str,
         instrumental_url: str,
         digital_human_url: str
     ) -> Optional[str]:
-        """合成最终视频"""
-        logger.info(f"[{job_id}] Compositing final video")
-
-        try:
-            job = await self.repository.get_job(job_id)
-            original_video_url = job.get("original_video_url")
-            cloned_audio_url = job.get("cloned_audio_url")
-
-            # TODO: 使用 IMS API 或 FFmpeg 进行视频合成
-            # 目前简化处理：返回数字人视频
-
-            # 使用 FFmpeg 合成
-            # 1. 原视频（静音）
-            # 2. 数字人视频（画中画，右下角）
-            # 3. 克隆语音 + 背景音乐
-
-            # 简化版本：暂时返回数字人视频
-            logger.warning(f"[{job_id}] Video composition not fully implemented, returning digital human video")
-
-            return digital_human_url
-
-        except Exception as e:
-            logger.error(f"[{job_id}] Composite video error: {e}")
-            return None
+        """合成最终视频（带数字人画中画）- 暂未实现"""
+        logger.warning(f"[{job_id}] Digital human PIP not implemented yet")
+        return digital_human_url
 
     # ===================== 工具方法 =====================
 
