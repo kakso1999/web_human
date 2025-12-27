@@ -11,6 +11,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, List, Tuple
 import uuid
+import io
+
+from PIL import Image
 
 from core.config.settings import get_settings
 
@@ -47,7 +50,45 @@ class DigitalHumanService:
         self.images_dir.mkdir(parents=True, exist_ok=True)
         self.previews_dir.mkdir(parents=True, exist_ok=True)
 
-    async def upload_to_media_bed(self, file_path: str) -> Optional[str]:
+    def compress_image(self, file_path: str, max_size: int = 800, quality: int = 85) -> bytes:
+        """
+        压缩图片以减少文件大小，加快阿里云下载速度
+
+        Args:
+            file_path: 原始图片路径
+            max_size: 最大边长（像素）
+            quality: JPEG 压缩质量（1-100）
+
+        Returns:
+            压缩后的图片字节数据
+        """
+        with Image.open(file_path) as img:
+            # 转换为 RGB（处理 PNG 透明通道）
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+
+            # 计算新尺寸，保持宽高比
+            width, height = img.size
+            if max(width, height) > max_size:
+                if width > height:
+                    new_width = max_size
+                    new_height = int(height * max_size / width)
+                else:
+                    new_height = max_size
+                    new_width = int(width * max_size / height)
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # 压缩为 JPEG
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=quality, optimize=True)
+            compressed_data = buffer.getvalue()
+
+            original_size = os.path.getsize(file_path)
+            print(f"Image compressed: {original_size / 1024:.1f}KB -> {len(compressed_data) / 1024:.1f}KB")
+
+            return compressed_data
+
+    async def upload_to_media_bed(self, file_path: str, compress_images: bool = True) -> Optional[str]:
         """上传文件到图床服务"""
         try:
             file_path = Path(file_path)
@@ -68,13 +109,23 @@ class DigitalHumanService:
             }
             content_type = content_types.get(suffix, 'application/octet-stream')
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            # 对图片进行压缩以加快阿里云下载
+            is_image = suffix in ['.jpg', '.jpeg', '.png', '.webp']
+            if is_image and compress_images:
+                file_data = self.compress_image(str(file_path))
+                content_type = 'image/jpeg'
+                upload_filename = file_path.stem + '.jpg'
+            else:
                 with open(file_path, 'rb') as f:
-                    files = {'file': (file_path.name, f, content_type)}
-                    response = await client.post(
-                        f"{self.media_bed_url}/upload",
-                        files=files
-                    )
+                    file_data = f.read()
+                upload_filename = file_path.name
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                files = {'file': (upload_filename, file_data, content_type)}
+                response = await client.post(
+                    f"{self.media_bed_url}/upload",
+                    files=files
+                )
 
                 if response.status_code == 200:
                     result = response.json()
@@ -357,7 +408,12 @@ class DigitalHumanService:
                         print(f"[{task_id}] EMO task status (attempt {attempt + 1}): {task_status}")
 
                         if task_status == "SUCCEEDED":
-                            video_url = output.get("video_url")
+                            # video_url 在 results 字段中
+                            results = output.get("results", {})
+                            video_url = results.get("video_url") if isinstance(results, dict) else None
+                            if not video_url:
+                                # 尝试直接从 output 获取
+                                video_url = output.get("video_url")
                             return video_url
                         elif task_status == "FAILED":
                             error_msg = output.get("message", "Unknown error")
