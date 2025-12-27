@@ -144,9 +144,6 @@
                   <span class="story-duration">~{{ story.estimated_duration }}s</span>
                 </div>
                 <p class="story-preview">{{ story.preview_text }}</p>
-                <div class="story-footer">
-                  <span class="story-title-zh">{{ story.title_zh }}</span>
-                </div>
               </div>
             </div>
 
@@ -865,21 +862,10 @@ onUnmounted(() => {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   line-height: 1.5;
-  margin-bottom: var(--spacing-sm);
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.story-footer {
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--spacing-sm);
-}
-
-.story-title-zh {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
 }
 
 /* Preview Summary */
