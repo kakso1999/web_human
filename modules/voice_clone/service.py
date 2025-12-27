@@ -179,6 +179,10 @@ class VoiceCloneService:
             voice_clone_tasks[task_id]["progress"] = 100
             voice_clone_tasks[task_id]["audio_url"] = f"/uploads/voice_clones/previews/{output_filename}"
             voice_clone_tasks[task_id]["completed_at"] = datetime.utcnow()
+            # 保存声音信息以便后续保存档案
+            voice_clone_tasks[task_id]["voice_id"] = voice_id
+            voice_clone_tasks[task_id]["reference_audio_url"] = audio_url
+            voice_clone_tasks[task_id]["reference_audio_local"] = reference_audio_path
 
             print(f"[{task_id}] Voice clone completed successfully")
 
@@ -409,6 +413,77 @@ class VoiceCloneService:
             f.write(file_content)
 
         return str(file_path)
+
+    async def save_voice_profile(self, user_id: str, task_id: str, name: str) -> Optional[dict]:
+        """
+        保存声音档案到数据库
+
+        Args:
+            user_id: 用户ID
+            task_id: 任务ID
+            name: 声音名称
+
+        Returns:
+            保存的档案信息
+        """
+        from .repository import voice_profile_repository
+
+        # 获取任务信息
+        task = voice_clone_tasks.get(task_id)
+        if not task:
+            return None
+
+        if task.get("status") != "completed":
+            return None
+
+        # 检查是否属于该用户
+        if not task_id.startswith(user_id):
+            return None
+
+        # 创建档案
+        profile_data = {
+            "user_id": user_id,
+            "name": name,
+            "voice_id": task.get("voice_id"),
+            "reference_audio_url": task.get("reference_audio_url"),
+            "reference_audio_local": task.get("reference_audio_local"),
+            "preview_audio_url": task.get("audio_url"),
+            "status": "active"
+        }
+
+        profile_id = await voice_profile_repository.create(profile_data)
+        profile_data["id"] = profile_id
+
+        return profile_data
+
+    async def get_user_voice_profiles(self, user_id: str) -> list:
+        """获取用户的所有声音档案"""
+        from .repository import voice_profile_repository
+        return await voice_profile_repository.get_by_user_id(user_id)
+
+    async def get_voice_profile(self, profile_id: str, user_id: str) -> Optional[dict]:
+        """获取单个声音档案"""
+        from .repository import voice_profile_repository
+        profile = await voice_profile_repository.get_by_id(profile_id)
+        if profile and profile.get("user_id") == user_id:
+            return profile
+        return None
+
+    async def update_voice_profile(self, profile_id: str, user_id: str, name: str) -> bool:
+        """更新声音档案名称"""
+        from .repository import voice_profile_repository
+        profile = await voice_profile_repository.get_by_id(profile_id)
+        if profile and profile.get("user_id") == user_id:
+            return await voice_profile_repository.update(profile_id, {"name": name})
+        return False
+
+    async def delete_voice_profile(self, profile_id: str, user_id: str) -> bool:
+        """删除声音档案"""
+        from .repository import voice_profile_repository
+        profile = await voice_profile_repository.get_by_id(profile_id)
+        if profile and profile.get("user_id") == user_id:
+            return await voice_profile_repository.delete(profile_id)
+        return False
 
 
 # 全局服务实例

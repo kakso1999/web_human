@@ -1,7 +1,7 @@
 """Voice Clone Schemas - Pydantic Models"""
 
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 
@@ -18,6 +18,35 @@ class PresetStoryResponse(BaseModel):
 class PresetStoriesListResponse(BaseModel):
     """预设故事列表响应"""
     stories: List[PresetStoryResponse]
+
+
+# ==================== 声音档案相关 ====================
+
+class SaveVoiceProfileRequest(BaseModel):
+    """保存声音档案请求"""
+    task_id: str = Field(..., description="语音克隆任务ID")
+    name: str = Field(..., min_length=1, max_length=50, description="声音名称，如：爸爸的声音")
+
+
+class VoiceProfileResponse(BaseModel):
+    """声音档案响应"""
+    id: str
+    name: str
+    voice_id: str
+    reference_audio_url: str
+    preview_audio_url: Optional[str] = None
+    created_at: datetime
+
+
+class VoiceProfileListResponse(BaseModel):
+    """声音档案列表响应"""
+    profiles: List[VoiceProfileResponse]
+    total: int
+
+
+class UpdateVoiceProfileRequest(BaseModel):
+    """更新声音档案请求"""
+    name: str = Field(..., min_length=1, max_length=50, description="声音名称")
 
 
 # ==================== 语音克隆任务相关 ====================

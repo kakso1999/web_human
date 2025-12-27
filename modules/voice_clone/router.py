@@ -19,7 +19,10 @@ from .schemas import (
     PresetStoriesListResponse,
     VoiceCloneTaskResponse,
     VoiceCloneTaskStatusResponse,
-    TaskStatus
+    TaskStatus,
+    SaveVoiceProfileRequest,
+    VoiceProfileResponse,
+    UpdateVoiceProfileRequest
 )
 from .preset_stories import get_all_stories, get_story_by_id
 from .service import voice_clone_service, voice_clone_tasks
@@ -147,3 +150,122 @@ async def get_voice_clone_status(
             error=task.get("error")
         ).model_dump()
     )
+
+
+# ==================== 声音档案管理 ====================
+
+@router.post("/profiles")
+async def save_voice_profile(
+    request: SaveVoiceProfileRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    保存声音档案
+
+    在语音克隆预览完成后，保存该声音到用户的声音库中。
+
+    - **task_id**: 已完成的语音克隆任务ID
+    - **name**: 声音名称（如：爸爸的声音、妈妈的声音）
+    """
+    profile = await voice_clone_service.save_voice_profile(
+        user_id=user_id,
+        task_id=request.task_id,
+        name=request.name
+    )
+
+    if not profile:
+        raise HTTPException(status_code=400, detail="无法保存声音档案，请确保任务已完成")
+
+    return success_response({
+        "profile": VoiceProfileResponse(
+            id=profile["id"],
+            name=profile["name"],
+            voice_id=profile["voice_id"],
+            reference_audio_url=profile["reference_audio_url"],
+            preview_audio_url=profile.get("preview_audio_url"),
+            created_at=profile["created_at"]
+        ).model_dump()
+    })
+
+
+@router.get("/profiles")
+async def get_voice_profiles(
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    获取用户的所有声音档案
+
+    返回用户保存的所有声音档案列表。
+    """
+    profiles = await voice_clone_service.get_user_voice_profiles(user_id)
+
+    return success_response({
+        "profiles": [
+            VoiceProfileResponse(
+                id=p["_id"],
+                name=p["name"],
+                voice_id=p["voice_id"],
+                reference_audio_url=p["reference_audio_url"],
+                preview_audio_url=p.get("preview_audio_url"),
+                created_at=p["created_at"]
+            ).model_dump()
+            for p in profiles
+        ],
+        "total": len(profiles)
+    })
+
+
+@router.get("/profiles/{profile_id}")
+async def get_voice_profile(
+    profile_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """获取单个声音档案详情"""
+    profile = await voice_clone_service.get_voice_profile(profile_id, user_id)
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="声音档案不存在")
+
+    return success_response(
+        VoiceProfileResponse(
+            id=profile["_id"],
+            name=profile["name"],
+            voice_id=profile["voice_id"],
+            reference_audio_url=profile["reference_audio_url"],
+            preview_audio_url=profile.get("preview_audio_url"),
+            created_at=profile["created_at"]
+        ).model_dump()
+    )
+
+
+@router.put("/profiles/{profile_id}")
+async def update_voice_profile(
+    profile_id: str,
+    request: UpdateVoiceProfileRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """更新声音档案名称"""
+    success = await voice_clone_service.update_voice_profile(
+        profile_id=profile_id,
+        user_id=user_id,
+        name=request.name
+    )
+
+    if not success:
+        raise HTTPException(status_code=404, detail="声音档案不存在或无权修改")
+
+    return success_response({"message": "更新成功"})
+
+
+@router.delete("/profiles/{profile_id}")
+async def delete_voice_profile(
+    profile_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """删除声音档案"""
+    success = await voice_clone_service.delete_voice_profile(profile_id, user_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="声音档案不存在或无权删除")
+
+    return success_response({"message": "删除成功"})
