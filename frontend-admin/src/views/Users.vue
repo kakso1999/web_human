@@ -76,6 +76,12 @@
                 <td>
                   <div class="actions">
                     <button
+                      class="btn btn-primary btn-sm"
+                      @click="viewUserDetail(user.id)"
+                    >
+                      详情
+                    </button>
+                    <button
                       v-if="user.is_active"
                       class="btn btn-outline btn-sm"
                       @click="handleDisableUser(user.id)"
@@ -84,7 +90,7 @@
                     </button>
                     <button
                       v-else
-                      class="btn btn-primary btn-sm"
+                      class="btn btn-success btn-sm"
                       @click="handleEnableUser(user.id)"
                     >
                       启用
@@ -240,6 +246,10 @@ async function handleEnableUser(userId: string) {
   }
 }
 
+function viewUserDetail(userId: string) {
+  router.push(`/users/${userId}`)
+}
+
 onMounted(() => {
   fetchUsers()
 })
@@ -320,6 +330,16 @@ onMounted(() => {
 .btn-sm {
   padding: 4px 8px;
   font-size: var(--font-size-sm);
+}
+
+.btn-success {
+  background: var(--color-success);
+  color: white;
+  border: none;
+}
+
+.btn-success:hover {
+  background: #2db84e;
 }
 
 .pagination {

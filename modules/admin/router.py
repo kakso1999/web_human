@@ -3,7 +3,7 @@ Admin 模块 - API 路由
 管理后台接口
 """
 from typing import Optional, List
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, BackgroundTasks, HTTPException
 import os
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +18,8 @@ from core.services.apicore import get_apicore_service
 from modules.user.repository import UserRepository
 from modules.story.service import get_story_service, StoryService
 from modules.story.schemas import StoryCreate, StoryUpdate, CategoryCreate, SubtitleSegment
+from modules.voice_clone.repository import voice_profile_repository
+from modules.digital_human.repository import avatar_profile_repository
 
 settings = get_settings()
 router = APIRouter(prefix="/admin", tags=["管理后台"])
@@ -157,6 +159,172 @@ async def update_user_role(
     user_repo = UserRepository()
     await user_repo.update(user_id, {"role": role})
     return success_response(message="更新成功")
+
+
+@router.get("/users/{user_id}")
+async def get_user_detail(
+    user_id: str,
+    _=Depends(require_admin)
+):
+    """
+    获取用户详细信息
+
+    包含：基本信息、档案统计、最近活动
+    """
+    user_repo = UserRepository()
+    user = await user_repo.get_by_id(user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    # 获取声音档案数量
+    voice_count = await voice_profile_repository.count_by_user(user_id)
+
+    # 获取头像档案数量
+    avatar_count = await avatar_profile_repository.count_by_user(user_id)
+
+    # 获取故事生成任务数量
+    from modules.story_generation.repository import get_story_generation_repository
+    story_gen_repo = get_story_generation_repository()
+    story_jobs = await story_gen_repo.list_jobs_by_user(user_id, page=1, page_size=1)
+    story_job_count = story_jobs[1] if story_jobs else 0
+
+    return success_response({
+        "id": user["id"],
+        "email": user["email"],
+        "nickname": user.get("nickname"),
+        "avatar_url": user.get("avatar_url"),
+        "role": user["role"],
+        "subscription": user.get("subscription", {"plan": "free"}),
+        "is_active": user.get("is_active", True),
+        "created_at": user["created_at"].isoformat() if user.get("created_at") else None,
+        "last_login_at": user.get("last_login_at").isoformat() if user.get("last_login_at") else None,
+        "stats": {
+            "voice_profiles": voice_count,
+            "avatar_profiles": avatar_count,
+            "story_jobs": story_job_count
+        }
+    })
+
+
+@router.get("/users/{user_id}/voice-profiles")
+async def get_user_voice_profiles(
+    user_id: str,
+    include_deleted: bool = False,
+    _=Depends(require_admin)
+):
+    """获取用户的所有声音档案"""
+    profiles = await voice_profile_repository.get_by_user_id(user_id, include_deleted=include_deleted)
+
+    items = []
+    for p in profiles:
+        items.append({
+            "id": p.get("_id") or p.get("id"),
+            "name": p.get("name"),
+            "description": p.get("description"),
+            "reference_audio_url": p.get("reference_audio_url"),
+            "voice_id": p.get("voice_id"),
+            "status": p.get("status", "active"),
+            "created_at": p["created_at"].isoformat() if p.get("created_at") else None
+        })
+
+    return success_response({
+        "items": items,
+        "total": len(items)
+    })
+
+
+@router.delete("/users/{user_id}/voice-profiles/{profile_id}")
+async def delete_user_voice_profile(
+    user_id: str,
+    profile_id: str,
+    _=Depends(require_admin)
+):
+    """删除用户的声音档案"""
+    # 验证档案属于该用户
+    profile = await voice_profile_repository.get_by_id(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="声音档案不存在")
+    if profile.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="无权删除此档案")
+
+    await voice_profile_repository.delete(profile_id)
+    return success_response(message="删除成功")
+
+
+@router.get("/users/{user_id}/avatar-profiles")
+async def get_user_avatar_profiles(
+    user_id: str,
+    include_deleted: bool = False,
+    _=Depends(require_admin)
+):
+    """获取用户的所有头像档案"""
+    profiles = await avatar_profile_repository.get_by_user_id(user_id, include_deleted=include_deleted)
+
+    items = []
+    for p in profiles:
+        items.append({
+            "id": p.get("_id") or p.get("id"),
+            "name": p.get("name"),
+            "description": p.get("description"),
+            "image_url": p.get("image_url"),
+            "face_bbox": p.get("face_bbox"),
+            "status": p.get("status", "active"),
+            "created_at": p["created_at"].isoformat() if p.get("created_at") else None
+        })
+
+    return success_response({
+        "items": items,
+        "total": len(items)
+    })
+
+
+@router.delete("/users/{user_id}/avatar-profiles/{profile_id}")
+async def delete_user_avatar_profile(
+    user_id: str,
+    profile_id: str,
+    _=Depends(require_admin)
+):
+    """删除用户的头像档案"""
+    # 验证档案属于该用户
+    profile = await avatar_profile_repository.get_by_id(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="头像档案不存在")
+    if profile.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="无权删除此档案")
+
+    await avatar_profile_repository.delete(profile_id)
+    return success_response(message="删除成功")
+
+
+@router.get("/users/{user_id}/story-jobs")
+async def get_user_story_jobs(
+    user_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _=Depends(require_admin)
+):
+    """获取用户的故事生成任务记录"""
+    from modules.story_generation.repository import get_story_generation_repository
+
+    repo = get_story_generation_repository()
+    jobs, total = await repo.list_jobs_by_user(user_id, page=page, page_size=page_size)
+
+    items = []
+    for job in jobs:
+        items.append({
+            "id": job.get("job_id"),
+            "story_id": job.get("story_id"),
+            "status": job.get("status"),
+            "progress": job.get("progress", 0),
+            "current_step": job.get("current_step"),
+            "final_video_url": job.get("final_video_url"),
+            "error": job.get("error"),
+            "created_at": job["created_at"].isoformat() if job.get("created_at") else None,
+            "completed_at": job["completed_at"].isoformat() if job.get("completed_at") else None
+        })
+
+    return paginate(items, total, page, page_size)
 
 
 # ========== 分类管理 ==========
