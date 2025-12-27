@@ -3,7 +3,8 @@ Voice Clone Router - API Endpoints
 语音克隆相关的 API 接口
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, BackgroundTasks, HTTPException, Depends
+import asyncio
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from typing import Optional
 from datetime import datetime
 
@@ -40,7 +41,6 @@ async def get_preset_stories():
             PresetStoryResponse(
                 id=s["id"],
                 title=s["title"],
-                title_zh=s["title_zh"],
                 preview_text=s["preview_text"],
                 estimated_duration=s["estimated_duration"]
             ).model_dump()
@@ -51,7 +51,6 @@ async def get_preset_stories():
 
 @router.post("/preview")
 async def create_voice_clone_preview(
-    background_tasks: BackgroundTasks,
     audio: UploadFile = File(..., description="参考音频文件 (10-15秒, WAV/MP3)"),
     story_id: str = Form(..., description="预设故事ID"),
     user_id: str = Depends(get_current_user_id)
@@ -94,12 +93,14 @@ async def create_voice_clone_preview(
     # 创建任务
     task_id = voice_clone_service.create_task(user_id)
 
-    # 后台执行语音克隆
-    background_tasks.add_task(
-        voice_clone_service.generate_preview,
-        task_id=task_id,
-        reference_audio_path=reference_path,
-        text=story["preview_text"]
+    # 使用 asyncio.create_task 在独立协程中执行（而非 BackgroundTasks）
+    # 这样可以避免 BackgroundTasks 的一些潜在问题
+    asyncio.create_task(
+        voice_clone_service.generate_preview(
+            task_id=task_id,
+            reference_audio_path=reference_path,
+            text=story["preview_text"]
+        )
     )
 
     return success_response({

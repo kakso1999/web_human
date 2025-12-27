@@ -11,7 +11,6 @@ class PresetStoryResponse(BaseModel):
     """预设故事响应"""
     id: str
     title: str
-    title_zh: str
     preview_text: str
     estimated_duration: int
 

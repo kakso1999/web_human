@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # 语音克隆服务配置
     VOICE_CLONE_SERVICE_URL: str = "http://localhost:3002"
 
+    # 阿里云百炼 DashScope API 配置
+    DASHSCOPE_API_KEY: Optional[str] = None
+
+    # 后端公网访问 URL（用于阿里云 API 访问本地文件）
+    # 开发环境可使用 ngrok 等工具暴露本地服务
+    BACKEND_PUBLIC_URL: Optional[str] = None
+
+    # 图床服务配置（用于托管音频文件供阿里云 API 访问）
+    # 比 ngrok 更稳定可靠
+    MEDIA_BED_URL: str = "http://112.124.70.81"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

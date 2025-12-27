@@ -1,11 +1,12 @@
 """
-Voice Clone Service - 调用独立语音克隆服务
-通过 HTTP 调用 voice_clone_server (端口 8003) 进行语音克隆
+Voice Clone Service - 阿里云 CosyVoice 声音克隆服务
+使用 DashScope SDK 实现声音克隆和语音合成
 """
 
 import os
 import asyncio
-import aiohttp
+import time
+import httpx
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
@@ -15,15 +16,12 @@ from core.config.settings import get_settings
 
 settings = get_settings()
 
-# 从环境变量获取语音克隆服务地址
-VOICE_CLONE_SERVICE_URL = settings.VOICE_CLONE_SERVICE_URL
-
 # 任务状态存储（内存中，生产环境可改用 Redis）
 voice_clone_tasks: Dict[str, dict] = {}
 
 
 class VoiceCloneService:
-    """语音克隆服务 - 调用独立服务"""
+    """语音克隆服务 - 使用阿里云 CosyVoice API"""
 
     _instance = None
 
@@ -34,7 +32,9 @@ class VoiceCloneService:
         return cls._instance
 
     def __init__(self):
-        self.service_url = VOICE_CLONE_SERVICE_URL
+        self.api_key = settings.DASHSCOPE_API_KEY
+        self.backend_public_url = settings.BACKEND_PUBLIC_URL
+        self.media_bed_url = settings.MEDIA_BED_URL
         self.upload_dir = Path(settings.UPLOAD_DIR) / "voice_clones"
         self.references_dir = self.upload_dir / "references"
         self.previews_dir = self.upload_dir / "previews"
@@ -43,17 +43,60 @@ class VoiceCloneService:
         self.references_dir.mkdir(parents=True, exist_ok=True)
         self.previews_dir.mkdir(parents=True, exist_ok=True)
 
-    async def check_service_health(self) -> bool:
-        """检查独立服务是否可用"""
+        # 初始化 DashScope
+        if self.api_key:
+            import dashscope
+            dashscope.api_key = self.api_key
+
+    async def upload_to_media_bed(self, file_path: str) -> Optional[str]:
+        """
+        上传文件到图床服务
+
+        Args:
+            file_path: 本地文件路径
+
+        Returns:
+            公网可访问的 URL，失败返回 None
+        """
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"{self.service_url}/health", timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return data.get("model_loaded", False)
+            file_path = Path(file_path)
+            if not file_path.exists():
+                print(f"File not found: {file_path}")
+                return None
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                with open(file_path, 'rb') as f:
+                    files = {'file': (file_path.name, f, 'audio/wav')}
+                    response = await client.post(
+                        f"{self.media_bed_url}/upload",
+                        files=files
+                    )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get('success'):
+                        # 返回完整的公网 URL
+                        file_url = result.get('url', '')
+                        full_url = f"{self.media_bed_url}{file_url}"
+                        print(f"Uploaded to media bed: {full_url}")
+                        return full_url
+
+                print(f"Media bed upload failed: {response.text}")
+                return None
+
+        except Exception as e:
+            print(f"Media bed upload error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def check_service_health(self) -> bool:
+        """检查 DashScope API 是否可用"""
+        if not self.api_key:
             return False
-        except:
+        if not self.backend_public_url:
             return False
+        return True
 
     async def generate_preview(
         self,
@@ -62,7 +105,13 @@ class VoiceCloneService:
         text: str
     ):
         """
-        调用独立服务生成预览音频
+        使用阿里云 CosyVoice 生成语音克隆预览
+
+        流程:
+        1. 上传音频到图床服务获取公网 URL
+        2. 创建音色 (create_voice) - 需要音频 URL
+        3. 轮询查询音色状态 (query_voice) - 等待状态为 OK
+        4. 使用音色进行语音合成 (SpeechSynthesizer.call)
 
         Args:
             task_id: 任务ID
@@ -72,82 +121,218 @@ class VoiceCloneService:
         try:
             # 更新任务状态
             voice_clone_tasks[task_id]["status"] = "processing"
+            voice_clone_tasks[task_id]["progress"] = 5
+
+            # 检查配置
+            if not self.api_key:
+                raise Exception("DASHSCOPE_API_KEY not configured in .env")
+
             voice_clone_tasks[task_id]["progress"] = 10
 
-            # 检查服务是否可用
-            service_available = await self.check_service_health()
-            if not service_available:
-                raise Exception("语音克隆服务不可用，请确保 voice_clone_server 已启动 (端口 8003)")
+            # 上传音频到图床服务获取公网 URL
+            print(f"[{task_id}] Uploading audio to media bed...")
+            audio_url = await self.upload_to_media_bed(reference_audio_path)
+
+            if not audio_url:
+                raise Exception("Failed to upload audio to media bed service")
+
+            print(f"[{task_id}] Audio URL: {audio_url}")
 
             voice_clone_tasks[task_id]["progress"] = 20
 
-            # 调用独立服务
-            async with aiohttp.ClientSession() as session:
-                # 准备文件上传
-                with open(reference_audio_path, 'rb') as f:
-                    audio_data = f.read()
+            # Step 1: 创建音色
+            print(f"[{task_id}] Creating voice from reference audio...")
+            voice_id = await self._create_voice(task_id, audio_url)
 
-                data = aiohttp.FormData()
-                data.add_field('audio', audio_data,
-                             filename=Path(reference_audio_path).name,
-                             content_type='audio/wav')
-                data.add_field('text', text)
-                data.add_field('exaggeration', '0.5')
-                data.add_field('cfg_weight', '0.5')
+            if not voice_id:
+                raise Exception("Failed to create voice - check if audio URL is accessible")
 
-                voice_clone_tasks[task_id]["progress"] = 30
+            voice_clone_tasks[task_id]["progress"] = 30
 
-                # 发送请求到独立服务
-                async with session.post(
-                    f"{self.service_url}/clone",
-                    data=data,
-                    timeout=aiohttp.ClientTimeout(total=600)  # 10分钟超时
-                ) as resp:
-                    if resp.status != 200:
-                        error_text = await resp.text()
-                        raise Exception(f"语音克隆服务返回错误: {error_text}")
+            # Step 2: 等待音色就绪
+            print(f"[{task_id}] Waiting for voice to be ready: {voice_id}")
+            voice_ready = await self._wait_for_voice_ready(task_id, voice_id)
 
-                    result = await resp.json()
+            if not voice_ready:
+                raise Exception("Voice enrollment failed or timed out")
 
-                    if not result.get("success"):
-                        raise Exception(result.get("message", "语音生成失败"))
+            voice_clone_tasks[task_id]["progress"] = 60
 
-                    # 下载生成的音频
-                    audio_url = result.get("audio_url")
-                    if audio_url:
-                        voice_clone_tasks[task_id]["progress"] = 80
+            # Step 3: 使用音色合成语音
+            print(f"[{task_id}] Synthesizing speech with cloned voice...")
+            audio_data = await self._synthesize_speech(task_id, voice_id, text)
 
-                        # 从独立服务下载音频
-                        async with session.get(f"{self.service_url}{audio_url}") as audio_resp:
-                            if audio_resp.status == 200:
-                                audio_content = await audio_resp.read()
+            if not audio_data:
+                raise Exception("Speech synthesis failed")
 
-                                # 保存到本地
-                                output_filename = f"{task_id}.wav"
-                                output_path = self.previews_dir / output_filename
+            voice_clone_tasks[task_id]["progress"] = 90
 
-                                with open(output_path, 'wb') as f:
-                                    f.write(audio_content)
+            # Step 4: 保存音频文件
+            output_filename = f"{task_id}.mp3"
+            output_path = self.previews_dir / output_filename
 
-                                # 更新任务状态为完成
-                                voice_clone_tasks[task_id]["status"] = "completed"
-                                voice_clone_tasks[task_id]["progress"] = 100
-                                voice_clone_tasks[task_id]["audio_url"] = f"/uploads/voice_clones/previews/{output_filename}"
-                                voice_clone_tasks[task_id]["completed_at"] = datetime.utcnow()
+            with open(output_path, 'wb') as f:
+                f.write(audio_data)
 
-                                print(f"任务 {task_id} 完成")
-                                return
+            # 更新任务状态为完成
+            voice_clone_tasks[task_id]["status"] = "completed"
+            voice_clone_tasks[task_id]["progress"] = 100
+            voice_clone_tasks[task_id]["audio_url"] = f"/uploads/voice_clones/previews/{output_filename}"
+            voice_clone_tasks[task_id]["completed_at"] = datetime.utcnow()
 
-                    raise Exception("未能获取生成的音频")
+            print(f"[{task_id}] Voice clone completed successfully")
 
         except Exception as e:
-            print(f"任务 {task_id} 失败: {e}")
+            print(f"[{task_id}] Voice clone failed: {e}")
             import traceback
             traceback.print_exc()
 
             voice_clone_tasks[task_id]["status"] = "failed"
             voice_clone_tasks[task_id]["error"] = str(e)
             voice_clone_tasks[task_id]["progress"] = 0
+
+    async def _create_voice(self, task_id: str, audio_url: str) -> Optional[str]:
+        """
+        创建音色（声音复刻）
+
+        Args:
+            task_id: 任务ID
+            audio_url: 音频公网 URL
+
+        Returns:
+            voice_id 或 None
+        """
+        try:
+            from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            service = VoiceEnrollmentService()
+
+            # 生成唯一的音色前缀（仅数字和小写字母，<10字符）
+            voice_prefix = f"ec{uuid.uuid4().hex[:6]}"
+
+            # 使用 asyncio.to_thread 在线程池中运行同步的 SDK 调用
+            # 避免阻塞 asyncio 事件循环
+            def create_voice_sync():
+                return service.create_voice(
+                    target_model='cosyvoice-v2',
+                    prefix=voice_prefix,
+                    url=audio_url
+                )
+
+            voice_id = await asyncio.to_thread(create_voice_sync)
+
+            if voice_id:
+                print(f"[{task_id}] Voice created: {voice_id}")
+                request_id = await asyncio.to_thread(service.get_last_request_id)
+                print(f"[{task_id}] Request ID: {request_id}")
+                return voice_id
+            else:
+                print(f"[{task_id}] Failed to create voice")
+                return None
+
+        except Exception as e:
+            print(f"[{task_id}] Create voice error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _wait_for_voice_ready(
+        self,
+        task_id: str,
+        voice_id: str,
+        max_attempts: int = 30,
+        poll_interval: int = 5
+    ) -> bool:
+        """
+        轮询等待音色就绪
+
+        Args:
+            task_id: 任务ID
+            voice_id: 音色ID
+            max_attempts: 最大尝试次数
+            poll_interval: 轮询间隔（秒）
+
+        Returns:
+            是否就绪
+        """
+        try:
+            from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            service = VoiceEnrollmentService()
+
+            for attempt in range(max_attempts):
+                try:
+                    # 使用 asyncio.to_thread 在线程池中运行同步调用
+                    voice_info = await asyncio.to_thread(
+                        service.query_voice, voice_id=voice_id
+                    )
+                    status = voice_info.get("status")
+                    print(f"[{task_id}] Voice status (attempt {attempt + 1}/{max_attempts}): {status}")
+
+                    if status == "OK":
+                        return True
+                    elif status in ["UNDEPLOYED", "FAILED"]:
+                        print(f"[{task_id}] Voice enrollment failed: {status}")
+                        return False
+
+                    # 更新进度
+                    progress = 30 + int((attempt / max_attempts) * 30)
+                    voice_clone_tasks[task_id]["progress"] = min(progress, 55)
+
+                except Exception as e:
+                    print(f"[{task_id}] Query voice error: {e}")
+
+                await asyncio.sleep(poll_interval)
+
+            print(f"[{task_id}] Voice enrollment timed out")
+            return False
+
+        except Exception as e:
+            print(f"[{task_id}] Wait for voice error: {e}")
+            return False
+
+    async def _synthesize_speech(
+        self,
+        task_id: str,
+        voice_id: str,
+        text: str
+    ) -> Optional[bytes]:
+        """
+        使用克隆的音色合成语音
+
+        Args:
+            task_id: 任务ID
+            voice_id: 音色ID
+            text: 要合成的文本
+
+        Returns:
+            音频二进制数据
+        """
+        try:
+            from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+            # 使用 asyncio.to_thread 在线程池中运行同步的 SDK 调用
+            def synthesize_sync():
+                synthesizer = SpeechSynthesizer(
+                    model='cosyvoice-v2',
+                    voice=voice_id
+                )
+                return synthesizer.call(text)
+
+            audio_data = await asyncio.to_thread(synthesize_sync)
+
+            if audio_data:
+                print(f"[{task_id}] Speech synthesis completed, audio size: {len(audio_data)} bytes")
+                return audio_data
+            else:
+                print(f"[{task_id}] Speech synthesis returned empty data")
+                return None
+
+        except Exception as e:
+            print(f"[{task_id}] Synthesis error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def create_task(self, user_id: str) -> str:
         """
@@ -186,16 +371,21 @@ class VoiceCloneService:
 
     async def preload_model(self):
         """
-        预加载检查 - 只检查独立服务是否可用
+        预加载检查 - 检查 DashScope API 配置
         """
         try:
-            available = await self.check_service_health()
-            if available:
-                print("语音克隆服务已就绪 (端口 8003)")
+            if self.api_key:
+                print("DashScope API Key configured")
             else:
-                print("警告: 语音克隆服务未就绪，请启动 voice_clone_server")
+                print("Warning: DASHSCOPE_API_KEY not set in .env")
+
+            if self.backend_public_url:
+                print(f"Backend public URL: {self.backend_public_url}")
+            else:
+                print("Warning: BACKEND_PUBLIC_URL not set in .env (required for voice clone)")
+
         except Exception as e:
-            print(f"检查语音克隆服务失败: {e}")
+            print(f"Voice clone service check failed: {e}")
 
     def save_reference_audio(self, user_id: str, file_content: bytes, filename: str) -> str:
         """
