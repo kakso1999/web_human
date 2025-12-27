@@ -49,9 +49,9 @@ class Settings(BaseSettings):
     ALLOWED_VIDEO_TYPES: list = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/x-matroska", "video/avi", "video/mpeg", "application/octet-stream"]
     ALLOWED_AUDIO_TYPES: list = ["audio/mpeg", "audio/wav", "audio/mp3", "audio/m4a"]
 
-    # APICore 配置
-    APICORE_API_KEY: str = "sk-2lABiLDoSOocQjuwACtRWItGEEvSHM4jt0kgCQPgEb0NPS3O"
-    APICORE_BASE_URL: str = "https://api.apicore.ai"
+    # APICore 配置 (Suno Stems, Whisper, etc.)
+    APICORE_API_KEY: str = ""
+    APICORE_BASE_URL: str = "https://ismaque.org"
 
     # CORS 配置
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001"]
