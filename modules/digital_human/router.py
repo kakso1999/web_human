@@ -18,7 +18,8 @@ from .schemas import (
     TaskStatus,
     SaveAvatarProfileRequest,
     AvatarProfileResponse,
-    UpdateAvatarProfileRequest
+    UpdateAvatarProfileRequest,
+    AudioSourceType
 )
 from .service import digital_human_service, digital_human_tasks
 
@@ -28,6 +29,9 @@ router = APIRouter(prefix="/digital-human", tags=["Digital Human"])
 @router.post("/preview")
 async def create_digital_human_preview(
     image: UploadFile = File(..., description="头像照片 (清晰正面人像, JPG/PNG)"),
+    audio: Optional[UploadFile] = File(None, description="音频文件 (可选，用于数字人说话)"),
+    voice_profile_id: Optional[str] = Form(None, description="已保存的声音档案ID (可选)"),
+    preview_text: Optional[str] = Form(None, description="预览文本，使用声音档案时需要提供"),
     user_id: str = Depends(get_current_user_id)
 ):
     """
@@ -36,12 +40,15 @@ async def create_digital_human_preview(
     上传一张清晰的正面人像照片，后台生成动态数字人预览视频。
     返回任务ID，前端轮询 GET /preview/{task_id} 获取状态。
 
-    - **image**: 头像照片 (清晰正面人像, JPG/PNG格式)
+    音频来源（三选一）:
+    1. 不传音频参数 - 使用系统默认音色生成预览
+    2. 上传 audio 文件 - 直接使用上传的音频
+    3. 传 voice_profile_id + preview_text - 使用已保存的克隆声音合成音频
 
-    图片要求:
-    - 格式: jpg, jpeg, png, bmp, webp
-    - 分辨率: 建议 512x512 以上
-    - 内容: 清晰正面人像，五官完整，背景简洁
+    - **image**: 头像照片 (清晰正面人像, JPG/PNG格式)
+    - **audio**: 音频文件 (可选, WAV/MP3格式)
+    - **voice_profile_id**: 声音档案ID (可选)
+    - **preview_text**: 预览文本 (使用声音档案时需要)
     """
 
     # 验证图片文件类型
@@ -53,32 +60,72 @@ async def create_digital_human_preview(
 
     # 验证文件大小 (最大 10MB)
     max_size = 10 * 1024 * 1024
-    content = await image.read()
-    if len(content) > max_size:
+    image_content = await image.read()
+    if len(image_content) > max_size:
         raise HTTPException(status_code=400, detail="Image file too large, max 10MB")
+
+    # 确定音频来源
+    audio_source = AudioSourceType.DEFAULT
+    audio_path = None
+    audio_content = None
+
+    if audio is not None:
+        # 上传了音频文件
+        if audio.content_type not in settings.ALLOWED_AUDIO_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported audio format. Supported: {', '.join(settings.ALLOWED_AUDIO_TYPES)}"
+            )
+        audio_content = await audio.read()
+        if len(audio_content) > 20 * 1024 * 1024:  # 20MB
+            raise HTTPException(status_code=400, detail="Audio file too large, max 20MB")
+        audio_source = AudioSourceType.UPLOAD
+
+    elif voice_profile_id:
+        # 使用声音档案
+        if not preview_text:
+            raise HTTPException(
+                status_code=400,
+                detail="preview_text is required when using voice_profile_id"
+            )
+        audio_source = AudioSourceType.VOICE_PROFILE
 
     # 保存图片
     image_path = digital_human_service.save_image(
         user_id=user_id,
-        file_content=content,
+        file_content=image_content,
         filename=image.filename or "avatar.jpg"
     )
+
+    # 保存音频（如果上传了）
+    if audio_content:
+        audio_path = digital_human_service.save_audio(
+            user_id=user_id,
+            file_content=audio_content,
+            filename=audio.filename or "audio.wav"
+        )
 
     # 创建任务
     task_id = digital_human_service.create_task(user_id)
     digital_human_tasks[task_id]["image_local"] = image_path
+    digital_human_tasks[task_id]["audio_source"] = audio_source.value
 
     # 启动后台任务
     asyncio.create_task(
         digital_human_service.generate_preview(
             task_id=task_id,
-            image_path=image_path
+            image_path=image_path,
+            audio_source=audio_source,
+            audio_path=audio_path,
+            voice_profile_id=voice_profile_id,
+            preview_text=preview_text or "Hello, I am your digital avatar. Nice to meet you!"
         )
     )
 
     return success_response({
         "task_id": task_id,
         "status": TaskStatus.PROCESSING,
+        "audio_source": audio_source.value,
         "message": "Digital human task created, poll for status"
     })
 

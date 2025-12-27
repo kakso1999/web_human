@@ -861,4 +861,99 @@ python E:\工作代码\Tools\01_python依赖下载器\proxy_downloader.py test
 
 ---
 
-*最后更新: 2024-12-16*
+## 十五、阿里云 AI 服务配置
+
+### 15.1 服务概览
+
+项目使用阿里云百炼平台提供的 AI 服务实现核心功能：
+
+| 服务 | 用途 | 模型 |
+|------|------|------|
+| CosyVoice | 声音克隆 + TTS | cosyvoice-v1, cosyvoice-clone-v1 |
+| EMO (悦动人像) | 数字人视频生成 | emo-v1, emo-detect-v1 |
+| IMS (智能媒体服务) | 视频分离/合成 | - |
+
+### 15.2 业务流程
+
+```
+原始儿童故事 MP4
+       ↓
+┌──────────────────┐
+│  IMS 视频分离     │  → 提取音轨、字幕
+└──────────────────┘
+       ↓
+┌──────────────────┐
+│  CosyVoice 克隆   │  → 家长音色克隆 + TTS 生成新音频
+└──────────────────┘
+       ↓
+┌──────────────────┐
+│  EMO 数字人生成   │  → 家长照片 + 新音频 → 口型同步视频
+└──────────────────┘
+       ↓
+┌──────────────────┐
+│  IMS 视频合成     │  → 原视频 + 数字人画中画 + 新音频
+└──────────────────┘
+       ↓
+最终个性化故事视频
+```
+
+### 15.3 环境变量配置
+
+```bash
+# .env 文件
+# 阿里云百炼 API 密钥 (DashScope)
+DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# IMS 智能媒体服务 (如需使用)
+ALIYUN_ACCESS_KEY_ID=your-access-key-id
+ALIYUN_ACCESS_KEY_SECRET=your-access-key-secret
+ALIYUN_IMS_REGION=cn-shanghai
+```
+
+### 15.4 Python SDK 依赖
+
+```bash
+# 安装 DashScope SDK (CosyVoice + EMO)
+pip install dashscope
+
+# 安装阿里云 SDK (IMS)
+pip install alibabacloud-ice20201109
+```
+
+### 15.5 API 调用示例
+
+```python
+# CosyVoice TTS
+import dashscope
+from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
+synthesizer = SpeechSynthesizer(model='cosyvoice-v1', voice='longxiaochun')
+audio = synthesizer.call("要转换的文本")
+
+# EMO 数字人
+import requests
+headers = {"Authorization": f"Bearer {API_KEY}"}
+payload = {
+    "model": "emo-v1",
+    "input": {"image_url": "照片URL", "audio_url": "音频URL"}
+}
+response = requests.post(
+    "https://dashscope.aliyuncs.com/api/v1/services/aigc/image2video/video-synthesis",
+    headers=headers, json=payload
+)
+task_id = response.json()["output"]["task_id"]
+```
+
+### 15.6 相关文档
+
+- **详细 API 文档**: `阿里云.md` (项目根目录)
+- **API 测试脚本**: `test_aliyun_api.py`
+- **官方文档**:
+  - CosyVoice: https://help.aliyun.com/zh/model-studio/cosyvoice-python-sdk
+  - EMO: https://help.aliyun.com/zh/model-studio/developer-reference/emo-quick-start
+  - IMS: https://help.aliyun.com/zh/ims/developer-reference/
+
+---
+
+*最后更新: 2024-12-26*

@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
     server: {
+      host: '0.0.0.0', // 监听所有网卡，允许外网访问
       port: port,
       allowedHosts: ['localhost', '.ngrok-free.app'],
       proxy: {

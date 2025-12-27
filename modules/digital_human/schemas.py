@@ -3,6 +3,14 @@
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from datetime import datetime
+from enum import Enum
+
+
+class AudioSourceType(str, Enum):
+    """音频来源类型"""
+    DEFAULT = "default"           # 使用默认音色
+    VOICE_PROFILE = "voice_profile"  # 使用已保存的声音档案
+    UPLOAD = "upload"             # 上传音频文件
 
 
 # ==================== 数字人头像档案相关 ====================

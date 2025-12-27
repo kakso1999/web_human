@@ -144,11 +144,25 @@ class DigitalHumanService:
             traceback.print_exc()
             return None
 
+    def save_audio(self, user_id: str, file_content: bytes, filename: str) -> str:
+        """保存用户上传的音频文件"""
+        ext = Path(filename).suffix or ".wav"
+        new_filename = f"{user_id}_{uuid.uuid4().hex[:8]}{ext}"
+        file_path = self.previews_dir / new_filename
+
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+
+        return str(file_path)
+
     async def generate_preview(
         self,
         task_id: str,
         image_path: str,
-        audio_text: str = "Hello, I am your digital avatar. Nice to meet you!"
+        audio_source: 'AudioSourceType' = None,
+        audio_path: str = None,
+        voice_profile_id: str = None,
+        preview_text: str = "Hello, I am your digital avatar. Nice to meet you!"
     ):
         """
         使用阿里云 EMO 生成数字人预览视频
@@ -156,15 +170,23 @@ class DigitalHumanService:
         流程:
         1. 上传图片到图床获取公网 URL
         2. 调用 EMO 图像检测 API 获取人脸区域
-        3. 使用用户已保存的声音生成音频（或使用默认声音）
+        3. 获取音频 (上传的音频 / 克隆声音合成 / 默认音色)
         4. 调用 EMO 视频生成 API 生成动态视频
         5. 下载并保存预览视频
 
         Args:
             task_id: 任务ID
             image_path: 头像图片路径
-            audio_text: 预览文本
+            audio_source: 音频来源类型
+            audio_path: 上传的音频文件路径 (如果有)
+            voice_profile_id: 声音档案ID (如果使用克隆声音)
+            preview_text: 预览文本
         """
+        from .schemas import AudioSourceType
+
+        if audio_source is None:
+            audio_source = AudioSourceType.DEFAULT
+
         try:
             # 更新任务状态
             digital_human_tasks[task_id]["status"] = "processing"
@@ -201,12 +223,18 @@ class DigitalHumanService:
             digital_human_tasks[task_id]["ext_bbox"] = ext_bbox
             digital_human_tasks[task_id]["progress"] = 35
 
-            # Step 3: 生成预览音频（使用 CosyVoice 默认音色）
-            print(f"[{task_id}] Generating preview audio...")
-            audio_url = await self._generate_preview_audio(task_id, audio_text)
+            # Step 3: 获取音频 URL
+            print(f"[{task_id}] Preparing audio (source: {audio_source.value})...")
+            audio_url = await self._get_audio_url(
+                task_id=task_id,
+                audio_source=audio_source,
+                audio_path=audio_path,
+                voice_profile_id=voice_profile_id,
+                preview_text=preview_text
+            )
 
             if not audio_url:
-                raise Exception("Failed to generate preview audio")
+                raise Exception("Failed to prepare audio")
 
             print(f"[{task_id}] Audio URL: {audio_url}")
             digital_human_tasks[task_id]["progress"] = 50
@@ -301,6 +329,236 @@ class DigitalHumanService:
         except Exception as e:
             print(f"[{task_id}] Face detection error: {e}")
             return None, None
+
+    async def _get_audio_url(
+        self,
+        task_id: str,
+        audio_source: 'AudioSourceType',
+        audio_path: str = None,
+        voice_profile_id: str = None,
+        preview_text: str = None
+    ) -> Optional[str]:
+        """
+        根据音频来源获取音频 URL
+
+        Args:
+            task_id: 任务ID
+            audio_source: 音频来源类型
+            audio_path: 上传的音频文件路径
+            voice_profile_id: 声音档案ID
+            preview_text: 预览文本
+
+        Returns:
+            音频的公网 URL
+        """
+        from .schemas import AudioSourceType
+
+        if audio_source == AudioSourceType.UPLOAD:
+            # 直接上传用户提供的音频
+            print(f"[{task_id}] Using uploaded audio file...")
+            if not audio_path:
+                return None
+            return await self.upload_to_media_bed(audio_path, compress_images=False)
+
+        elif audio_source == AudioSourceType.VOICE_PROFILE:
+            # 使用克隆声音合成
+            print(f"[{task_id}] Using cloned voice profile: {voice_profile_id}...")
+            return await self._synthesize_with_voice_profile(
+                task_id, voice_profile_id, preview_text
+            )
+
+        else:
+            # 使用默认音色
+            print(f"[{task_id}] Using default voice...")
+            return await self._generate_preview_audio(task_id, preview_text)
+
+    async def _synthesize_with_voice_profile(
+        self,
+        task_id: str,
+        voice_profile_id: str,
+        text: str
+    ) -> Optional[str]:
+        """
+        使用已保存的声音档案合成音频
+
+        注意：阿里云 CosyVoice 的 voice_id 是临时的，会过期。
+        因此每次使用时需要从存储的参考音频重新创建 voice。
+
+        Args:
+            task_id: 任务ID
+            voice_profile_id: 声音档案ID
+            text: 要合成的文本
+        """
+        try:
+            # 获取声音档案信息
+            from modules.voice_clone.repository import voice_profile_repository
+
+            profile = await voice_profile_repository.get_by_id(voice_profile_id)
+            if not profile:
+                print(f"[{task_id}] Voice profile not found: {voice_profile_id}")
+                return None
+
+            # 获取参考音频 URL（优先使用已上传的 URL，否则重新上传本地文件）
+            reference_audio_url = profile.get("reference_audio_url")
+            reference_audio_local = profile.get("reference_audio_local")
+
+            if not reference_audio_url and reference_audio_local:
+                # 重新上传本地音频到图床
+                print(f"[{task_id}] Re-uploading reference audio to media bed...")
+                reference_audio_url = await self.upload_to_media_bed(
+                    reference_audio_local, compress_images=False
+                )
+
+            if not reference_audio_url:
+                print(f"[{task_id}] No reference audio available for voice profile")
+                return None
+
+            print(f"[{task_id}] Reference audio URL: {reference_audio_url}")
+
+            # Step 1: 创建新的 voice（因为旧的 voice_id 已过期）
+            print(f"[{task_id}] Creating voice from reference audio...")
+            voice_id = await self._create_voice_from_url(task_id, reference_audio_url)
+
+            if not voice_id:
+                print(f"[{task_id}] Failed to create voice from reference audio")
+                return None
+
+            print(f"[{task_id}] Voice created: {voice_id}")
+
+            # Step 2: 等待 voice 就绪
+            print(f"[{task_id}] Waiting for voice to be ready...")
+            voice_ready = await self._wait_for_voice_ready(task_id, voice_id)
+
+            if not voice_ready:
+                print(f"[{task_id}] Voice enrollment failed or timed out")
+                return None
+
+            # Step 3: 使用新的 voice 合成语音
+            print(f"[{task_id}] Synthesizing with voice: {voice_id}")
+
+            from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+            def synthesize_sync():
+                synthesizer = SpeechSynthesizer(
+                    model='cosyvoice-v2',
+                    voice=voice_id
+                )
+                return synthesizer.call(text)
+
+            audio_data = await asyncio.to_thread(synthesize_sync)
+
+            if not audio_data:
+                print(f"[{task_id}] Voice synthesis returned no data")
+                return None
+
+            # 保存音频文件
+            audio_filename = f"{task_id}_cloned_audio.mp3"
+            audio_path = self.previews_dir / audio_filename
+
+            with open(audio_path, 'wb') as f:
+                f.write(audio_data)
+
+            print(f"[{task_id}] Cloned audio saved: {audio_path}, size: {len(audio_data)} bytes")
+
+            # 上传到图床
+            return await self.upload_to_media_bed(str(audio_path), compress_images=False)
+
+        except Exception as e:
+            print(f"[{task_id}] Voice profile synthesis error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _create_voice_from_url(self, task_id: str, audio_url: str) -> Optional[str]:
+        """
+        从音频 URL 创建新的 voice
+
+        Args:
+            task_id: 任务ID
+            audio_url: 音频公网 URL
+
+        Returns:
+            voice_id 或 None
+        """
+        try:
+            from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            service = VoiceEnrollmentService()
+
+            # 生成唯一的音色前缀（仅数字和小写字母，<10字符）
+            voice_prefix = f"dh{uuid.uuid4().hex[:6]}"
+
+            def create_voice_sync():
+                return service.create_voice(
+                    target_model='cosyvoice-v2',
+                    prefix=voice_prefix,
+                    url=audio_url
+                )
+
+            voice_id = await asyncio.to_thread(create_voice_sync)
+
+            if voice_id:
+                print(f"[{task_id}] Voice created: {voice_id}")
+                return voice_id
+            else:
+                print(f"[{task_id}] Failed to create voice")
+                return None
+
+        except Exception as e:
+            print(f"[{task_id}] Create voice error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _wait_for_voice_ready(
+        self,
+        task_id: str,
+        voice_id: str,
+        max_attempts: int = 30,
+        poll_interval: int = 3
+    ) -> bool:
+        """
+        轮询等待音色就绪
+
+        Args:
+            task_id: 任务ID
+            voice_id: 音色ID
+            max_attempts: 最大尝试次数
+            poll_interval: 轮询间隔（秒）
+
+        Returns:
+            是否就绪
+        """
+        try:
+            from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            service = VoiceEnrollmentService()
+
+            for attempt in range(max_attempts):
+                try:
+                    voice_info = await asyncio.to_thread(
+                        service.query_voice, voice_id=voice_id
+                    )
+                    status = voice_info.get("status")
+                    print(f"[{task_id}] Voice status (attempt {attempt + 1}/{max_attempts}): {status}")
+
+                    if status == "OK":
+                        return True
+                    elif status in ["UNDEPLOYED", "FAILED"]:
+                        print(f"[{task_id}] Voice enrollment failed: {status}")
+                        return False
+
+                except Exception as e:
+                    print(f"[{task_id}] Query voice error: {e}")
+
+                await asyncio.sleep(poll_interval)
+
+            print(f"[{task_id}] Voice enrollment timed out")
+            return False
+
+        except Exception as e:
+            print(f"[{task_id}] Wait for voice error: {e}")
+            return False
 
     async def _generate_preview_audio(self, task_id: str, text: str) -> Optional[str]:
         """

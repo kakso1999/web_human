@@ -191,6 +191,22 @@
               <h3 class="result-title">Your Cloned Voice Preview</h3>
               <audio :src="generatedAudioUrl" controls class="audio-player result-player"></audio>
               <p class="result-hint">Listen to how your voice sounds narrating the story!</p>
+
+              <!-- 保存按钮 -->
+              <div class="save-section" v-if="!saved">
+                <input
+                  v-model="voiceProfileName"
+                  type="text"
+                  placeholder="Enter a name (e.g., Dad's Voice)"
+                  class="name-input"
+                />
+                <button class="btn btn-success" @click="saveVoiceProfile" :disabled="!voiceProfileName || saving">
+                  {{ saving ? 'Saving...' : 'Save to My Voices' }}
+                </button>
+              </div>
+              <div v-else class="saved-message">
+                Voice profile saved successfully!
+              </div>
             </div>
 
             <!-- 错误提示 -->
@@ -256,6 +272,11 @@ const progress = ref(0)
 const taskId = ref<string | null>(null)
 const generatedAudioUrl = ref<string | null>(null)
 const generateError = ref('')
+
+// 保存相关
+const voiceProfileName = ref('')
+const saving = ref(false)
+const saved = ref(false)
 
 let pollInterval: number | null = null
 
@@ -428,6 +449,26 @@ function resetAll() {
   generateError.value = ''
   taskId.value = null
   progress.value = 0
+  voiceProfileName.value = ''
+  saving.value = false
+  saved.value = false
+}
+
+async function saveVoiceProfile() {
+  if (!taskId.value || !voiceProfileName.value) return
+
+  saving.value = true
+  try {
+    await api.post('/voice-clone/profiles', {
+      task_id: taskId.value,
+      name: voiceProfileName.value
+    })
+    saved.value = true
+  } catch (error: any) {
+    generateError.value = error.response?.data?.message || 'Failed to save voice profile'
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(async () => {
@@ -1020,5 +1061,52 @@ onUnmounted(() => {
   text-align: center;
   padding: var(--spacing-2xl);
   color: var(--color-text-secondary);
+}
+
+/* Save Section */
+.save-section {
+  display: flex;
+  gap: var(--spacing-md);
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.name-input {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-dark-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  width: 200px;
+}
+
+.name-input:focus {
+  outline: none;
+  border-color: #2B5F6C;
+}
+
+.btn-success {
+  background: var(--color-success);
+  border: none;
+  color: #fff;
+}
+
+.btn-success:hover {
+  opacity: 0.9;
+}
+
+.btn-success:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.saved-message {
+  color: var(--color-success);
+  font-weight: 500;
+  margin-top: var(--spacing-lg);
 }
 </style>
