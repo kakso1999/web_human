@@ -19,6 +19,7 @@ from modules.user.router import router as user_router
 from modules.story.router import router as story_router
 from modules.admin.router import router as admin_router
 from modules.voice_clone.router import router as voice_clone_router
+from modules.digital_human.router import router as digital_human_router
 
 settings = get_settings()
 
@@ -37,6 +38,8 @@ async def lifespan(app: FastAPI):
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "videos"), exist_ok=True)
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "voice_clones", "references"), exist_ok=True)
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "voice_clones", "previews"), exist_ok=True)
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "digital_human", "images"), exist_ok=True)
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "digital_human", "previews"), exist_ok=True)
 
     # 注意：模型预加载暂时禁用，模型会在第一次使用时加载
     # 这避免了启动时长时间加载9GB模型导致服务器响应变慢的问题
@@ -85,6 +88,7 @@ app.include_router(user_router, prefix=settings.API_V1_PREFIX)
 app.include_router(story_router, prefix=settings.API_V1_PREFIX)
 app.include_router(admin_router, prefix=settings.API_V1_PREFIX)
 app.include_router(voice_clone_router, prefix=settings.API_V1_PREFIX)
+app.include_router(digital_human_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")
