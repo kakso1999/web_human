@@ -85,11 +85,20 @@
 | Paraformer ASR | 语音识别 + 时间戳 | 可用 |
 | 智能语音交互 | 说话人识别 | 可用 |
 
-### 3.2 需要外部服务的功能
+### 3.2 APICore 可用服务 (推荐)
+
+| 功能 | API 接口 | 说明 |
+|------|----------|------|
+| 人声/BGM分离 | `/suno/act/stems/{clip_id}` | 返回 Vocals + Instrumental |
+| 语音识别+字幕 | `/v1/audio/transcriptions` | Whisper，支持 SRT 输出 |
+| 词级时间对齐 | `/suno/act/timing/{clip_id}` | 每个词的 start_s, end_s |
+| 音频上传 | `/suno/uploads/audio-url` | 获取 clip_id (最长120秒) |
+
+### 3.3 备选外部服务
 
 | 功能 | 推荐方案 | 备选方案 |
 |------|----------|----------|
-| 人声/背景音分离 | Spleeter (开源) | 阿里云云市场 API |
+| 人声/背景音分离 | APICore Suno Stems | Spleeter (开源本地部署) |
 | 多说话人分离 | pyannote-audio | 阿里云 ASR 角色标注 |
 
 ---
@@ -101,23 +110,34 @@
 **难点**: 阿里云没有原生的人声/背景音分离服务
 
 **解决方案**:
-1. **方案A: 使用 Spleeter (推荐)**
-   - Deezer 开源的音频分离工具
-   - 支持 2/4/5 轨道分离 (vocals, drums, bass, piano, other)
-   - 可本地部署或使用云服务
+1. **方案A: 使用 APICore Suno Stems (推荐)**
+   - 无需本地部署，直接调用 API
+   - 返回 Vocals (人声) + Instrumental (背景音) 两个音轨
    ```python
-   # 安装
-   pip install spleeter
+   import httpx
 
-   # 使用
-   from spleeter.separator import Separator
-   separator = Separator('spleeter:2stems')  # 2轨: vocals + accompaniment
-   separator.separate_to_file('audio.mp3', 'output/')
+   # 1. 上传音频获取 clip_id
+   response = await client.post(
+       f"{APICORE_BASE}/suno/uploads/audio-url",
+       json={"url": audio_url}
+   )
+   clip_id = response.json()["clip_id"]
+
+   # 2. 获取分离结果
+   stems = await client.get(f"{APICORE_BASE}/suno/act/stems/{clip_id}")
+   vocals_url = stems.json()["vocals"]
+   instrumental_url = stems.json()["instrumental"]
    ```
 
-2. **方案B: 阿里云云市场 API**
-   - 地址: https://market.aliyun.com/detail/cmapi00047539
-   - 付费服务，按次计费
+2. **方案B: 使用 Spleeter (备选)**
+   - Deezer 开源的音频分离工具
+   - 需要本地部署，依赖较多
+   ```python
+   pip install spleeter
+   from spleeter.separator import Separator
+   separator = Separator('spleeter:2stems')
+   separator.separate_to_file('audio.mp3', 'output/')
+   ```
 
 ### 4.2 多说话人识别与分离
 
@@ -146,7 +166,34 @@
    - 假设视频只有一个主要讲述者
    - 用户选择替换全部人声或保留原声
 
-### 4.3 音频时间对齐
+### 4.3 语音识别与字幕生成
+
+**难点**: 需要精确的时间戳字幕文件
+
+**解决方案**:
+1. **方案A: APICore Whisper API (推荐)**
+   - 直接输出 SRT 格式字幕
+   - 支持多语言识别
+   ```python
+   import httpx
+
+   response = await client.post(
+       f"{APICORE_BASE}/v1/audio/transcriptions",
+       files={"file": audio_file},
+       data={
+           "model": "whisper-1",
+           "response_format": "srt",  # 直接输出 SRT
+           "language": "zh"
+       }
+   )
+   srt_content = response.text
+   ```
+
+2. **方案B: 阿里云 Paraformer ASR**
+   - 同样支持时间戳输出
+   - 需要额外处理成 SRT 格式
+
+### 4.4 音频时间对齐
 
 **难点**: 克隆语音与原视频时间轴对齐
 
@@ -381,14 +428,24 @@ pip install dashscope                    # CosyVoice + EMO
 pip install aliyun-python-sdk-ice        # IMS
 pip install oss2                         # OSS 文件存储
 
+# HTTP 客户端 (APICore 调用)
+pip install httpx                        # 异步 HTTP 客户端
+
 # 音频处理
-pip install spleeter                     # 人声分离
 pip install pydub                        # 音频处理
 pip install librosa                      # 音频分析
 
-# 说话人分离 (可选)
+# 说话人分离 (可选，如需多说话人识别)
 pip install pyannote.audio               # 说话人分割
 pip install torch torchaudio             # PyTorch 依赖
+```
+
+### 9.1 APICore 配置
+
+```python
+# .env 文件添加
+APICORE_BASE_URL=https://your-apicore-endpoint
+APICORE_API_KEY=your-api-key
 ```
 
 ---

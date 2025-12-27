@@ -1,0 +1,20 @@
+儿童故事mp4，原来播音员的声音换成父母克隆的声音，mp4右上角需要一个父母的数字人对口型，再生成新故事
+1首先mp4把视频，音频和字幕（带时间线分离出来）
+智能媒体服务ims -》srt文件
+
+2 父亲或者母亲的声音给阿里AI，字幕也给到阿里AI，阿里AI返回父亲或母亲的声音朗读字幕的音频文件
+cosyvoice音色复刻
+cosyvoice+ssml进行TTS-》跟原视频音频同步的父母音色的完整音频
+https://help.aliyun.com/zh/model-studio/cosyvoice-python-sdk?spm=a2c4g.11186623.0.i1
+
+音频的问题是如果故事里有多人说话，能否只克隆旁白（讲故事的），其他人物对话保留，看看阿里AI能否做到-》目前还实现不了
+
+3父亲或母亲的照片给阿里AI，结合字幕，生成口型与声音匹配的数字人，生成大头mp4
+悦动人像EMO：人物肖像图片+人声音频文件-》带声音的人物肖像动态视频
+https://help.aliyun.com/zh/model-studio/models?spm=a2c4g.11186623.help-menu-2400256.d_0_0_2.325e383ajQv5Ta#c6384886fd3s8
+--emo-detect-v1 检测人物图像
+--emo-v1     生成视频
+
+4 mp4原来视频静音处理，跟第三步的头像视频进行合成，再加一个新的bgm，2个视频+1个音频 生成一个新的带父母声音的mp4最终产物。
+智能媒体服务ims 
+https://help.aliyun.com/zh/ims/developer-reference/api-ice-2020-11-09-dir-project-management/?spm=a2c4g.11186623.help-menu-193643.d_5_0_3_6_0.71226934D1tVPk&scm=20140722.H_445711._.OR_help-T_cn~zh-V_1
