@@ -614,7 +614,7 @@ class StoryGenerationService:
 
             output_path = self.upload_dir / f"{job_id}_seg{segment_index}_composited.mp4"
 
-            # 获取视频尺寸
+            # 获取原视频尺寸
             probe_cmd = [
                 'ffprobe', '-v', 'error',
                 '-select_streams', 'v:0',
@@ -629,15 +629,32 @@ class StoryGenerationService:
             except:
                 width, height = 1920, 1080
 
-            # 计算画中画位置（右上角）
+            # 获取数字人视频尺寸（保持原比例）
+            probe_dh_cmd = [
+                'ffprobe', '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height',
+                '-of', 'csv=p=0',
+                str(dh_video_path)
+            ]
+            returncode, stdout, stderr = await run_ffmpeg_command(probe_dh_cmd)
+
+            try:
+                dh_width, dh_height = map(int, stdout.decode().strip().split(','))
+            except:
+                dh_width, dh_height = 512, 512  # EMO 默认输出
+
+            logger.info(f"[{job_id}] Original video: {width}x{height}, Digital human: {dh_width}x{dh_height}")
+
+            # 计算画中画尺寸（保持数字人原比例）
             pip_width = width // 4
-            pip_height = pip_width * 9 // 16
+            pip_height = int(pip_width * dh_height / dh_width)  # 保持原比例
             pip_x = width - pip_width - 20
             pip_y = 20
 
-            # 画中画合成
+            # 画中画合成（使用 -1 保持比例）
             filter_complex = (
-                f"[1:v]scale={pip_width}:{pip_height}[pip];"
+                f"[1:v]scale={pip_width}:-1[pip];"
                 f"[0:v][pip]overlay={pip_x}:{pip_y}:shortest=1[outv]"
             )
 
@@ -2092,9 +2109,25 @@ class StoryGenerationService:
                 width, height = 1920, 1080
                 logger.warning(f"[{job_id}] Using default video size: {width}x{height}")
 
-            # 计算数字人视频大小和位置（右上角，占画面 1/4 宽度）
+            # 获取数字人视频尺寸（保持原比例）
+            probe_dh_cmd = [
+                'ffprobe', '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height',
+                '-of', 'csv=p=0',
+                str(dh_video_path)
+            ]
+            returncode, stdout, stderr = await run_ffmpeg_command(probe_dh_cmd)
+
+            try:
+                dh_width, dh_height = map(int, stdout.decode().strip().split(','))
+                logger.info(f"[{job_id}] Digital human video size: {dh_width}x{dh_height}")
+            except:
+                dh_width, dh_height = 512, 512
+
+            # 计算数字人视频大小和位置（保持原比例）
             pip_width = width // 4
-            pip_height = pip_width * 9 // 16  # 假设 16:9 比例
+            pip_height = int(pip_width * dh_height / dh_width)  # 保持原比例
             pip_x = width - pip_width - 20  # 右边距 20px
             pip_y = 20  # 上边距 20px
 
