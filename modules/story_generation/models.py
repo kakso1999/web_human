@@ -27,7 +27,8 @@ class StoryJobDocument:
             "user_id": ObjectId(user_id),
             "story_id": ObjectId(story_id),
             "voice_profile_id": ObjectId(voice_profile_id),
-            "avatar_profile_id": ObjectId(avatar_profile_id),
+            # avatar_profile_id 可以为空（暂不使用数字人）
+            "avatar_profile_id": ObjectId(avatar_profile_id) if avatar_profile_id and avatar_profile_id.strip() else None,
 
             # 状态
             "status": "pending",

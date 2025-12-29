@@ -606,6 +606,12 @@ class DigitalHumanService:
     ) -> Optional[str]:
         """创建 EMO 视频生成任务"""
         try:
+            print(f"[{task_id}] Creating EMO task...")
+            print(f"[{task_id}]   image_url: {image_url[:80]}...")
+            print(f"[{task_id}]   audio_url: {audio_url[:80]}...")
+            print(f"[{task_id}]   face_bbox: {face_bbox}")
+            print(f"[{task_id}]   ext_bbox: {ext_bbox}")
+
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
@@ -627,10 +633,14 @@ class DigitalHumanService:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(EMO_GENERATE_URL, headers=headers, json=payload)
 
+                print(f"[{task_id}] EMO create response status: {response.status_code}")
+                print(f"[{task_id}] EMO create response: {response.text[:500]}")
+
                 if response.status_code == 200:
                     result = response.json()
                     output = result.get("output", {})
                     emo_task_id = output.get("task_id")
+                    print(f"[{task_id}] EMO task_id from response: {emo_task_id}")
                     return emo_task_id
                 else:
                     print(f"[{task_id}] EMO create task error: {response.text}")
@@ -638,6 +648,8 @@ class DigitalHumanService:
 
         except Exception as e:
             print(f"[{task_id}] EMO create task error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     async def _wait_for_emo_task(
@@ -647,14 +659,20 @@ class DigitalHumanService:
         max_attempts: int = 120,
         poll_interval: int = 5
     ) -> Optional[str]:
-        """等待 EMO 任务完成"""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}"
-            }
-            task_url = f"{EMO_TASK_URL}/{emo_task_id}"
+        """
+        等待 EMO 任务完成 (支持从 story_generation 调用)
 
-            for attempt in range(max_attempts):
+        注意: task_id 可能不在 digital_human_tasks 中 (当从 story_generation 调用时)
+        """
+        print(f"[{task_id}] _wait_for_emo_task started, emo_task_id={emo_task_id}")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}"
+        }
+        task_url = f"{EMO_TASK_URL}/{emo_task_id}"
+
+        for attempt in range(max_attempts):
+            try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
                     response = await client.get(task_url, headers=headers)
 
@@ -672,27 +690,43 @@ class DigitalHumanService:
                             if not video_url:
                                 # 尝试直接从 output 获取
                                 video_url = output.get("video_url")
+                            print(f"[{task_id}] EMO task succeeded, video_url={video_url}")
                             return video_url
                         elif task_status == "FAILED":
                             error_msg = output.get("message", "Unknown error")
                             print(f"[{task_id}] EMO task failed: {error_msg}")
                             return None
 
-                        # 更新进度
-                        progress = 60 + int((attempt / max_attempts) * 30)
-                        digital_human_tasks[task_id]["progress"] = min(progress, 85)
+                        # 更新进度 (仅当 task_id 在 digital_human_tasks 字典中时)
+                        # 从 story_generation 调用时，task_id 不在此字典中，跳过进度更新
+                        if task_id in digital_human_tasks:
+                            progress = 60 + int((attempt / max_attempts) * 30)
+                            digital_human_tasks[task_id]["progress"] = min(progress, 85)
+                    else:
+                        print(f"[{task_id}] EMO API returned status {response.status_code}: {response.text[:200]}")
 
-                await asyncio.sleep(poll_interval)
+            except httpx.TimeoutException as te:
+                print(f"[{task_id}] EMO poll timeout (attempt {attempt + 1}): {te}")
+            except httpx.HTTPError as he:
+                print(f"[{task_id}] EMO HTTP error (attempt {attempt + 1}): {he}")
+            except KeyError as ke:
+                # 明确捕获 KeyError 以便调试
+                print(f"[{task_id}] EMO poll KeyError (attempt {attempt + 1}): key={ke}")
+                import traceback
+                traceback.print_exc()
+            except Exception as inner_e:
+                print(f"[{task_id}] EMO poll error (attempt {attempt + 1}): {type(inner_e).__name__}: {inner_e}")
+                import traceback
+                traceback.print_exc()
 
-            print(f"[{task_id}] EMO task timed out")
-            return None
+            await asyncio.sleep(poll_interval)
 
-        except Exception as e:
-            print(f"[{task_id}] EMO wait task error: {e}")
-            return None
+        print(f"[{task_id}] EMO task timed out after {max_attempts} attempts")
+        return None
 
     async def _download_video(self, video_url: str, output_path: str):
         """下载视频文件"""
+        print(f"Downloading video from: {video_url[:50]}...")
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.get(video_url)
             if response.status_code == 200:

@@ -219,7 +219,7 @@ class StoryGenerationRepository:
             "user_id": str(doc["user_id"]),
             "story_id": str(doc["story_id"]),
             "voice_profile_id": str(doc["voice_profile_id"]),
-            "avatar_profile_id": str(doc["avatar_profile_id"]),
+            "avatar_profile_id": str(doc["avatar_profile_id"]) if doc.get("avatar_profile_id") else None,
             "status": doc["status"],
             "progress": doc["progress"],
             "current_step": doc["current_step"],

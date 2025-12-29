@@ -151,6 +151,15 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     from core.config.settings import get_settings
     settings = get_settings()
 
+    # 调试：记录异常详情
+    import traceback
+    with open("debug_exception.log", "a") as f:
+        f.write(f"\n\n{'='*50}\n")
+        f.write(f"[Exception] {type(exc).__name__}: {exc}\n")
+        f.write(f"URL: {request.url}\n")
+        f.write(f"Method: {request.method}\n")
+        f.write(f"Traceback:\n{traceback.format_exc()}\n")
+
     message = str(exc) if settings.DEBUG else "服务器内部错误"
 
     return JSONResponse(
