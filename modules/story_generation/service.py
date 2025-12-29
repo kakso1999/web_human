@@ -396,7 +396,7 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] Voice profile not found")
                 return None
 
-            voice_id = profile.get("cosyvoice_voice_id")
+            voice_id = profile.get("voice_id")  # 数据库字段名是 voice_id
             if not voice_id:
                 logger.error(f"[{job_id}] No voice_id in profile")
                 return None
