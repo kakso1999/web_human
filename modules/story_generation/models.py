@@ -18,7 +18,8 @@ class StoryJobDocument:
         voice_profile_id: str,
         avatar_profile_id: str,
         original_video_url: str,
-        replace_all_voice: bool = True
+        replace_all_voice: bool = True,
+        full_video: bool = False
     ) -> dict:
         """创建新任务文档"""
         now = datetime.utcnow()
@@ -38,6 +39,7 @@ class StoryJobDocument:
             # 输入
             "original_video_url": original_video_url,
             "replace_all_voice": replace_all_voice,
+            "full_video": full_video,  # 是否生成完整视频
 
             # 中间产物
             "muted_video_url": None,           # 静音视频

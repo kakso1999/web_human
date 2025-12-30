@@ -73,7 +73,8 @@ class StoryGenerationService:
         story_id: str,
         voice_profile_id: str,
         avatar_profile_id: str,
-        replace_all_voice: bool = True
+        replace_all_voice: bool = True,
+        full_video: bool = False
     ) -> Dict[str, Any]:
         """创建故事生成任务"""
         # 获取故事信息
@@ -95,7 +96,8 @@ class StoryGenerationService:
             voice_profile_id=voice_profile_id,
             avatar_profile_id=avatar_profile_id,
             original_video_url=video_url,
-            replace_all_voice=replace_all_voice
+            replace_all_voice=replace_all_voice,
+            full_video=full_video
         )
 
         # 启动异步处理
@@ -206,10 +208,19 @@ class StoryGenerationService:
             video_segments = self._split_into_chunks(subtitles, max_duration=30.0)
             logger.info(f"[{job_id}] Split into {len(video_segments)} video segments")
 
-            # 测试阶段：只处理前2个片段
-            MAX_SEGMENTS_FOR_TEST = 2
-            segments_to_process = video_segments[:MAX_SEGMENTS_FOR_TEST]
-            logger.info(f"[{job_id}] Processing first {len(segments_to_process)} segments for testing")
+            # 获取任务配置，检查是否生成完整视频
+            job = await self.repository.get_job(job_id)
+            full_video = job.get("full_video", False) if job else False
+
+            if full_video:
+                # 生成完整视频：处理所有片段
+                segments_to_process = video_segments
+                logger.info(f"[{job_id}] Full video mode: processing all {len(segments_to_process)} segments")
+            else:
+                # 默认模式：只处理前2个片段
+                MAX_SEGMENTS_DEFAULT = 2
+                segments_to_process = video_segments[:MAX_SEGMENTS_DEFAULT]
+                logger.info(f"[{job_id}] Preview mode: processing first {len(segments_to_process)} segments")
 
             # Step 5-6: 对每个片段生成克隆语音和数字人
             await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 20)

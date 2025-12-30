@@ -35,6 +35,7 @@ class CreateStoryJobRequest(BaseModel):
     voice_profile_id: str = Field(..., description="声音档案 ID")
     avatar_profile_id: str = Field(..., description="头像档案 ID")
     replace_all_voice: bool = Field(default=True, description="是否替换全部人声")
+    full_video: bool = Field(default=False, description="是否生成完整视频，默认只生成前2个片段")
 
 
 class UpdateSubtitleSelectionRequest(BaseModel):

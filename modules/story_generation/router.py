@@ -35,25 +35,11 @@ async def create_job(
     4. 生成克隆语音
     5. 生成数字人视频
     6. 合成最终视频
+
+    参数：
+    - full_video: 默认 False 只生成前2个片段预览，设为 True 生成完整视频
     """
-    # 立即写入调试日志（函数入口）
-    import datetime as dt
-    with open("debug_create_job.log", "a") as f:
-        f.write(f"\n\n{'='*50}\n")
-        f.write(f"[{dt.datetime.now()}] === FUNCTION ENTRY ===\n")
-        f.write(f"  user_id type: {type(user_id)}, value: '{user_id}'\n")
-        f.write(f"  request type: {type(request)}\n")
-        f.flush()
-
-    # 写入调试日志到文件
-    with open("debug_create_job.log", "a") as f:
-        f.write(f"\n[{__import__('datetime').datetime.now()}] create_job called\n")
-        f.write(f"  user_id: {user_id}\n")
-        f.write(f"  story_id: {request.story_id}\n")
-        f.write(f"  voice_profile_id: '{request.voice_profile_id}'\n")
-        f.write(f"  avatar_profile_id: '{request.avatar_profile_id}'\n")
-
-    print(f"[DEBUG] create_job called: user_id={user_id}, story_id={request.story_id}, voice_profile_id={request.voice_profile_id}, avatar_profile_id={request.avatar_profile_id}")
+    logger.info(f"create_job called: user_id={user_id}, story_id={request.story_id}, full_video={request.full_video}")
     service = get_story_generation_service()
 
     try:
@@ -62,29 +48,22 @@ async def create_job(
             story_id=request.story_id,
             voice_profile_id=request.voice_profile_id,
             avatar_profile_id=request.avatar_profile_id,
-            replace_all_voice=request.replace_all_voice
+            replace_all_voice=request.replace_all_voice,
+            full_video=request.full_video
         )
-        print(f"[DEBUG] create_job success: {result}")
+        logger.info(f"create_job success: {result}")
         return {
             "code": 0,
             "message": "Job created successfully",
             "data": result
         }
     except ValueError as e:
-        with open("debug_create_job.log", "a") as f:
-            f.write(f"  ValueError: {e}\n")
-        print(f"[DEBUG] create_job ValueError: {e}")
         logger.error(f"ValueError in create_job: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
-        with open("debug_create_job.log", "a") as f:
-            f.write(f"  Exception: {e}\n")
-            f.write(f"  Traceback:\n{traceback.format_exc()}\n")
-        print(f"[DEBUG] create_job Exception: {e}")
-        print(traceback.format_exc())
         logger.error(f"Exception in create_job: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(

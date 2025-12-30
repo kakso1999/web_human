@@ -30,7 +30,8 @@ class StoryGenerationRepository:
         voice_profile_id: str,
         avatar_profile_id: str,
         original_video_url: str,
-        replace_all_voice: bool = True
+        replace_all_voice: bool = True,
+        full_video: bool = False
     ) -> str:
         """创建新任务"""
         doc = StoryJobDocument.create(
@@ -39,7 +40,8 @@ class StoryGenerationRepository:
             voice_profile_id=voice_profile_id,
             avatar_profile_id=avatar_profile_id,
             original_video_url=original_video_url,
-            replace_all_voice=replace_all_voice
+            replace_all_voice=replace_all_voice,
+            full_video=full_video
         )
         result = await self.jobs_collection.insert_one(doc)
         return str(result.inserted_id)
@@ -237,7 +239,8 @@ class StoryGenerationRepository:
             "updated_at": doc["updated_at"],
             "completed_at": doc.get("completed_at"),
             "error": doc.get("error"),
-            "replace_all_voice": doc.get("replace_all_voice", True)
+            "replace_all_voice": doc.get("replace_all_voice", True),
+            "full_video": doc.get("full_video", False)
         }
 
     def _serialize_subtitle(self, doc: Dict[str, Any]) -> Dict[str, Any]:
