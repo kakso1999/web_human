@@ -95,6 +95,38 @@ echobot/
 │   │   ├── repository.py
 │   │   └── models.py
 │   │
+│   ├── voice_clone/                # 声音克隆模块
+│   │   ├── __init__.py
+│   │   ├── router.py               # 声音克隆 API
+│   │   ├── schemas.py
+│   │   ├── service.py              # CosyVoice TTS 集成
+│   │   ├── repository.py
+│   │   └── models.py
+│   │
+│   ├── digital_human/              # 数字人模块
+│   │   ├── __init__.py
+│   │   ├── router.py               # 数字人 API
+│   │   ├── schemas.py
+│   │   ├── service.py              # EMO 悦动人像集成
+│   │   ├── repository.py
+│   │   └── models.py
+│   │
+│   ├── story_generation/           # 故事生成模块
+│   │   ├── __init__.py
+│   │   ├── router.py               # 故事生成 API
+│   │   ├── schemas.py
+│   │   ├── service.py              # 视频处理 + 合成
+│   │   ├── repository.py
+│   │   └── models.py
+│   │
+│   ├── audiobook/                  # 有声书模块
+│   │   ├── __init__.py
+│   │   ├── router.py               # 有声书 API
+│   │   ├── schemas.py
+│   │   ├── service.py              # TTS 生成有声书
+│   │   ├── repository.py
+│   │   └── models.py
+│   │
 │   └── admin/                      # 管理后台模块
 │       ├── __init__.py
 │       ├── router.py
@@ -278,6 +310,101 @@ modules/{module_name}/
   user_agent: String,
   details: Object,
   created_at: Date
+}
+```
+
+### 6.6 voice_profiles 集合 (声音档案)
+
+```javascript
+{
+  _id: ObjectId,
+  user_id: ObjectId,
+  name: String,              // 声音名称，如：爸爸的声音
+  voice_id: String,          // CosyVoice 返回的 voice_id
+  reference_audio_url: String, // 参考音频 URL
+  preview_audio_url: String, // 预览音频 URL
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+### 6.7 avatar_profiles 集合 (头像档案)
+
+```javascript
+{
+  _id: ObjectId,
+  user_id: ObjectId,
+  name: String,              // 头像名称，如：爸爸的头像
+  image_url: String,         // 原始头像图片 URL
+  preview_video_url: String, // 预览视频 URL
+  face_bbox: [Number],       // 人脸检测框 [x1, y1, x2, y2]
+  ext_bbox: [Number],        // 扩展框
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+### 6.8 audiobook_stories 集合 (有声书故事模板)
+
+```javascript
+{
+  _id: ObjectId,
+  title: String,              // 故事标题 (中文)
+  title_en: String,           // 英文标题
+  content: String,            // 故事全文
+  language: String,           // "en" | "zh"
+  category: String,           // "fairy_tale" | "fable" | "adventure"
+  age_group: String,          // "3-5" | "5-8" | "8-12"
+  estimated_duration: Number, // 预估时长(秒)
+  thumbnail_url: String,      // 封面图
+  background_music_url: String, // 可选背景音乐
+  is_published: Boolean,
+  sort_order: Number,
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+### 6.9 audiobook_jobs 集合 (有声书生成任务)
+
+```javascript
+{
+  _id: ObjectId,
+  user_id: ObjectId,
+  story_id: ObjectId,
+  voice_profile_id: ObjectId,
+  status: String,             // pending | processing | completed | failed
+  progress: Number,           // 0-100
+  current_step: String,       // init | tts | mixing | completed
+  audio_url: String,          // 最终音频 URL
+  duration: Number,           // 实际时长
+  story_title: String,        // 缓存标题
+  voice_name: String,         // 缓存声音名称
+  created_at: Date,
+  completed_at: Date,
+  error: String
+}
+```
+
+### 6.10 story_generation_jobs 集合 (故事生成任务)
+
+```javascript
+{
+  _id: ObjectId,
+  user_id: ObjectId,
+  story_id: ObjectId,
+  voice_profile_id: ObjectId,
+  avatar_profile_id: ObjectId,
+  status: String,             // pending | processing | completed | failed
+  progress: Number,           // 0-100
+  current_step: String,       // extracting | separating | transcribing | cloning | generating | composing
+  replace_all_voice: Boolean, // 是否替换全部人声
+  full_video: Boolean,        // 是否生成完整视频
+  segments: Array,            // 分段信息
+  final_video_url: String,    // 最终视频 URL
+  created_at: Date,
+  completed_at: Date,
+  error: String
 }
 ```
 

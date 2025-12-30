@@ -1067,3 +1067,204 @@ async def upload_video(
 
     url = f"/uploads/videos/{filename}"
     return success_response({"url": url})
+
+
+# ========== 有声书管理 ==========
+
+@router.get("/audiobook/stories")
+async def list_audiobook_stories(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    language: Optional[str] = None,
+    category: Optional[str] = None,
+    is_published: Optional[bool] = None,
+    _=Depends(require_admin)
+):
+    """获取有声书故事列表（管理端）"""
+    from modules.audiobook.service import get_audiobook_service
+    from modules.audiobook.schemas import AudiobookStoryResponse
+
+    service = get_audiobook_service()
+    result = await service.list_stories(
+        page=page,
+        page_size=page_size,
+        language=language,
+        category=category,
+        published_only=False
+    )
+
+    return success_response({
+        "items": [
+            AudiobookStoryResponse(**story).model_dump()
+            for story in result["items"]
+        ],
+        "total": result["total"],
+        "page": result["page"],
+        "page_size": result["page_size"]
+    })
+
+
+@router.post("/audiobook/stories")
+async def create_audiobook_story(
+    title: str = Form(...),
+    title_en: str = Form(...),
+    content: str = Form(...),
+    language: str = Form("en"),
+    category: str = Form("fairy_tale"),
+    age_group: str = Form("5-8"),
+    thumbnail_url: Optional[str] = Form(None),
+    background_music_url: Optional[str] = Form(None),
+    is_published: bool = Form(True),
+    sort_order: int = Form(0),
+    _=Depends(require_admin)
+):
+    """创建有声书故事"""
+    from modules.audiobook.service import get_audiobook_service
+    from modules.audiobook.schemas import AudiobookStoryResponse
+
+    service = get_audiobook_service()
+    story_id = await service.create_story({
+        "title": title,
+        "title_en": title_en,
+        "content": content,
+        "language": language,
+        "category": category,
+        "age_group": age_group,
+        "thumbnail_url": thumbnail_url,
+        "background_music_url": background_music_url,
+        "is_published": is_published,
+        "sort_order": sort_order
+    })
+
+    story = await service.get_story(story_id)
+    return success_response(AudiobookStoryResponse(**story).model_dump())
+
+
+@router.get("/audiobook/stories/{story_id}")
+async def get_audiobook_story(
+    story_id: str,
+    _=Depends(require_admin)
+):
+    """获取有声书故事详情"""
+    from modules.audiobook.service import get_audiobook_service
+    from modules.audiobook.schemas import AudiobookStoryResponse
+    from fastapi import HTTPException
+
+    service = get_audiobook_service()
+    story = await service.get_story(story_id)
+
+    if not story:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    return success_response(AudiobookStoryResponse(**story).model_dump())
+
+
+@router.put("/audiobook/stories/{story_id}")
+async def update_audiobook_story(
+    story_id: str,
+    title: Optional[str] = Form(None),
+    title_en: Optional[str] = Form(None),
+    content: Optional[str] = Form(None),
+    language: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
+    age_group: Optional[str] = Form(None),
+    thumbnail_url: Optional[str] = Form(None),
+    background_music_url: Optional[str] = Form(None),
+    is_published: Optional[bool] = Form(None),
+    sort_order: Optional[int] = Form(None),
+    _=Depends(require_admin)
+):
+    """更新有声书故事"""
+    from modules.audiobook.service import get_audiobook_service
+    from modules.audiobook.schemas import AudiobookStoryResponse
+    from fastapi import HTTPException
+
+    service = get_audiobook_service()
+
+    update_data = {}
+    if title is not None:
+        update_data["title"] = title
+    if title_en is not None:
+        update_data["title_en"] = title_en
+    if content is not None:
+        update_data["content"] = content
+    if language is not None:
+        update_data["language"] = language
+    if category is not None:
+        update_data["category"] = category
+    if age_group is not None:
+        update_data["age_group"] = age_group
+    if thumbnail_url is not None:
+        update_data["thumbnail_url"] = thumbnail_url
+    if background_music_url is not None:
+        update_data["background_music_url"] = background_music_url
+    if is_published is not None:
+        update_data["is_published"] = is_published
+    if sort_order is not None:
+        update_data["sort_order"] = sort_order
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="没有要更新的数据")
+
+    success = await service.update_story(story_id, update_data)
+    if not success:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    story = await service.get_story(story_id)
+    return success_response(AudiobookStoryResponse(**story).model_dump())
+
+
+@router.delete("/audiobook/stories/{story_id}")
+async def delete_audiobook_story(
+    story_id: str,
+    _=Depends(require_admin)
+):
+    """删除有声书故事"""
+    from modules.audiobook.service import get_audiobook_service
+    from fastapi import HTTPException
+
+    service = get_audiobook_service()
+    success = await service.delete_story(story_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="故事不存在")
+
+    return success_response(message="删除成功")
+
+
+@router.get("/audiobook/jobs")
+async def list_audiobook_jobs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = None,
+    user_id: Optional[str] = None,
+    _=Depends(require_admin)
+):
+    """获取有声书生成任务列表（管理端）"""
+    from modules.audiobook.service import get_audiobook_service
+    from modules.audiobook.schemas import AdminAudiobookJobResponse
+
+    service = get_audiobook_service()
+    result = await service.list_all_jobs(
+        page=page,
+        page_size=page_size,
+        status=status,
+        user_id=user_id
+    )
+
+    user_repo = UserRepository()
+    items = []
+    for job in result["items"]:
+        job_data = AdminAudiobookJobResponse(**job).model_dump()
+        user = await user_repo.get_by_id(job.get("user_id"))
+        if user:
+            job_data["user_email"] = user.get("email")
+            job_data["user_nickname"] = user.get("nickname")
+        items.append(job_data)
+
+    return success_response({
+        "items": items,
+        "total": result["total"],
+        "page": result["page"],
+        "page_size": result["page_size"]
+    })

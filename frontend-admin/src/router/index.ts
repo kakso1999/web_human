@@ -41,6 +41,12 @@ const routes: RouteRecordRaw[] = [
     name: 'story-edit',
     component: () => import('../views/StoryEdit.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/audiobooks',
+    name: 'audiobooks',
+    component: () => import('../views/Audiobooks.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
