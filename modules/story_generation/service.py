@@ -583,7 +583,7 @@ class StoryGenerationService:
             if not output_path.exists():
                 return None
 
-            return str(output_path)
+            return str(output_path.resolve())
 
         except Exception as e:
             logger.error(f"[{job_id}] Extract video segment error: {e}")
@@ -695,7 +695,7 @@ class StoryGenerationService:
             if not output_path.exists():
                 return None
 
-            return str(output_path)
+            return str(output_path.resolve())
 
         except Exception as e:
             logger.error(f"[{job_id}] Composite segment PIP error: {e}")
@@ -745,7 +745,7 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] FFmpeg audio composite error: {stderr.decode()[:300]}")
                 return None
 
-            return str(output_path) if output_path.exists() else None
+            return str(output_path.resolve()) if output_path.exists() else None
 
         except Exception as e:
             logger.error(f"[{job_id}] Composite segment audio error: {e}")
@@ -764,11 +764,13 @@ class StoryGenerationService:
                 # 只有一个片段，直接上传
                 return await self._upload_to_media_bed(segment_paths[0])
 
-            # 创建拼接列表文件
+            # 创建拼接列表文件（使用绝对路径，正斜杠）
             concat_list_path = self.upload_dir / f"{job_id}_concat_list.txt"
-            with open(concat_list_path, 'w') as f:
+            with open(concat_list_path, 'w', encoding='utf-8') as f:
                 for path in segment_paths:
-                    f.write(f"file '{path}'\n")
+                    # 转换为绝对路径，使用正斜杠（FFmpeg 兼容）
+                    abs_path = str(Path(path).resolve()).replace('\\', '/')
+                    f.write(f"file '{abs_path}'\n")
 
             output_path = self.upload_dir / f"{job_id}_final.mp4"
 
