@@ -1,6 +1,6 @@
 """
-Voice Clone Router - API Endpoints
-语音克隆相关的 API 接口
+Voice Clone 模块 - API 路由
+语音克隆相关接口，支持家长声音克隆和声音档案管理
 """
 
 import asyncio
@@ -27,15 +27,35 @@ from .schemas import (
 from .preset_stories import get_all_stories, get_story_by_id
 from .service import voice_clone_service, voice_clone_tasks
 
-router = APIRouter(prefix="/voice-clone", tags=["Voice Clone"])
+router = APIRouter(prefix="/voice-clone", tags=["语音克隆"])
 
 
-@router.get("/preset-stories")
+@router.get("/preset-stories", summary="获取预设故事列表")
 async def get_preset_stories():
     """
     获取预设故事列表
 
-    返回 5 个预设的英文故事，每个故事约 15 秒朗读时长
+    返回用于语音克隆测试的预设英文故事。
+    每个故事约15秒朗读时长，包含标题和预览文本。
+    用户需要朗读这些文本来训练声音克隆模型。
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "stories": [
+                {
+                    "id": "story_little_star",
+                    "title": "Twinkle Little Star",
+                    "preview_text": "Twinkle, twinkle, little star...",
+                    "estimated_duration": 15
+                }
+            ]
+        }
+    }
+    ```
     """
     stories = get_all_stories()
 
@@ -52,20 +72,40 @@ async def get_preset_stories():
     })
 
 
-@router.post("/preview")
+@router.post("/preview", summary="创建语音克隆预览任务")
 async def create_voice_clone_preview(
-    audio: UploadFile = File(..., description="参考音频文件 (10-15秒, WAV/MP3)"),
-    story_id: str = Form(..., description="预设故事ID"),
+    audio: UploadFile = File(..., description="参考音频文件，10-15秒清晰语音，WAV/MP3格式"),
+    story_id: str = Form(..., description="预设故事ID，从 /preset-stories 获取"),
     user_id: str = Depends(get_current_user_id)
 ):
     """
     创建语音克隆预览任务
 
-    上传参考音频并选择预设故事，后台生成克隆语音预览。
-    返回任务ID，前端轮询 GET /preview/{task_id} 获取状态。
+    上传家长的参考音频，系统会克隆音色并用该音色朗读选定的预设故事。
+    这是一个异步任务，创建后需要轮询 GET /preview/{task_id} 获取结果。
 
-    - **audio**: 参考音频文件 (10-15秒清晰语音, WAV/MP3格式)
-    - **story_id**: 预设故事ID (从 /preset-stories 获取)
+    **音频要求:**
+    - 时长：10-15秒
+    - 格式：WAV 或 MP3
+    - 内容：清晰的语音，无背景噪音
+    - 大小：最大10MB
+
+    **请求参数:**
+    - **audio**: 参考音频文件（multipart/form-data）
+    - **story_id**: 预设故事ID
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "task_id": "user123_1703980800000",
+            "status": "processing",
+            "message": "语音克隆任务已创建，请轮询获取状态"
+        }
+    }
+    ```
     """
 
     # 验证故事ID
@@ -113,7 +153,7 @@ async def create_voice_clone_preview(
     })
 
 
-@router.get("/preview/{task_id}")
+@router.get("/preview/{task_id}", summary="获取语音克隆任务状态")
 async def get_voice_clone_status(
     task_id: str,
     user_id: str = Depends(get_current_user_id)
@@ -121,15 +161,31 @@ async def get_voice_clone_status(
     """
     获取语音克隆任务状态
 
-    轮询此接口获取任务进度和结果。
+    轮询此接口获取任务的处理进度和结果。
+    建议轮询间隔：2-3秒。
 
-    - **task_id**: 任务ID (从 POST /preview 返回)
+    **路径参数:**
+    - **task_id**: 任务ID（从 POST /preview 返回）
 
-    返回:
-    - status: processing / completed / failed
-    - progress: 0-100 进度百分比
-    - audio_url: 完成后的音频URL (completed 状态时返回)
-    - error: 错误信息 (failed 状态时返回)
+    **任务状态说明:**
+    - **processing**: 处理中，继续轮询
+    - **completed**: 完成，audio_url 包含生成的音频
+    - **failed**: 失败，error 包含错误信息
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "task_id": "user123_1703980800000",
+            "status": "completed",
+            "progress": 100,
+            "audio_url": "/uploads/voice/user123/preview.mp3",
+            "error": null
+        }
+    }
+    ```
     """
 
     # 验证任务ID属于当前用户
@@ -154,7 +210,7 @@ async def get_voice_clone_status(
 
 # ==================== 声音档案管理 ====================
 
-@router.post("/profiles")
+@router.post("/profiles", summary="保存声音档案")
 async def save_voice_profile(
     request: SaveVoiceProfileRequest,
     user_id: str = Depends(get_current_user_id)
@@ -162,10 +218,30 @@ async def save_voice_profile(
     """
     保存声音档案
 
-    在语音克隆预览完成后，保存该声音到用户的声音库中。
+    语音克隆预览完成且满意后，将克隆的声音保存到声音档案库。
+    保存后可在故事生成、有声书等功能中重复使用该声音。
 
+    **请求参数:**
     - **task_id**: 已完成的语音克隆任务ID
-    - **name**: 声音名称（如：爸爸的声音、妈妈的声音）
+    - **name**: 声音名称，如：爸爸的声音、妈妈的声音
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "profile": {
+                "id": "694534f1c32ffbd6151c18a3",
+                "name": "爸爸的声音",
+                "voice_id": "cosyvoice-clone-xxxx",
+                "reference_audio_url": "/uploads/voice/user123/ref.wav",
+                "preview_audio_url": "/uploads/voice/user123/preview.mp3",
+                "created_at": "2025-01-01T12:00:00"
+            }
+        }
+    }
+    ```
     """
     profile = await voice_clone_service.save_voice_profile(
         user_id=user_id,
@@ -188,14 +264,36 @@ async def save_voice_profile(
     })
 
 
-@router.get("/profiles")
+@router.get("/profiles", summary="获取声音档案列表")
 async def get_voice_profiles(
     user_id: str = Depends(get_current_user_id)
 ):
     """
     获取用户的所有声音档案
 
-    返回用户保存的所有声音档案列表。
+    返回当前用户保存的所有声音档案列表。
+    这些声音可用于故事生成、有声书等功能。
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "profiles": [
+                {
+                    "id": "694534f1c32ffbd6151c18a3",
+                    "name": "爸爸的声音",
+                    "voice_id": "cosyvoice-clone-xxxx",
+                    "reference_audio_url": "/uploads/voice/user123/ref.wav",
+                    "preview_audio_url": "/uploads/voice/user123/preview.mp3",
+                    "created_at": "2025-01-01T12:00:00"
+                }
+            ],
+            "total": 2
+        }
+    }
+    ```
     """
     profiles = await voice_clone_service.get_user_voice_profiles(user_id)
 
@@ -215,12 +313,33 @@ async def get_voice_profiles(
     })
 
 
-@router.get("/profiles/{profile_id}")
+@router.get("/profiles/{profile_id}", summary="获取声音档案详情")
 async def get_voice_profile(
     profile_id: str,
     user_id: str = Depends(get_current_user_id)
 ):
-    """获取单个声音档案详情"""
+    """
+    获取单个声音档案详情
+
+    **路径参数:**
+    - **profile_id**: 声音档案ID
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "id": "694534f1c32ffbd6151c18a3",
+            "name": "爸爸的声音",
+            "voice_id": "cosyvoice-clone-xxxx",
+            "reference_audio_url": "/uploads/voice/user123/ref.wav",
+            "preview_audio_url": "/uploads/voice/user123/preview.mp3",
+            "created_at": "2025-01-01T12:00:00"
+        }
+    }
+    ```
+    """
     profile = await voice_clone_service.get_voice_profile(profile_id, user_id)
 
     if not profile:
@@ -238,13 +357,30 @@ async def get_voice_profile(
     )
 
 
-@router.put("/profiles/{profile_id}")
+@router.put("/profiles/{profile_id}", summary="更新声音档案")
 async def update_voice_profile(
     profile_id: str,
     request: UpdateVoiceProfileRequest,
     user_id: str = Depends(get_current_user_id)
 ):
-    """更新声音档案名称"""
+    """
+    更新声音档案名称
+
+    **路径参数:**
+    - **profile_id**: 声音档案ID
+
+    **请求参数:**
+    - **name**: 新的声音名称
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "更新成功",
+        "data": null
+    }
+    ```
+    """
     success = await voice_clone_service.update_voice_profile(
         profile_id=profile_id,
         user_id=user_id,
@@ -254,18 +390,34 @@ async def update_voice_profile(
     if not success:
         raise HTTPException(status_code=404, detail="声音档案不存在或无权修改")
 
-    return success_response({"message": "更新成功"})
+    return success_response(message="更新成功")
 
 
-@router.delete("/profiles/{profile_id}")
+@router.delete("/profiles/{profile_id}", summary="删除声音档案")
 async def delete_voice_profile(
     profile_id: str,
     user_id: str = Depends(get_current_user_id)
 ):
-    """删除声音档案"""
+    """
+    删除声音档案
+
+    删除后将无法恢复，且使用该声音的历史记录不受影响。
+
+    **路径参数:**
+    - **profile_id**: 声音档案ID
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "删除成功",
+        "data": null
+    }
+    ```
+    """
     success = await voice_clone_service.delete_voice_profile(profile_id, user_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="声音档案不存在或无权删除")
 
-    return success_response({"message": "删除成功"})
+    return success_response(message="删除成功")

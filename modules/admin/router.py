@@ -32,11 +32,33 @@ batch_upload_tasks = {}
 
 # ========== 数据统计 ==========
 
-@router.get("/dashboard")
+@router.get("/dashboard", summary="获取数据概览")
 async def get_dashboard(
     _=Depends(require_admin)
 ):
-    """获取数据概览"""
+    """
+    获取管理后台数据概览
+
+    返回平台核心统计数据，包括用户、故事、订阅等信息。
+    用于管理后台首页展示。
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "total_users": 1500,
+            "total_stories": 120,
+            "published_stories": 100,
+            "active_subscribers": 50,
+            "monthly_revenue": 0,
+            "recent_users": [...],
+            "recent_stories": [...]
+        }
+    }
+    ```
+    """
     user_repo = UserRepository()
     story_service = get_story_service()
 
@@ -90,16 +112,44 @@ async def get_dashboard(
 
 # ========== 用户管理 ==========
 
-@router.get("/users")
+@router.get("/users", summary="获取用户列表")
 async def list_users(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
-    role: Optional[str] = None,
-    is_active: Optional[bool] = None,
-    search: Optional[str] = None,
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量，最大100"),
+    role: Optional[str] = Query(None, description="角色筛选：user | subscriber | admin"),
+    is_active: Optional[bool] = Query(None, description="是否激活筛选"),
+    search: Optional[str] = Query(None, description="搜索关键词，匹配邮箱或昵称"),
     _=Depends(require_admin)
 ):
-    """获取用户列表"""
+    """
+    获取用户列表
+
+    支持分页、角色筛选、状态筛选和关键词搜索。
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "items": [
+                {
+                    "id": "6948bda91fd873cf81f5addd",
+                    "email": "user@example.com",
+                    "nickname": "小明",
+                    "role": "user",
+                    "subscription_plan": "free",
+                    "is_active": true,
+                    "created_at": "2025-01-01T12:00:00"
+                }
+            ],
+            "total": 100,
+            "page": 1,
+            "page_size": 20
+        }
+    }
+    ```
+    """
     user_repo = UserRepository()
 
     skip = (page - 1) * page_size
@@ -134,25 +184,41 @@ async def list_users(
     return paginate(items, total, page, page_size)
 
 
-@router.put("/users/{user_id}/status")
+@router.put("/users/{user_id}/status", summary="启用/禁用用户")
 async def update_user_status(
     user_id: str,
     is_active: bool,
     _=Depends(require_admin)
 ):
-    """启用/禁用用户"""
+    """
+    启用或禁用用户账号
+
+    **路径参数:**
+    - **user_id**: 用户ID
+
+    **查询参数:**
+    - **is_active**: true=启用, false=禁用
+    """
     user_repo = UserRepository()
     await user_repo.update(user_id, {"is_active": is_active})
     return success_response(message="更新成功")
 
 
-@router.put("/users/{user_id}/role")
+@router.put("/users/{user_id}/role", summary="修改用户角色")
 async def update_user_role(
     user_id: str,
     role: str,
     _=Depends(require_admin)
 ):
-    """修改用户角色"""
+    """
+    修改用户角色
+
+    **路径参数:**
+    - **user_id**: 用户ID
+
+    **查询参数:**
+    - **role**: 新角色，可选值：user | subscriber | admin
+    """
     if role not in ["user", "subscriber", "admin"]:
         return {"code": 10001, "message": "无效的角色", "data": None}
 
@@ -161,7 +227,7 @@ async def update_user_role(
     return success_response(message="更新成功")
 
 
-@router.get("/users/{user_id}")
+@router.get("/users/{user_id}", summary="获取用户详细信息")
 async def get_user_detail(
     user_id: str,
     _=Depends(require_admin)
@@ -169,7 +235,31 @@ async def get_user_detail(
     """
     获取用户详细信息
 
-    包含：基本信息、档案统计、最近活动
+    返回用户的完整信息，包括基本资料、档案统计和最近活动。
+
+    **路径参数:**
+    - **user_id**: 用户ID
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "id": "6948bda91fd873cf81f5addd",
+            "email": "user@example.com",
+            "nickname": "小明",
+            "role": "user",
+            "subscription": {"plan": "free"},
+            "is_active": true,
+            "stats": {
+                "voice_profiles": 2,
+                "avatar_profiles": 1,
+                "story_jobs": 5
+            }
+        }
+    }
+    ```
     """
     user_repo = UserRepository()
     user = await user_repo.get_by_id(user_id)
@@ -207,13 +297,13 @@ async def get_user_detail(
     })
 
 
-@router.get("/users/{user_id}/voice-profiles")
+@router.get("/users/{user_id}/voice-profiles", summary="获取用户声音档案")
 async def get_user_voice_profiles(
     user_id: str,
-    include_deleted: bool = False,
+    include_deleted: bool = Query(False, description="是否包含已删除的档案"),
     _=Depends(require_admin)
 ):
-    """获取用户的所有声音档案"""
+    """获取指定用户的所有声音档案"""
     profiles = await voice_profile_repository.get_by_user_id(user_id, include_deleted=include_deleted)
 
     items = []
@@ -234,13 +324,13 @@ async def get_user_voice_profiles(
     })
 
 
-@router.delete("/users/{user_id}/voice-profiles/{profile_id}")
+@router.delete("/users/{user_id}/voice-profiles/{profile_id}", summary="删除用户声音档案")
 async def delete_user_voice_profile(
     user_id: str,
     profile_id: str,
     _=Depends(require_admin)
 ):
-    """删除用户的声音档案"""
+    """管理员删除指定用户的声音档案"""
     # 验证档案属于该用户
     profile = await voice_profile_repository.get_by_id(profile_id)
     if not profile:
@@ -252,13 +342,13 @@ async def delete_user_voice_profile(
     return success_response(message="删除成功")
 
 
-@router.get("/users/{user_id}/avatar-profiles")
+@router.get("/users/{user_id}/avatar-profiles", summary="获取用户头像档案")
 async def get_user_avatar_profiles(
     user_id: str,
-    include_deleted: bool = False,
+    include_deleted: bool = Query(False, description="是否包含已删除的档案"),
     _=Depends(require_admin)
 ):
-    """获取用户的所有头像档案"""
+    """获取指定用户的所有头像档案"""
     profiles = await avatar_profile_repository.get_by_user_id(user_id, include_deleted=include_deleted)
 
     items = []
@@ -279,7 +369,7 @@ async def get_user_avatar_profiles(
     })
 
 
-@router.delete("/users/{user_id}/avatar-profiles/{profile_id}")
+@router.delete("/users/{user_id}/avatar-profiles/{profile_id}", summary="删除用户头像档案")
 async def delete_user_avatar_profile(
     user_id: str,
     profile_id: str,
@@ -297,7 +387,7 @@ async def delete_user_avatar_profile(
     return success_response(message="删除成功")
 
 
-@router.get("/users/{user_id}/story-jobs")
+@router.get("/users/{user_id}/story-jobs", summary="获取用户故事生成任务")
 async def get_user_story_jobs(
     user_id: str,
     page: int = Query(1, ge=1),
@@ -329,7 +419,7 @@ async def get_user_story_jobs(
 
 # ========== 分类管理 ==========
 
-@router.post("/categories")
+@router.post("/categories", summary="创建故事分类")
 async def create_category(
     data: CategoryCreate,
     story_service: StoryService = Depends(get_story_service),
@@ -340,7 +430,7 @@ async def create_category(
     return success_response(category.model_dump())
 
 
-@router.put("/categories/{category_id}")
+@router.put("/categories/{category_id}", summary="更新故事分类")
 async def update_category(
     category_id: str,
     data: CategoryCreate,
@@ -353,7 +443,7 @@ async def update_category(
     return success_response(category)
 
 
-@router.delete("/categories/{category_id}")
+@router.delete("/categories/{category_id}", summary="删除故事分类")
 async def delete_category(
     category_id: str,
     story_service: StoryService = Depends(get_story_service),
@@ -595,7 +685,7 @@ async def run_batch_upload(
 
 # ========== 故事管理 - 批量操作（必须在 {story_id} 路由之前） ==========
 
-@router.post("/stories/batch")
+@router.post("/stories/batch", summary="批量上传视频创建故事")
 async def batch_create_stories(
     background_tasks: BackgroundTasks,
     videos: List[UploadFile] = File(...),
@@ -659,7 +749,7 @@ async def batch_create_stories(
     })
 
 
-@router.get("/stories/batch/{batch_id}")
+@router.get("/stories/batch/{batch_id}", summary="获取批量上传任务状态")
 async def get_batch_status(
     batch_id: str,
     _=Depends(require_admin)
@@ -671,7 +761,7 @@ async def get_batch_status(
     return success_response(batch_upload_tasks[batch_id])
 
 
-@router.post("/stories/batch-publish")
+@router.post("/stories/batch-publish", summary="批量上架故事")
 async def batch_publish_stories(
     story_ids: List[str],
     _=Depends(require_admin)
@@ -699,7 +789,7 @@ async def batch_publish_stories(
     })
 
 
-@router.post("/stories/batch-unpublish")
+@router.post("/stories/batch-unpublish", summary="批量下架故事")
 async def batch_unpublish_stories(
     story_ids: List[str],
     _=Depends(require_admin)
@@ -727,7 +817,7 @@ async def batch_unpublish_stories(
     })
 
 
-@router.delete("/stories/batch")
+@router.delete("/stories/batch", summary="批量删除故事")
 async def batch_delete_stories(
     story_ids: List[str],
     _=Depends(require_admin)
@@ -757,7 +847,7 @@ async def batch_delete_stories(
 
 # ========== 故事管理 - 基本操作 ==========
 
-@router.get("/stories")
+@router.get("/stories", summary="获取故事列表（管理端）")
 async def list_stories_admin(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -798,7 +888,7 @@ async def list_stories_admin(
     return result
 
 
-@router.post("/stories")
+@router.post("/stories", summary="上传视频创建故事")
 async def create_story(
     background_tasks: BackgroundTasks,
     video: UploadFile = File(...),
@@ -879,7 +969,7 @@ async def create_story(
 
 # ========== 故事管理 - 单个操作（带 {story_id} 的路由必须在 batch 路由之后） ==========
 
-@router.get("/stories/{story_id}")
+@router.get("/stories/{story_id}", summary="获取故事详情")
 async def get_story_detail(
     story_id: str,
     story_service: StoryService = Depends(get_story_service),
@@ -912,7 +1002,7 @@ async def get_story_detail(
     })
 
 
-@router.put("/stories/{story_id}")
+@router.put("/stories/{story_id}", summary="更新故事信息")
 async def update_story(
     story_id: str,
     title: Optional[str] = Form(None),
@@ -990,7 +1080,7 @@ async def update_story(
     return success_response(story.model_dump())
 
 
-@router.delete("/stories/{story_id}")
+@router.delete("/stories/{story_id}", summary="删除故事")
 async def delete_story(
     story_id: str,
     story_service: StoryService = Depends(get_story_service),
@@ -1001,7 +1091,7 @@ async def delete_story(
     return success_response(message="删除成功")
 
 
-@router.post("/stories/{story_id}/publish")
+@router.post("/stories/{story_id}/publish", summary="发布故事")
 async def publish_story(
     story_id: str,
     story_service: StoryService = Depends(get_story_service),
@@ -1012,7 +1102,7 @@ async def publish_story(
     return success_response(message="发布成功")
 
 
-@router.post("/stories/{story_id}/unpublish")
+@router.post("/stories/{story_id}/unpublish", summary="下架故事")
 async def unpublish_story(
     story_id: str,
     story_service: StoryService = Depends(get_story_service),
@@ -1025,7 +1115,7 @@ async def unpublish_story(
 
 # ========== 文件上传 ==========
 
-@router.post("/upload/thumbnail")
+@router.post("/upload/thumbnail", summary="上传故事缩略图")
 async def upload_thumbnail(
     file: UploadFile = File(...),
     _=Depends(require_admin)
@@ -1047,7 +1137,7 @@ async def upload_thumbnail(
     return success_response({"url": url})
 
 
-@router.post("/upload/video")
+@router.post("/upload/video", summary="上传故事视频")
 async def upload_video(
     file: UploadFile = File(...),
     _=Depends(require_admin)
@@ -1071,7 +1161,7 @@ async def upload_video(
 
 # ========== 有声书管理 ==========
 
-@router.get("/audiobook/stories")
+@router.get("/audiobook/stories", summary="获取有声书故事列表（管理端）")
 async def list_audiobook_stories(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -1104,7 +1194,7 @@ async def list_audiobook_stories(
     })
 
 
-@router.post("/audiobook/stories")
+@router.post("/audiobook/stories", summary="创建有声书故事")
 async def create_audiobook_story(
     title: str = Form(...),
     title_en: str = Form(...),
@@ -1140,7 +1230,7 @@ async def create_audiobook_story(
     return success_response(AudiobookStoryResponse(**story).model_dump())
 
 
-@router.get("/audiobook/stories/{story_id}")
+@router.get("/audiobook/stories/{story_id}", summary="获取有声书故事详情")
 async def get_audiobook_story(
     story_id: str,
     _=Depends(require_admin)
@@ -1159,7 +1249,7 @@ async def get_audiobook_story(
     return success_response(AudiobookStoryResponse(**story).model_dump())
 
 
-@router.put("/audiobook/stories/{story_id}")
+@router.put("/audiobook/stories/{story_id}", summary="更新有声书故事")
 async def update_audiobook_story(
     story_id: str,
     title: Optional[str] = Form(None),
@@ -1214,7 +1304,7 @@ async def update_audiobook_story(
     return success_response(AudiobookStoryResponse(**story).model_dump())
 
 
-@router.delete("/audiobook/stories/{story_id}")
+@router.delete("/audiobook/stories/{story_id}", summary="删除有声书故事")
 async def delete_audiobook_story(
     story_id: str,
     _=Depends(require_admin)
@@ -1232,7 +1322,7 @@ async def delete_audiobook_story(
     return success_response(message="删除成功")
 
 
-@router.get("/audiobook/jobs")
+@router.get("/audiobook/jobs", summary="获取有声书任务列表（管理端）")
 async def list_audiobook_jobs(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
