@@ -1,76 +1,105 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '../api'
-
-interface User {
-  id: string
-  email: string
-  nickname: string
-  avatar_url: string | null
-  role: string
-  is_active: boolean
-}
+import type { User } from '@/types'
+import { authApi, userApi } from '@/api'
 
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
-  const token = ref<string | null>(localStorage.getItem('access_token'))
+  const loading = ref(false)
 
-  const isLoggedIn = computed(() => !!token.value)
+  const isLoggedIn = computed(() => !!user.value)
+  const isAdmin = computed(() => user.value?.role === 'admin')
+  const isSubscriber = computed(() => user.value?.role === 'subscriber' || user.value?.role === 'admin')
 
-  async function login(email: string, password: string) {
-    const response = await api.post('/auth/login', { email, password })
-    const { user: userData, tokens } = response.data.data
-
-    user.value = userData
-    token.value = tokens.access_token
-    localStorage.setItem('access_token', tokens.access_token)
-
-    return userData
-  }
-
-  async function register(email: string, password: string, nickname: string) {
-    const response = await api.post('/auth/register', { email, password, nickname })
-    const { user: userData, tokens } = response.data.data
-
-    user.value = userData
-    token.value = tokens.access_token
-    localStorage.setItem('access_token', tokens.access_token)
-
-    return userData
-  }
-
-  async function fetchProfile() {
-    if (!token.value) return null
-
-    try {
-      const response = await api.get('/user/profile')
-      user.value = response.data.data
-      return user.value
-    } catch (error) {
-      logout()
-      return null
+  // 初始化用户信息
+  async function init() {
+    const token = localStorage.getItem('access_token')
+    if (token && !user.value) {
+      try {
+        await fetchProfile()
+      } catch (e) {
+        logout()
+      }
     }
   }
 
-  function logout() {
-    user.value = null
-    token.value = null
-    localStorage.removeItem('access_token')
+  // 获取用户信息
+  async function fetchProfile() {
+    loading.value = true
+    try {
+      const res = await userApi.getProfile()
+      user.value = res.data
+    } finally {
+      loading.value = false
+    }
   }
 
-  async function updateProfile(data: Partial<User>) {
-    const response = await api.put('/user/profile', data)
-    user.value = response.data.data
-    return user.value
+  // 登录
+  async function login(email: string, password: string) {
+    loading.value = true
+    try {
+      const res = await authApi.login({ email, password })
+      localStorage.setItem('access_token', res.data.access_token)
+      localStorage.setItem('refresh_token', res.data.refresh_token)
+      user.value = res.data.user
+      return res
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 注册
+  async function register(email: string, password: string, nickname: string) {
+    loading.value = true
+    try {
+      const res = await authApi.register({ email, password, nickname })
+      localStorage.setItem('access_token', res.data.access_token)
+      localStorage.setItem('refresh_token', res.data.refresh_token)
+      user.value = res.data.user
+      return res
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // Google 登录
+  async function googleLogin(code: string) {
+    loading.value = true
+    try {
+      const res = await authApi.googleAuth(code)
+      localStorage.setItem('access_token', res.data.access_token)
+      localStorage.setItem('refresh_token', res.data.refresh_token)
+      user.value = res.data.user
+      return res
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 登出
+  function logout() {
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    user.value = null
+  }
+
+  // 更新用户信息
+  async function updateProfile(data: { nickname?: string }) {
+    const res = await userApi.updateProfile(data)
+    user.value = res.data
   }
 
   return {
     user,
-    token,
+    loading,
     isLoggedIn,
+    isAdmin,
+    isSubscriber,
+    init,
+    fetchProfile,
     login,
     register,
-    fetchProfile,
+    googleLogin,
     logout,
     updateProfile
   }

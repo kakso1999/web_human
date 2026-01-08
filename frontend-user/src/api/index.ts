@@ -1,63 +1,252 @@
-import axios from 'axios'
+import { http } from './http'
+import type {
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+  User,
+  Category,
+  Story,
+  PaginatedResponse,
+  VoiceProfile,
+  AvatarProfile,
+  VoiceCloneTask,
+  DigitalHumanTask,
+  StoryGenerationJob,
+  AudiobookStory,
+  AudiobookJob,
+  PresetStory
+} from '@/types'
 
-const api = axios.create({
-  baseURL: '/api/v1',
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-})
-
-// 请求拦截器
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
+// ==================== 认证 API ====================
+export const authApi = {
+  login(data: LoginRequest) {
+    return http.post<AuthResponse>('/auth/login', data)
   },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
 
-// 响应拦截器
-api.interceptors.response.use(
-  (response) => {
-    return response
+  register(data: RegisterRequest) {
+    return http.post<AuthResponse>('/auth/register', data)
   },
-  async (error) => {
-    const originalRequest = error.config
 
-    // Token 过期，尝试刷新
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
+  googleAuth(code: string) {
+    return http.post<AuthResponse>('/auth/google', { code })
+  },
 
-      try {
-        const refreshToken = localStorage.getItem('refresh_token')
-        if (refreshToken) {
-          const response = await axios.post(
-            '/api/v1/auth/refresh',
-            { refresh_token: refreshToken }
-          )
+  getGoogleAuthUrl() {
+    return http.get<{ url: string }>('/auth/google/url')
+  },
 
-          const newToken = response.data.data.access_token
-          localStorage.setItem('access_token', newToken)
+  refresh(refreshToken: string) {
+    return http.post<{ access_token: string }>('/auth/refresh', { refresh_token: refreshToken })
+  },
 
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-          return api(originalRequest)
-        }
-      } catch (refreshError) {
-        // 刷新失败，清除 token 并跳转登录
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
-      }
-    }
-
-    return Promise.reject(error)
+  logout() {
+    return http.post('/auth/logout')
   }
-)
+}
 
-export default api
+// ==================== 用户 API ====================
+export const userApi = {
+  getProfile() {
+    return http.get<User>('/user/profile')
+  },
+
+  updateProfile(data: { nickname?: string }) {
+    return http.put<User>('/user/profile', data)
+  },
+
+  uploadAvatar(file: File) {
+    return http.upload<User>('/user/avatar', file, 'file')
+  },
+
+  changePassword(oldPassword: string, newPassword: string) {
+    return http.post('/user/change-password', {
+      old_password: oldPassword,
+      new_password: newPassword
+    })
+  }
+}
+
+// ==================== 故事 API ====================
+export const storyApi = {
+  getCategories() {
+    return http.get<Category[]>('/stories/categories')
+  },
+
+  getStories(params?: {
+    page?: number
+    page_size?: number
+    category_id?: string
+    search?: string
+  }) {
+    return http.get<PaginatedResponse<Story>>('/stories', { params })
+  },
+
+  getRandomStories(limit = 10) {
+    return http.get<Story[]>('/stories/random', { params: { limit } })
+  },
+
+  getStory(id: string) {
+    return http.get<Story>(`/stories/${id}`)
+  },
+
+  recordView(id: string) {
+    return http.post(`/stories/${id}/view`)
+  }
+}
+
+// ==================== 语音克隆 API ====================
+export const voiceCloneApi = {
+  getPresetStories() {
+    return http.get<{ stories: PresetStory[] }>('/voice-clone/preset-stories')
+  },
+
+  createPreview(audio: File, storyId: string) {
+    const formData = new FormData()
+    formData.append('audio', audio)
+    formData.append('story_id', storyId)
+    return http.post<VoiceCloneTask>('/voice-clone/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  getPreviewStatus(taskId: string) {
+    return http.get<VoiceCloneTask>(`/voice-clone/preview/${taskId}`)
+  },
+
+  getProfiles() {
+    return http.get<{ profiles: VoiceProfile[]; total: number }>('/voice-clone/profiles')
+  },
+
+  getProfile(id: string) {
+    return http.get<VoiceProfile>(`/voice-clone/profiles/${id}`)
+  },
+
+  saveProfile(taskId: string, name: string) {
+    return http.post<{ profile: VoiceProfile }>('/voice-clone/profiles', {
+      task_id: taskId,
+      name
+    })
+  },
+
+  updateProfile(id: string, name: string) {
+    return http.put(`/voice-clone/profiles/${id}`, { name })
+  },
+
+  deleteProfile(id: string) {
+    return http.delete(`/voice-clone/profiles/${id}`)
+  }
+}
+
+// ==================== 数字人 API ====================
+export const digitalHumanApi = {
+  createPreview(image: File, options?: {
+    audio?: File
+    voice_profile_id?: string
+    preview_text?: string
+  }) {
+    const formData = new FormData()
+    formData.append('image', image)
+    if (options?.audio) {
+      formData.append('audio', options.audio)
+    }
+    if (options?.voice_profile_id) {
+      formData.append('voice_profile_id', options.voice_profile_id)
+    }
+    if (options?.preview_text) {
+      formData.append('preview_text', options.preview_text)
+    }
+    return http.post<DigitalHumanTask>('/digital-human/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+
+  getPreviewStatus(taskId: string) {
+    return http.get<DigitalHumanTask>(`/digital-human/preview/${taskId}`)
+  },
+
+  getProfiles() {
+    return http.get<{ profiles: AvatarProfile[]; total: number }>('/digital-human/profiles')
+  },
+
+  getProfile(id: string) {
+    return http.get<AvatarProfile>(`/digital-human/profiles/${id}`)
+  },
+
+  saveProfile(taskId: string, name: string) {
+    return http.post<{ profile: AvatarProfile }>('/digital-human/profiles', {
+      task_id: taskId,
+      name
+    })
+  },
+
+  updateProfile(id: string, name: string) {
+    return http.put(`/digital-human/profiles/${id}`, { name })
+  },
+
+  deleteProfile(id: string) {
+    return http.delete(`/digital-human/profiles/${id}`)
+  }
+}
+
+// ==================== 故事生成 API ====================
+export const storyGenerationApi = {
+  createJob(data: {
+    story_id: string
+    voice_profile_id: string
+    avatar_profile_id: string
+    replace_all_voice?: boolean
+    full_video?: boolean
+  }) {
+    return http.post<StoryGenerationJob>('/story-generation/jobs', data)
+  },
+
+  getJobs(params?: { page?: number; page_size?: number }) {
+    return http.get<PaginatedResponse<StoryGenerationJob>>('/story-generation/jobs', { params })
+  },
+
+  getJob(id: string) {
+    return http.get<StoryGenerationJob>(`/story-generation/jobs/${id}`)
+  },
+
+  getSubtitles(jobId: string) {
+    return http.get<{ subtitles: any[] }>(`/story-generation/jobs/${jobId}/subtitles`)
+  },
+
+  updateSubtitleSelection(jobId: string, selectedIndices: number[]) {
+    return http.put(`/story-generation/jobs/${jobId}/subtitles`, {
+      selected_indices: selectedIndices
+    })
+  }
+}
+
+// ==================== 有声书 API ====================
+export const audiobookApi = {
+  getStories(params?: {
+    page?: number
+    page_size?: number
+    language?: string
+    category?: string
+    age_group?: string
+  }) {
+    return http.get<PaginatedResponse<AudiobookStory>>('/audiobook/stories', { params })
+  },
+
+  getStory(id: string) {
+    return http.get<AudiobookStory>(`/audiobook/stories/${id}`)
+  },
+
+  createJob(storyId: string, voiceProfileId: string) {
+    return http.post<AudiobookJob>('/audiobook/jobs', {
+      story_id: storyId,
+      voice_profile_id: voiceProfileId
+    })
+  },
+
+  getJobs(params?: { page?: number; page_size?: number }) {
+    return http.get<PaginatedResponse<AudiobookJob>>('/audiobook/jobs', { params })
+  },
+
+  getJob(id: string) {
+    return http.get<AudiobookJob>(`/audiobook/jobs/${id}`)
+  }
+}

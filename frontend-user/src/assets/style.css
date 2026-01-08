@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 自定义基础样式 */
+@layer base {
+  html {
+    font-family: 'Nunito', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-white text-gray-800 antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold;
+  }
+}
+
+/* 自定义组件样式 */
+@layer components {
+  /* 主按钮 */
+  .btn-primary {
+    @apply inline-flex items-center justify-center px-6 py-3
+           bg-primary-500 text-white font-semibold rounded-full
+           shadow-button transition-all duration-300
+           hover:bg-primary-600 hover:shadow-lg hover:-translate-y-0.5
+           active:translate-y-0 active:shadow-md;
+  }
+
+  /* 次要按钮 */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center px-6 py-3
+           bg-white text-primary-500 font-semibold rounded-full
+           border-2 border-primary-500 transition-all duration-300
+           hover:bg-primary-50;
+  }
+
+  /* 强调按钮 - 天蓝色 */
+  .btn-sky {
+    @apply inline-flex items-center justify-center px-6 py-3
+           bg-sky-500 text-white font-semibold rounded-full
+           shadow-lg transition-all duration-300
+           hover:bg-sky-600 hover:-translate-y-0.5;
+  }
+
+  /* 卡片 */
+  .card {
+    @apply bg-white rounded-3xl shadow-soft p-6 transition-all duration-300
+           hover:shadow-card hover:-translate-y-1;
+  }
+
+  /* 故事卡片 */
+  .story-card {
+    @apply relative overflow-hidden rounded-2xl bg-white shadow-soft
+           transition-all duration-300 cursor-pointer
+           hover:shadow-card hover:-translate-y-2;
+  }
+
+  .story-card-image {
+    @apply w-full aspect-[4/3] object-cover;
+  }
+
+  .story-card-overlay {
+    @apply absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent
+           opacity-0 transition-opacity duration-300;
+  }
+
+  .story-card:hover .story-card-overlay {
+    @apply opacity-100;
+  }
+
+  /* 输入框 */
+  .input {
+    @apply w-full px-4 py-3 rounded-xl border-2 border-gray-200
+           transition-all duration-300 outline-none
+           focus:border-primary-500 focus:ring-4 focus:ring-primary-100;
+  }
+
+  /* 渐变背景 */
+  .bg-gradient-hero {
+    background: linear-gradient(135deg, #0095D9 0%, #23586A 100%);
+  }
+
+  .bg-gradient-warm {
+    background: linear-gradient(135deg, #FF6B9D 0%, #FFD93D 100%);
+  }
+
+  /* 装饰元素动画 */
+  .decoration {
+    @apply absolute pointer-events-none;
+  }
+
+  .decoration-float {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  .decoration-float-delay {
+    animation: float 4s ease-in-out infinite 1s;
+  }
+}
+
+/* 自定义工具类 */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-500 to-sky-500;
+  }
+
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-coral-500 to-sunny-500;
+  }
+}
