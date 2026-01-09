@@ -126,7 +126,7 @@ const startGeneration = async () => {
       currentTask.value = job.current_step
 
       if (job.status === 'completed') {
-        resultVideoUrl.value = job.output_video_url || ''
+        resultVideoUrl.value = job.final_video_url || ''
         generating.value = false
       } else if (job.status === 'failed') {
         alert('Generation failed: ' + job.error)

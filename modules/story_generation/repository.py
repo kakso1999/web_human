@@ -217,7 +217,7 @@ class StoryGenerationRepository:
         if not doc:
             return None
         return {
-            "job_id": str(doc["_id"]),
+            "id": str(doc["_id"]),
             "user_id": str(doc["user_id"]),
             "story_id": str(doc["story_id"]),
             "voice_profile_id": str(doc["voice_profile_id"]),

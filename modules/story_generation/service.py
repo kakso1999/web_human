@@ -103,7 +103,7 @@ class StoryGenerationService:
         # 启动异步处理
         asyncio.create_task(self._process_job(job_id))
 
-        return {"job_id": job_id, "status": "pending"}
+        return {"id": job_id, "status": "pending"}
 
     async def get_job(self, user_id: str, job_id: str) -> Optional[Dict[str, Any]]:
         """获取任务详情"""

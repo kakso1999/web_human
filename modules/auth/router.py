@@ -67,11 +67,7 @@ async def login(
 
     return success_response({
         "user": user.model_dump(),
-        "tokens": {
-            "access_token": tokens.access_token,
-            "token_type": tokens.token_type,
-            "expires_in": tokens.expires_in
-        }
+        "tokens": tokens.model_dump()
     })
 
 
@@ -147,11 +143,7 @@ async def google_auth(
 
     return success_response({
         "user": user.model_dump(),
-        "tokens": {
-            "access_token": tokens.access_token,
-            "token_type": tokens.token_type,
-            "expires_in": tokens.expires_in
-        }
+        "tokens": tokens.model_dump()
     })
 
 

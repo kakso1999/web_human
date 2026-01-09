@@ -39,11 +39,16 @@ export interface RegisterRequest {
   nickname: string
 }
 
-export interface AuthResponse {
+export interface TokenResponse {
   access_token: string
   refresh_token: string
   token_type: string
+  expires_in: number
+}
+
+export interface AuthResponse {
   user: User
+  tokens: TokenResponse
 }
 
 // 故事相关
@@ -126,7 +131,7 @@ export interface StoryGenerationJob {
   status: 'pending' | 'processing' | 'completed' | 'failed'
   progress: number
   current_step: string
-  output_video_url?: string
+  final_video_url?: string
   error?: string
   created_at: string
   completed_at?: string

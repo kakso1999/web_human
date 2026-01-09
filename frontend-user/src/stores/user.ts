@@ -39,8 +39,8 @@ export const useUserStore = defineStore('user', () => {
     loading.value = true
     try {
       const res = await authApi.login({ email, password })
-      localStorage.setItem('access_token', res.data.access_token)
-      localStorage.setItem('refresh_token', res.data.refresh_token)
+      localStorage.setItem('access_token', res.data.tokens.access_token)
+      localStorage.setItem('refresh_token', res.data.tokens.refresh_token)
       user.value = res.data.user
       return res
     } finally {
@@ -53,8 +53,8 @@ export const useUserStore = defineStore('user', () => {
     loading.value = true
     try {
       const res = await authApi.register({ email, password, nickname })
-      localStorage.setItem('access_token', res.data.access_token)
-      localStorage.setItem('refresh_token', res.data.refresh_token)
+      localStorage.setItem('access_token', res.data.tokens.access_token)
+      localStorage.setItem('refresh_token', res.data.tokens.refresh_token)
       user.value = res.data.user
       return res
     } finally {
@@ -67,8 +67,8 @@ export const useUserStore = defineStore('user', () => {
     loading.value = true
     try {
       const res = await authApi.googleAuth(code)
-      localStorage.setItem('access_token', res.data.access_token)
-      localStorage.setItem('refresh_token', res.data.refresh_token)
+      localStorage.setItem('access_token', res.data.tokens.access_token)
+      localStorage.setItem('refresh_token', res.data.tokens.refresh_token)
       user.value = res.data.user
       return res
     } finally {

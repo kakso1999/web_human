@@ -57,7 +57,7 @@ class SubtitleItem(BaseModel):
 
 class StoryJobResponse(BaseModel):
     """故事生成任务响应"""
-    job_id: str
+    id: str = Field(..., description="任务ID")
     story_id: str
     status: StoryJobStatus
     progress: int = Field(default=0, description="进度 0-100")
