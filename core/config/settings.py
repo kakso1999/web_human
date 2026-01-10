@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # 比 ngrok 更稳定可靠
     MEDIA_BED_URL: str = "http://112.124.70.81"
 
+    # HuggingFace Token (Pyannote 说话人分割)
+    HF_TOKEN: Optional[str] = None
+
     class Config:
         env_file = ".env"
         case_sensitive = True

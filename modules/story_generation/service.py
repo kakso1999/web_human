@@ -71,12 +71,30 @@ class StoryGenerationService:
         self,
         user_id: str,
         story_id: str,
-        voice_profile_id: str,
-        avatar_profile_id: str,
+        mode: str = "single",
+        voice_profile_id: Optional[str] = None,
+        avatar_profile_id: Optional[str] = None,
+        speaker_configs: Optional[List[Dict[str, Any]]] = None,
         replace_all_voice: bool = True,
         full_video: bool = False
     ) -> Dict[str, Any]:
-        """创建故事生成任务"""
+        """
+        创建故事生成任务
+
+        支持两种模式：
+        1. 单人模式 (single)：使用 voice_profile_id 和 avatar_profile_id，一个声音一个数字人
+        2. 双人模式 (dual)：使用 speaker_configs 数组，为每个说话人配置声音和头像
+
+        Args:
+            user_id: 用户ID
+            story_id: 故事ID
+            mode: 生成模式 - 'single' 或 'dual'
+            voice_profile_id: 声音档案ID（单人模式）
+            avatar_profile_id: 头像档案ID（单人模式）
+            speaker_configs: 说话人配置列表（双人模式）
+            replace_all_voice: 是否替换全部人声
+            full_video: 是否生成完整视频
+        """
         # 获取故事信息
         from modules.story.repository import StoryRepository
         story_repo = StoryRepository()
@@ -89,20 +107,48 @@ class StoryGenerationService:
         if not video_url:
             raise ValueError(f"Story has no video: {story_id}")
 
+        # 根据模式验证参数
+        if mode == "single":
+            # 单人模式：需要 voice_profile_id 和 avatar_profile_id
+            if not voice_profile_id:
+                raise ValueError("voice_profile_id is required for single mode")
+            if not avatar_profile_id:
+                raise ValueError("avatar_profile_id is required for single mode")
+            # 验证单人模式分析是否完成
+            single_analysis = story.get("single_speaker_analysis")
+            if not single_analysis or not single_analysis.get("is_analyzed"):
+                raise ValueError("Story single speaker analysis is not completed")
+        elif mode == "dual":
+            # 双人模式：需要 speaker_configs
+            if not speaker_configs or len(speaker_configs) == 0:
+                raise ValueError("speaker_configs is required for dual mode")
+            # 验证双人模式分析是否完成
+            dual_analysis = story.get("dual_speaker_analysis")
+            if not dual_analysis or not dual_analysis.get("is_analyzed"):
+                raise ValueError("Story dual speaker analysis is not completed")
+        else:
+            raise ValueError(f"Invalid mode: {mode}. Must be 'single' or 'dual'")
+
         # 创建任务
         job_id = await self.repository.create_job(
             user_id=user_id,
             story_id=story_id,
+            mode=mode,
             voice_profile_id=voice_profile_id,
             avatar_profile_id=avatar_profile_id,
+            speaker_configs=speaker_configs,
             original_video_url=video_url,
             replace_all_voice=replace_all_voice,
             full_video=full_video
         )
 
-        # 启动异步处理
-        asyncio.create_task(self._process_job(job_id))
+        # 根据模式启动对应的处理流程
+        if mode == "dual":
+            asyncio.create_task(self._process_job_multi_speaker(job_id))
+        else:
+            asyncio.create_task(self._process_job(job_id))
 
+        logger.info(f"[{job_id}] Job created: mode={mode}, full_video={full_video}")
         return {"id": job_id, "status": "pending"}
 
     async def get_job(self, user_id: str, job_id: str) -> Optional[Dict[str, Any]]:
@@ -141,6 +187,86 @@ class StoryGenerationService:
             "subtitles": subtitles,
             "total_duration": total_duration
         }
+
+    # ===================== 说话人分析 =====================
+
+    async def analyze_story_audio_task(
+        self,
+        story_id: str,
+        video_path: str,
+        num_speakers: Optional[int] = None
+    ):
+        """
+        后台任务：分析故事音频
+
+        同时执行两种分析模式：
+        1. 单人模式：人声整体 + 背景音（不进行说话人分割）
+        2. 双人模式：说话人1 + 说话人2 + 背景音（最多2个说话人）
+
+        管理员上传故事后自动调用，准备好两种模式的数据。
+        用户生成时可以选择使用哪种模式。
+        """
+        from modules.story.repository import StoryRepository
+        from modules.voice_separation import get_voice_separation_service
+
+        story_repo = StoryRepository()
+
+        try:
+            logger.info(f"[{story_id}] Starting both-modes speaker analysis")
+
+            # 获取语音分离服务
+            voice_service = get_voice_separation_service()
+
+            # 执行两种模式的分析
+            result = await voice_service.analyze_both_modes(
+                story_id=story_id,
+                video_path=video_path
+            )
+
+            single_analysis = result.get("single_speaker_analysis")
+            dual_analysis = result.get("dual_speaker_analysis")
+
+            # 构建更新数据
+            update_data = {
+                "is_analyzed": True,
+                "analysis_error": None
+            }
+
+            # 单人模式分析结果
+            if single_analysis:
+                update_data["single_speaker_analysis"] = single_analysis
+
+            # 双人模式分析结果
+            if dual_analysis:
+                update_data["dual_speaker_analysis"] = dual_analysis
+                # 保持旧字段兼容性
+                update_data["speaker_count"] = len(dual_analysis.get("speakers", []))
+                update_data["speakers"] = dual_analysis.get("speakers", [])
+                update_data["background_audio_url"] = dual_analysis.get("background_url")
+                update_data["diarization_segments"] = dual_analysis.get("diarization_segments", [])
+
+            # 如果两种分析都失败，记录错误
+            errors = result.get("errors")
+            if errors and not single_analysis and not dual_analysis:
+                update_data["is_analyzed"] = False
+                update_data["analysis_error"] = "; ".join(errors)
+
+            await story_repo.update(story_id, update_data)
+
+            single_ok = "OK" if single_analysis else "FAILED"
+            dual_ok = "OK" if dual_analysis else "FAILED"
+            logger.info(f"[{story_id}] Both-modes analysis completed. Single: {single_ok}, Dual: {dual_ok}")
+
+        except Exception as e:
+            logger.error(f"[{story_id}] Speaker analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # 记录错误
+            await story_repo.update(story_id, {
+                "is_analyzed": False,
+                "analysis_error": str(e)
+            })
 
     # ===================== 任务处理流程 =====================
 
@@ -1629,9 +1755,10 @@ class StoryGenerationService:
             filter_parts.append(f"[{i}:a]adelay={delay_ms}:all=1[a{i}]")
             mix_inputs.append(f"[a{i}]")
 
-        # 混合所有音轨
+        # 混合所有音轨，然后用 apad 填充到目标时长
         # normalize=0 防止音量降低，dropout_transition=0 防止音量渐变
-        mix_filter = "".join(mix_inputs) + f"amix=inputs={len(segments)}:duration=longest:dropout_transition=0:normalize=0[out]"
+        # apad=whole_dur 确保输出音频达到完整视频时长（amix duration=longest 只取最长输入，不够目标时长）
+        mix_filter = "".join(mix_inputs) + f"amix=inputs={len(segments)}:duration=longest:dropout_transition=0:normalize=0,apad=whole_dur={total_duration}[out]"
         full_filter = ";".join(filter_parts) + ";" + mix_filter
 
         cmd = [
@@ -2223,6 +2350,863 @@ class StoryGenerationService:
             logger.error(f"[{job_id}] PIP composite error: {e}")
             import traceback
             traceback.print_exc()
+            return None
+
+    # ===================== 多说话人任务处理 =====================
+
+    async def _process_job_multi_speaker(self, job_id: str):
+        """
+        处理任务 - 多说话人版本
+
+        流程：
+        1. 获取故事的说话人信息
+        2. 提取音频、分离人声
+        3. 语音识别获取字幕（带说话人标签）
+        4. 对每个启用的说话人：
+           - 获取该说话人的音频片段
+           - 生成克隆语音
+           - 生成数字人视频
+        5. 合成最终视频：
+           - 双数字人画中画（左上角 + 右上角）
+           - 混合所有克隆语音 + 背景音
+        """
+        logger.info(f"[{job_id}] Starting multi-speaker story generation job")
+
+        try:
+            # 更新状态为处理中
+            await self._update_progress(job_id, StoryJobStep.INIT, 0)
+
+            # 获取任务信息
+            job = await self.repository.get_job(job_id)
+            if not job:
+                raise Exception("Job not found")
+
+            story_id = job.get("story_id")
+            speaker_configs = job.get("speaker_configs", [])
+
+            # 获取故事信息（包含说话人分析结果）
+            from modules.story.repository import StoryRepository
+            story_repo = StoryRepository()
+            story = await story_repo.get_by_id(story_id)
+
+            if not story:
+                raise Exception(f"Story not found: {story_id}")
+
+            if not story.get("is_analyzed"):
+                raise Exception("Story has not been analyzed for speakers")
+
+            # 获取说话人信息和分割片段
+            speakers = story.get("speakers", [])
+            diarization_segments = story.get("diarization_segments", [])
+            background_audio_url = story.get("background_audio_url")
+
+            logger.info(f"[{job_id}] Story has {len(speakers)} speakers, {len(diarization_segments)} segments")
+
+            # Step 1: 提取音频
+            await self._update_progress(job_id, StoryJobStep.EXTRACTING_AUDIO, 5)
+            audio_url = await self._extract_audio(job_id)
+            if not audio_url:
+                raise Exception("Failed to extract audio from video")
+
+            # 获取原视频时长（用于后续音频对齐）
+            video_path = self.upload_dir / f"{job_id}_video.mp4"
+            video_duration = await self._get_video_duration(str(video_path))
+            logger.info(f"[{job_id}] Original video duration: {video_duration:.2f}s")
+
+            # Step 2: 语音识别（获取完整字幕）
+            await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 15)
+            transcription = await self._transcribe_audio(job_id, audio_url)
+            if not transcription:
+                raise Exception("Failed to transcribe audio")
+
+            # 保存字幕
+            words = transcription.get("words", [])
+            if words:
+                subtitles = self._words_to_segments(words, max_gap=0.7, max_segment_duration=10.0)
+            else:
+                segments = transcription.get("segments", [])
+                subtitles = [
+                    {
+                        "index": i + 1,
+                        "start_time": seg.get("start", 0),
+                        "end_time": seg.get("end", 0),
+                        "text": seg.get("text", "").strip()
+                    }
+                    for i, seg in enumerate(segments)
+                ]
+
+            # 为字幕分配说话人标签
+            subtitles = self._assign_speaker_to_subtitles(subtitles, diarization_segments)
+            await self.repository.save_subtitles(job_id, subtitles)
+
+            logger.info(f"[{job_id}] Subtitles with speakers: {len(subtitles)} items")
+
+            # Step 3: 为每个说话人生成克隆语音和数字人
+            await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 25)
+
+            # 过滤启用的说话人配置
+            enabled_configs = [cfg for cfg in speaker_configs if cfg.get("enabled", True)]
+            logger.info(f"[{job_id}] Processing {len(enabled_configs)} enabled speakers")
+
+            speaker_results = {}
+            for i, config in enumerate(enabled_configs):
+                speaker_id = config.get("speaker_id")
+                voice_profile_id = config.get("voice_profile_id")
+                avatar_profile_id = config.get("avatar_profile_id")
+
+                logger.info(f"[{job_id}] Processing speaker {speaker_id}: voice={voice_profile_id}, avatar={avatar_profile_id}")
+
+                # 更新进度
+                progress = 25 + int((i / len(enabled_configs)) * 50)
+                await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
+
+                # 获取该说话人的字幕片段
+                speaker_subtitles = [s for s in subtitles if s.get("speaker") == speaker_id]
+                if not speaker_subtitles:
+                    logger.warning(f"[{job_id}] No subtitles found for speaker {speaker_id}")
+                    continue
+
+                logger.info(f"[{job_id}] Speaker {speaker_id} has {len(speaker_subtitles)} subtitle segments")
+
+                result = {"speaker_id": speaker_id}
+
+                # 生成克隆语音（如果指定了声音档案）
+                if voice_profile_id:
+                    cloned_audio_url = await self._generate_cloned_voice_for_speaker(
+                        job_id, speaker_id, speaker_subtitles, voice_profile_id, video_duration
+                    )
+                    result["cloned_audio_url"] = cloned_audio_url
+                    logger.info(f"[{job_id}] Speaker {speaker_id} cloned audio: {cloned_audio_url}")
+
+                # 生成数字人视频（如果指定了头像档案且有克隆语音）
+                if avatar_profile_id and result.get("cloned_audio_url"):
+                    digital_human_url = await self._generate_digital_human_for_speaker(
+                        job_id, speaker_id, result["cloned_audio_url"], avatar_profile_id
+                    )
+                    result["digital_human_video_url"] = digital_human_url
+                    logger.info(f"[{job_id}] Speaker {speaker_id} digital human: {digital_human_url}")
+
+                speaker_results[speaker_id] = result
+
+            # 保存说话人结果
+            await self.repository.update_job_field(job_id, "speaker_results", speaker_results)
+
+            # Step 4: 合成最终视频
+            await self._update_progress(job_id, StoryJobStep.COMPOSITING_VIDEO, 85)
+
+            # 收集所有克隆语音和数字人视频
+            cloned_audios = []
+            digital_humans = []
+            for speaker_id, result in speaker_results.items():
+                if result.get("cloned_audio_url"):
+                    cloned_audios.append({
+                        "speaker_id": speaker_id,
+                        "audio_url": result["cloned_audio_url"]
+                    })
+                if result.get("digital_human_video_url"):
+                    digital_humans.append({
+                        "speaker_id": speaker_id,
+                        "video_url": result["digital_human_video_url"]
+                    })
+
+            logger.info(f"[{job_id}] Compositing: {len(cloned_audios)} audios, {len(digital_humans)} digital humans")
+
+            # 合成最终视频
+            final_video_url = await self._composite_multi_speaker_video(
+                job_id,
+                digital_humans,
+                cloned_audios,
+                background_audio_url
+            )
+
+            if not final_video_url:
+                raise Exception("Failed to composite final video")
+
+            # 完成
+            await self.repository.update_job_status(
+                job_id,
+                StoryJobStatus.COMPLETED,
+                progress=100,
+                current_step=StoryJobStep.COMPLETED
+            )
+            await self.repository.update_job_field(job_id, "final_video_url", final_video_url)
+
+            logger.info(f"[{job_id}] Multi-speaker story generation completed!")
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Multi-speaker story generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+            await self.repository.update_job_status(
+                job_id,
+                StoryJobStatus.FAILED,
+                error=str(e)
+            )
+
+    def _assign_speaker_to_subtitles(
+        self,
+        subtitles: List[Dict[str, Any]],
+        diarization_segments: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        为字幕分配说话人标签
+
+        根据时间重叠来匹配字幕和说话人分割片段
+        """
+        if not diarization_segments:
+            return subtitles
+
+        for subtitle in subtitles:
+            sub_start = subtitle.get("start_time", 0)
+            sub_end = subtitle.get("end_time", 0)
+            sub_mid = (sub_start + sub_end) / 2
+
+            # 找到与字幕中点时间重叠的说话人片段
+            best_speaker = None
+            for seg in diarization_segments:
+                seg_start = seg.get("start", 0)
+                seg_end = seg.get("end", 0)
+                if seg_start <= sub_mid <= seg_end:
+                    best_speaker = seg.get("speaker")
+                    break
+
+            if best_speaker:
+                subtitle["speaker"] = best_speaker
+
+        return subtitles
+
+    async def _generate_cloned_voice_for_speaker(
+        self,
+        job_id: str,
+        speaker_id: str,
+        subtitles: List[Dict[str, Any]],
+        voice_profile_id: str,
+        video_duration: float = 0
+    ) -> Optional[str]:
+        """
+        为指定说话人生成克隆语音
+
+        只处理属于该说话人的字幕片段
+        重要：使用原视频时长确保音轨对齐
+        """
+        logger.info(f"[{job_id}] Generating cloned voice for speaker {speaker_id}, {len(subtitles)} subtitles")
+
+        try:
+            # 获取声音档案
+            from modules.voice_clone.repository import voice_profile_repository
+            profile = await voice_profile_repository.get_by_id(voice_profile_id)
+
+            if not profile:
+                logger.error(f"[{job_id}] Voice profile not found: {voice_profile_id}")
+                return None
+
+            voice_id = profile.get("voice_id")
+            if not voice_id:
+                logger.error(f"[{job_id}] No voice_id in profile")
+                return None
+
+            logger.info(f"[{job_id}] Using voice_id: {voice_id} for speaker {speaker_id}")
+
+            # 使用原视频时长，如果未提供则从字幕计算
+            if not subtitles:
+                return None
+
+            if video_duration <= 0:
+                # 后备方案：从字幕计算（但这不是理想的）
+                video_duration = subtitles[-1]["end_time"]
+                logger.warning(f"[{job_id}] No video_duration provided, using subtitle end time: {video_duration}")
+
+            total_duration = video_duration
+            logger.info(f"[{job_id}] Speaker {speaker_id} audio will be {total_duration:.2f}s (full video length)")
+
+            # 生成每个字幕的语音，使用绝对时间位置
+            segment_files = []
+            for i, sub in enumerate(subtitles):
+                text = sub.get("text", "").strip()
+                if not text:
+                    continue
+
+                # 使用绝对时间（相对于视频开始）
+                abs_start_time = sub.get("start_time", 0)
+
+                logger.info(f"[{job_id}] Speaker {speaker_id} Sub{i}: '{text[:20]}...' at {abs_start_time:.2f}s")
+
+                # 调用 TTS
+                audio_content = await self._call_cosyvoice_tts(voice_id, text)
+                if not audio_content:
+                    logger.warning(f"[{job_id}] TTS failed for subtitle {i}")
+                    continue
+
+                # 保存临时文件
+                temp_file = self.upload_dir / f"{job_id}_{speaker_id}_sub{i}.mp3"
+                with open(temp_file, 'wb') as f:
+                    f.write(audio_content)
+
+                segment_files.append({
+                    "path": str(temp_file),
+                    "start_time": abs_start_time  # 使用绝对时间
+                })
+
+            if not segment_files:
+                logger.error(f"[{job_id}] No audio segments generated for speaker {speaker_id}")
+                return None
+
+            # 拼接所有字幕音频
+            final_audio_path = self.upload_dir / f"{job_id}_{speaker_id}_cloned.mp3"
+            success = await self._concat_audio_segments(
+                job_id,
+                segment_files,
+                str(final_audio_path),
+                total_duration
+            )
+
+            if not success:
+                logger.error(f"[{job_id}] Failed to concat audio for speaker {speaker_id}")
+                return None
+
+            # 上传到图床
+            audio_url = await self._upload_to_media_bed(str(final_audio_path))
+            logger.info(f"[{job_id}] Speaker {speaker_id} cloned voice uploaded: {audio_url}")
+
+            return audio_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Generate cloned voice for speaker {speaker_id} error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _generate_digital_human_for_speaker(
+        self,
+        job_id: str,
+        speaker_id: str,
+        audio_url: str,
+        avatar_profile_id: str
+    ) -> Optional[str]:
+        """为指定说话人生成数字人视频"""
+        logger.info(f"[{job_id}] Generating digital human for speaker {speaker_id}")
+
+        try:
+            # 获取头像档案
+            from modules.digital_human.repository import avatar_profile_repository
+            profile = await avatar_profile_repository.get_by_id(avatar_profile_id)
+
+            if not profile:
+                logger.error(f"[{job_id}] Avatar profile not found: {avatar_profile_id}")
+                return None
+
+            image_url = profile.get("image_url")
+            face_bbox = profile.get("face_bbox")
+            ext_bbox = profile.get("ext_bbox")
+
+            if not image_url or not face_bbox or not ext_bbox:
+                logger.error(f"[{job_id}] Invalid avatar profile for speaker {speaker_id}")
+                return None
+
+            # 截取音频前55秒（EMO限制）
+            truncated_audio_url = await self._truncate_audio_for_emo(
+                job_id, audio_url, max_duration=55
+            )
+            if not truncated_audio_url:
+                truncated_audio_url = audio_url
+
+            # 调用 EMO API
+            from modules.digital_human.service import DigitalHumanService
+            dh_service = DigitalHumanService()
+
+            emo_task_id = await dh_service._create_emo_task(
+                task_id=f"{job_id}_{speaker_id}",
+                image_url=image_url,
+                audio_url=truncated_audio_url,
+                face_bbox=face_bbox,
+                ext_bbox=ext_bbox
+            )
+
+            if not emo_task_id:
+                logger.error(f"[{job_id}] Failed to create EMO task for speaker {speaker_id}")
+                return None
+
+            # 等待任务完成
+            video_url = await dh_service._wait_for_emo_task(
+                task_id=f"{job_id}_{speaker_id}",
+                emo_task_id=emo_task_id,
+                max_attempts=180,
+                poll_interval=5
+            )
+
+            logger.info(f"[{job_id}] Speaker {speaker_id} digital human: {video_url}")
+            return video_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Generate digital human for speaker {speaker_id} error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _composite_multi_speaker_video(
+        self,
+        job_id: str,
+        digital_humans: List[Dict[str, Any]],
+        cloned_audios: List[Dict[str, Any]],
+        background_audio_url: Optional[str]
+    ) -> Optional[str]:
+        """
+        合成多说话人最终视频
+
+        双数字人画中画布局：
+        - 第一个数字人：左上角
+        - 第二个数字人：右上角
+
+        音频混合：
+        - 所有克隆语音混合
+        - 添加背景音（如果有）
+        """
+        logger.info(f"[{job_id}] Compositing multi-speaker video: {len(digital_humans)} digital humans")
+
+        try:
+            import httpx
+
+            # 准备文件路径
+            video_path = self.upload_dir / f"{job_id}_video.mp4"
+            output_path = self.upload_dir / f"{job_id}_final_multi.mp4"
+
+            if not video_path.exists():
+                logger.error(f"[{job_id}] Original video not found")
+                return None
+
+            # 下载数字人视频
+            dh_video_paths = []
+            for i, dh in enumerate(digital_humans[:2]):  # 最多处理2个数字人
+                dh_video_path = self.upload_dir / f"{job_id}_dh_{dh['speaker_id']}.mp4"
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.get(dh["video_url"])
+                    if response.status_code == 200:
+                        with open(dh_video_path, 'wb') as f:
+                            f.write(response.content)
+                        dh_video_paths.append(str(dh_video_path))
+                    else:
+                        logger.warning(f"[{job_id}] Failed to download digital human video for {dh['speaker_id']}")
+
+            # 下载克隆语音
+            audio_paths = []
+            for audio in cloned_audios:
+                audio_path = self.upload_dir / f"{job_id}_audio_{audio['speaker_id']}.mp3"
+                audio_url = audio["audio_url"]
+
+                # 处理本地路径
+                if audio_url.startswith('/uploads/') or audio_url.startswith('uploads/'):
+                    local_audio_path = audio_url.lstrip('/')
+                    if local_audio_path.startswith('uploads//'):
+                        local_audio_path = local_audio_path.replace('uploads//', 'uploads/')
+
+                    if Path(local_audio_path).exists():
+                        import shutil
+                        shutil.copy(local_audio_path, str(audio_path))
+                        audio_paths.append(str(audio_path))
+                        logger.info(f"[{job_id}] Copied local audio: {local_audio_path}")
+                    else:
+                        logger.warning(f"[{job_id}] Local audio not found: {local_audio_path}")
+                elif audio_url.startswith('http'):
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.get(audio_url)
+                        if response.status_code == 200:
+                            with open(audio_path, 'wb') as f:
+                                f.write(response.content)
+                            audio_paths.append(str(audio_path))
+
+            # 下载背景音（如果有）
+            bg_audio_path = None
+            if background_audio_url:
+                bg_audio_path = self.upload_dir / f"{job_id}_background.wav"
+
+                # 处理本地路径（/uploads/... 或相对路径）
+                if background_audio_url.startswith('/uploads/') or background_audio_url.startswith('uploads/'):
+                    # 本地路径，直接复制文件
+                    local_bg_path = background_audio_url.lstrip('/')
+                    if local_bg_path.startswith('uploads//'):
+                        local_bg_path = local_bg_path.replace('uploads//', 'uploads/')
+
+                    if Path(local_bg_path).exists():
+                        import shutil
+                        shutil.copy(local_bg_path, str(bg_audio_path))
+                        logger.info(f"[{job_id}] Copied local background audio: {local_bg_path}")
+                    else:
+                        logger.warning(f"[{job_id}] Local background audio not found: {local_bg_path}")
+                        bg_audio_path = None
+                elif background_audio_url.startswith('http'):
+                    # HTTP URL，下载
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        response = await client.get(background_audio_url)
+                        if response.status_code == 200:
+                            with open(bg_audio_path, 'wb') as f:
+                                f.write(response.content)
+                        else:
+                            logger.warning(f"[{job_id}] Failed to download background audio")
+                            bg_audio_path = None
+                else:
+                    logger.warning(f"[{job_id}] Unknown background audio URL format: {background_audio_url}")
+                    bg_audio_path = None
+
+            # 获取原视频尺寸
+            probe_cmd = [
+                'ffprobe', '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height',
+                '-of', 'csv=p=0',
+                str(video_path)
+            ]
+            returncode, stdout, stderr = await run_ffmpeg_command(probe_cmd)
+
+            try:
+                width, height = map(int, stdout.decode().strip().split(','))
+            except:
+                width, height = 1920, 1080
+
+            logger.info(f"[{job_id}] Original video: {width}x{height}")
+
+            # 计算数字人画中画尺寸和位置
+            pip_width = width // 5  # 占 1/5 宽度
+            pip_margin = 20
+
+            # 构建 FFmpeg 命令
+            if len(dh_video_paths) == 0:
+                # 无数字人，仅替换音频
+                final_video_url = await self._composite_audio_only_multi(
+                    job_id, str(video_path), audio_paths, bg_audio_path, str(output_path)
+                )
+            elif len(dh_video_paths) == 1:
+                # 单数字人（左上角）
+                final_video_url = await self._composite_single_pip_multi(
+                    job_id, str(video_path), dh_video_paths[0],
+                    audio_paths, bg_audio_path, str(output_path),
+                    pip_width, pip_margin, "left"
+                )
+            else:
+                # 双数字人（左上角 + 右上角）
+                final_video_url = await self._composite_dual_pip(
+                    job_id, str(video_path), dh_video_paths[0], dh_video_paths[1],
+                    audio_paths, bg_audio_path, str(output_path),
+                    width, height, pip_width, pip_margin
+                )
+
+            return final_video_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Multi-speaker composite error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _composite_dual_pip(
+        self,
+        job_id: str,
+        video_path: str,
+        dh_video_path1: str,
+        dh_video_path2: str,
+        audio_paths: List[str],
+        bg_audio_path: Optional[str],
+        output_path: str,
+        width: int,
+        height: int,
+        pip_width: int,
+        pip_margin: int
+    ) -> Optional[str]:
+        """
+        双数字人画中画合成
+
+        布局：
+        - 数字人1：左上角
+        - 数字人2：右上角
+        """
+        logger.info(f"[{job_id}] Creating dual PIP composite")
+
+        try:
+            # 计算位置
+            pip1_x = pip_margin  # 左上角
+            pip1_y = pip_margin
+            pip2_x = width - pip_width - pip_margin  # 右上角
+            pip2_y = pip_margin
+
+            # 构建输入列表
+            inputs = [
+                '-i', video_path,
+                '-i', dh_video_path1,
+                '-i', dh_video_path2
+            ]
+
+            # 添加音频输入
+            audio_input_start = 3
+            for audio_path in audio_paths:
+                inputs.extend(['-i', audio_path])
+
+            if bg_audio_path:
+                inputs.extend(['-i', str(bg_audio_path)])
+
+            # 构建视频滤镜：双数字人叠加
+            video_filter = (
+                f"[1:v]scale={pip_width}:-1[pip1];"
+                f"[2:v]scale={pip_width}:-1[pip2];"
+                f"[0:v][pip1]overlay={pip1_x}:{pip1_y}:shortest=1[tmp];"
+                f"[tmp][pip2]overlay={pip2_x}:{pip2_y}:shortest=1[outv]"
+            )
+
+            # 构建音频滤镜：混合所有克隆语音
+            audio_inputs = []
+            for i in range(len(audio_paths)):
+                audio_inputs.append(f"[{audio_input_start + i}:a]")
+
+            if len(audio_inputs) == 1:
+                audio_filter = f"{audio_inputs[0]}aresample=44100[voices]"
+            else:
+                audio_filter = (
+                    f"{''.join(audio_inputs)}amix=inputs={len(audio_inputs)}:"
+                    f"duration=longest:dropout_transition=0:normalize=0[voices]"
+                )
+
+            # 添加背景音（如果有）
+            if bg_audio_path:
+                bg_input_idx = audio_input_start + len(audio_paths)
+                audio_filter += (
+                    f";[voices][{bg_input_idx}:a]amix=inputs=2:"
+                    f"duration=longest:weights=1 0.3:normalize=0[outa]"
+                )
+                final_audio = "[outa]"
+            else:
+                final_audio = "[voices]"
+
+            # 完整滤镜
+            filter_complex = f"{video_filter};{audio_filter}"
+
+            cmd = [
+                'ffmpeg', '-y',
+                *inputs,
+                '-filter_complex', filter_complex,
+                '-map', '[outv]',
+                '-map', final_audio,
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-shortest',
+                output_path
+            ]
+
+            logger.info(f"[{job_id}] Running FFmpeg dual PIP...")
+            returncode, stdout, stderr = await run_ffmpeg_command(cmd)
+
+            if returncode != 0:
+                logger.error(f"[{job_id}] FFmpeg dual PIP error: {stderr.decode()[:500]}")
+                return None
+
+            if not Path(output_path).exists():
+                return None
+
+            # 上传最终视频
+            final_url = await self._upload_to_media_bed(output_path)
+            logger.info(f"[{job_id}] Dual PIP video uploaded: {final_url}")
+
+            return final_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Dual PIP composite error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _composite_single_pip_multi(
+        self,
+        job_id: str,
+        video_path: str,
+        dh_video_path: str,
+        audio_paths: List[str],
+        bg_audio_path: Optional[str],
+        output_path: str,
+        pip_width: int,
+        pip_margin: int,
+        position: str = "left"
+    ) -> Optional[str]:
+        """单数字人画中画合成（多说话人模式）"""
+        logger.info(f"[{job_id}] Creating single PIP composite (multi-speaker)")
+
+        try:
+            # 计算位置
+            if position == "left":
+                pip_x = pip_margin
+            else:
+                # 需要获取视频宽度
+                probe_cmd = [
+                    'ffprobe', '-v', 'error',
+                    '-select_streams', 'v:0',
+                    '-show_entries', 'stream=width',
+                    '-of', 'default=noprint_wrappers=1:nokey=1',
+                    video_path
+                ]
+                returncode, stdout, stderr = await run_ffmpeg_command(probe_cmd)
+                width = int(stdout.decode().strip()) if returncode == 0 else 1920
+                pip_x = width - pip_width - pip_margin
+
+            pip_y = pip_margin
+
+            # 构建输入
+            inputs = [
+                '-i', video_path,
+                '-i', dh_video_path
+            ]
+
+            audio_input_start = 2
+            for audio_path in audio_paths:
+                inputs.extend(['-i', audio_path])
+
+            if bg_audio_path:
+                inputs.extend(['-i', str(bg_audio_path)])
+
+            # 视频滤镜
+            video_filter = (
+                f"[1:v]scale={pip_width}:-1[pip];"
+                f"[0:v][pip]overlay={pip_x}:{pip_y}:shortest=1[outv]"
+            )
+
+            # 音频滤镜
+            audio_inputs = [f"[{audio_input_start + i}:a]" for i in range(len(audio_paths))]
+
+            if len(audio_inputs) == 1:
+                audio_filter = f"{audio_inputs[0]}aresample=44100[voices]"
+            else:
+                audio_filter = (
+                    f"{''.join(audio_inputs)}amix=inputs={len(audio_inputs)}:"
+                    f"duration=longest:dropout_transition=0:normalize=0[voices]"
+                )
+
+            if bg_audio_path:
+                bg_input_idx = audio_input_start + len(audio_paths)
+                audio_filter += (
+                    f";[voices][{bg_input_idx}:a]amix=inputs=2:"
+                    f"duration=longest:weights=1 0.3:normalize=0[outa]"
+                )
+                final_audio = "[outa]"
+            else:
+                final_audio = "[voices]"
+
+            filter_complex = f"{video_filter};{audio_filter}"
+
+            cmd = [
+                'ffmpeg', '-y',
+                *inputs,
+                '-filter_complex', filter_complex,
+                '-map', '[outv]',
+                '-map', final_audio,
+                '-c:v', 'libx264',
+                '-preset', 'fast',
+                '-crf', '23',
+                '-c:a', 'aac',
+                '-b:a', '192k',
+                '-shortest',
+                output_path
+            ]
+
+            returncode, stdout, stderr = await run_ffmpeg_command(cmd)
+
+            if returncode != 0:
+                logger.error(f"[{job_id}] FFmpeg single PIP error: {stderr.decode()[:300]}")
+                return None
+
+            if not Path(output_path).exists():
+                return None
+
+            final_url = await self._upload_to_media_bed(output_path)
+            return final_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Single PIP composite error: {e}")
+            return None
+
+    async def _composite_audio_only_multi(
+        self,
+        job_id: str,
+        video_path: str,
+        audio_paths: List[str],
+        bg_audio_path: Optional[str],
+        output_path: str
+    ) -> Optional[str]:
+        """仅替换音频（多说话人模式，无数字人）"""
+        logger.info(f"[{job_id}] Creating audio-only composite (multi-speaker)")
+
+        try:
+            # 先混合所有音频
+            mixed_audio_path = self.upload_dir / f"{job_id}_mixed_audio.mp3"
+
+            # 构建音频混合命令
+            inputs = []
+            for audio_path in audio_paths:
+                inputs.extend(['-i', audio_path])
+
+            if bg_audio_path:
+                inputs.extend(['-i', str(bg_audio_path)])
+
+            audio_inputs = [f"[{i}:a]" for i in range(len(audio_paths))]
+
+            if len(audio_inputs) == 1:
+                audio_filter = f"{audio_inputs[0]}aresample=44100[voices]"
+            else:
+                audio_filter = (
+                    f"{''.join(audio_inputs)}amix=inputs={len(audio_inputs)}:"
+                    f"duration=longest:dropout_transition=0:normalize=0[voices]"
+                )
+
+            if bg_audio_path:
+                bg_idx = len(audio_paths)
+                audio_filter += (
+                    f";[voices][{bg_idx}:a]amix=inputs=2:"
+                    f"duration=longest:weights=1 0.3:normalize=0[outa]"
+                )
+                final_audio = "[outa]"
+            else:
+                final_audio = "[voices]"
+
+            mix_cmd = [
+                'ffmpeg', '-y',
+                *inputs,
+                '-filter_complex', audio_filter,
+                '-map', final_audio,
+                '-ac', '2', '-ar', '44100',
+                str(mixed_audio_path)
+            ]
+
+            returncode, stdout, stderr = await run_ffmpeg_command(mix_cmd)
+
+            if returncode != 0:
+                logger.error(f"[{job_id}] Audio mix failed: {stderr.decode()[:300]}")
+                return None
+
+            # 合成视频 + 混合音频
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-i', str(mixed_audio_path),
+                '-c:v', 'copy',
+                '-map', '0:v',
+                '-map', '1:a',
+                '-c:a', 'aac',
+                '-shortest',
+                output_path
+            ]
+
+            returncode, stdout, stderr = await run_ffmpeg_command(cmd)
+
+            if returncode != 0:
+                logger.error(f"[{job_id}] Video composite failed: {stderr.decode()[:300]}")
+                return None
+
+            if not Path(output_path).exists():
+                return None
+
+            final_url = await self._upload_to_media_bed(output_path)
+            return final_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Audio-only composite error: {e}")
             return None
 
     # ===================== 工具方法 =====================

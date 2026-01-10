@@ -2,7 +2,7 @@
 故事生成模块 - MongoDB 文档模型
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from bson import ObjectId
 
 
@@ -15,21 +15,35 @@ class StoryJobDocument:
     def create(
         user_id: str,
         story_id: str,
-        voice_profile_id: str,
-        avatar_profile_id: str,
+        voice_profile_id: Optional[str],
+        avatar_profile_id: Optional[str],
         original_video_url: str,
+        mode: str = "single",
+        speaker_configs: Optional[List[Dict[str, Any]]] = None,
         replace_all_voice: bool = True,
         full_video: bool = False
     ) -> dict:
-        """创建新任务文档"""
+        """创建新任务文档
+
+        支持两种模式：
+        1. 单人模式 (single)：使用 voice_profile_id 和 avatar_profile_id
+        2. 双人模式 (dual)：使用 speaker_configs 数组
+        """
         now = datetime.utcnow()
         return {
             "_id": ObjectId(),
             "user_id": ObjectId(user_id),
             "story_id": ObjectId(story_id),
-            "voice_profile_id": ObjectId(voice_profile_id),
-            # avatar_profile_id 可以为空（暂不使用数字人）
+
+            # 生成模式
+            "mode": mode,  # 'single' 或 'dual'
+
+            # 单人模式配置
+            "voice_profile_id": ObjectId(voice_profile_id) if voice_profile_id and voice_profile_id.strip() else None,
             "avatar_profile_id": ObjectId(avatar_profile_id) if avatar_profile_id and avatar_profile_id.strip() else None,
+
+            # 双人模式配置
+            "speaker_configs": speaker_configs,  # 说话人配置列表
 
             # 状态
             "status": "pending",
@@ -48,8 +62,11 @@ class StoryJobDocument:
             "instrumental_url": None,          # 背景音乐
             "subtitle_srt_url": None,          # SRT 字幕文件
             "subtitle_srt_content": None,      # SRT 字幕内容
-            "cloned_audio_url": None,          # 克隆语音
-            "digital_human_video_url": None,   # 数字人视频
+            "cloned_audio_url": None,          # 克隆语音（单说话人模式）
+            "digital_human_video_url": None,   # 数字人视频（单说话人模式）
+
+            # 多说话人结果
+            "speaker_results": None,  # {speaker_id: {cloned_audio_url, digital_human_video_url}}
 
             # 输出
             "final_video_url": None,           # 最终成片

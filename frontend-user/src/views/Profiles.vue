@@ -7,7 +7,8 @@ const route = useRoute()
 const tabs = [
   { name: 'Voice Profiles', path: '/profiles/voice' },
   { name: 'Avatar Profiles', path: '/profiles/avatar' },
-  { name: 'My Creations', path: '/profiles/creations' }
+  { name: 'My Creations', path: '/profiles/creations' },
+  { name: 'Account', path: '/account', external: true }
 ]
 
 const currentTab = computed(() => route.path)
@@ -23,14 +24,14 @@ const currentTab = computed(() => route.path)
       </div>
 
       <!-- Tabs -->
-      <div class="flex gap-2 mb-8">
+      <div class="flex gap-2 mb-8 flex-wrap">
         <RouterLink
           v-for="tab in tabs"
           :key="tab.path"
           :to="tab.path"
           :class="[
             'px-6 py-3 rounded-xl font-medium transition-all',
-            currentTab === tab.path
+            currentTab === tab.path || (tab.external && currentTab.startsWith(tab.path))
               ? 'bg-primary-500 text-white shadow-lg'
               : 'bg-white text-gray-700 hover:bg-gray-100'
           ]"

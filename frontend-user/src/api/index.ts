@@ -14,7 +14,12 @@ import type {
   StoryGenerationJob,
   AudiobookStory,
   AudiobookJob,
-  PresetStory
+  PresetStory,
+  Speaker,
+  SpeakerConfig,
+  CreateStoryJobRequest,
+  SingleSpeakerAnalysis,
+  DualSpeakerAnalysis
 } from '@/types'
 
 // ==================== 认证 API ====================
@@ -190,13 +195,33 @@ export const digitalHumanApi = {
 
 // ==================== 故事生成 API ====================
 export const storyGenerationApi = {
-  createJob(data: {
-    story_id: string
-    voice_profile_id: string
-    avatar_profile_id: string
-    replace_all_voice?: boolean
-    full_video?: boolean
-  }) {
+  // 获取故事的说话人信息
+  getSpeakers(storyId: string) {
+    return http.get<{
+      story_id: string
+      speaker_count: number
+      speakers: Speaker[]
+      background_audio_url?: string
+      is_analyzed: boolean
+      analysis_error?: string
+      // 新架构：单人/双人两种分析模式
+      single_speaker_analysis?: SingleSpeakerAnalysis
+      dual_speaker_analysis?: DualSpeakerAnalysis
+    }>(`/story-generation/speakers/${storyId}`)
+  },
+
+  // 触发说话人分析
+  analyzeStory(storyId: string, numSpeakers?: number) {
+    return http.post<{
+      story_id: string
+      status: string
+    }>(`/story-generation/analyze/${storyId}`, null, {
+      params: numSpeakers ? { num_speakers: numSpeakers } : undefined
+    })
+  },
+
+  // 创建任务（支持单说话人和多说话人）
+  createJob(data: CreateStoryJobRequest) {
     return http.post<StoryGenerationJob>('/story-generation/jobs', data)
   },
 

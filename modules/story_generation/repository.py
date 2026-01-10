@@ -27,19 +27,27 @@ class StoryGenerationRepository:
         self,
         user_id: str,
         story_id: str,
-        voice_profile_id: str,
-        avatar_profile_id: str,
+        voice_profile_id: Optional[str],
+        avatar_profile_id: Optional[str],
         original_video_url: str,
+        mode: str = "single",
+        speaker_configs: Optional[List[Dict[str, Any]]] = None,
         replace_all_voice: bool = True,
         full_video: bool = False
     ) -> str:
-        """创建新任务"""
+        """创建新任务
+
+        Args:
+            mode: 生成模式 - 'single' 或 'dual'
+        """
         doc = StoryJobDocument.create(
             user_id=user_id,
             story_id=story_id,
             voice_profile_id=voice_profile_id,
             avatar_profile_id=avatar_profile_id,
             original_video_url=original_video_url,
+            mode=mode,
+            speaker_configs=speaker_configs,
             replace_all_voice=replace_all_voice,
             full_video=full_video
         )
@@ -220,8 +228,10 @@ class StoryGenerationRepository:
             "id": str(doc["_id"]),
             "user_id": str(doc["user_id"]),
             "story_id": str(doc["story_id"]),
-            "voice_profile_id": str(doc["voice_profile_id"]),
+            "mode": doc.get("mode", "single"),
+            "voice_profile_id": str(doc["voice_profile_id"]) if doc.get("voice_profile_id") else None,
             "avatar_profile_id": str(doc["avatar_profile_id"]) if doc.get("avatar_profile_id") else None,
+            "speaker_configs": doc.get("speaker_configs"),
             "status": doc["status"],
             "progress": doc["progress"],
             "current_step": doc["current_step"],
@@ -235,6 +245,7 @@ class StoryGenerationRepository:
             "cloned_audio_url": doc.get("cloned_audio_url"),
             "digital_human_video_url": doc.get("digital_human_video_url"),
             "final_video_url": doc.get("final_video_url"),
+            "speaker_results": doc.get("speaker_results"),  # 多说话人结果
             "created_at": doc["created_at"],
             "updated_at": doc["updated_at"],
             "completed_at": doc.get("completed_at"),

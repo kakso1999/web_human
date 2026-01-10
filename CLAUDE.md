@@ -1083,4 +1083,229 @@ task_id = response.json()["output"]["task_id"]
 
 ---
 
-*最后更新: 2024-12-26*
+## 十六、语音分离模块 (voice_separation)
+
+### 16.1 模块概述
+
+语音分离模块用于分析故事视频中的音频，识别不同说话人并生成独立音轨。
+
+**核心技术栈:**
+- **Demucs (htdemucs)**: 分离人声和背景音乐
+- **Pyannote speaker-diarization-3.1**: 说话人识别和分割
+- **Faster-Whisper**: 词级时间戳字幕生成
+
+### 16.2 模块结构
+
+```
+modules/voice_separation/
+├── __init__.py
+├── service.py          # 核心服务 (VoiceSeparationService)
+├── repository.py       # 数据访问
+└── models.py           # 数据模型
+```
+
+### 16.3 核心功能
+
+```python
+class VoiceSeparationService:
+    async def analyze_story_audio(self, story_id, video_path, num_speakers=None):
+        """
+        分析故事音频，识别说话人
+
+        流程：
+        1. 从视频提取音频 (FFmpeg)
+        2. 使用 Demucs 分离人声/背景
+        3. 使用 Pyannote 进行说话人分割 (限制最多2人)
+        4. 提取各说话人独立音轨
+        5. 为每个说话人生成词级字幕 (Whisper)
+
+        Returns:
+            {
+                "speaker_count": 2,
+                "speakers": [
+                    {"speaker_id": "SPEAKER_00", "duration": 120.5, ...},
+                    {"speaker_id": "SPEAKER_01", "duration": 85.3, ...}
+                ],
+                "background_audio_url": "...",
+                "segments": [...]
+            }
+        """
+```
+
+### 16.4 说话人限制
+
+为简化用户体验，系统强制限制为最多 **2个说话人**（男声/女声）：
+
+```python
+# voice_separation/service.py
+max_speakers = 2
+effective_speakers = min(num_speakers, max_speakers) if num_speakers else max_speakers
+diarization = pipeline(audio_input, num_speakers=effective_speakers)
+```
+
+### 16.5 环境配置
+
+```bash
+# .env 新增
+HF_TOKEN=hf_xxxxx  # HuggingFace Token (用于 Pyannote 模型下载)
+```
+
+### 16.6 依赖
+
+```bash
+pip install demucs pyannote.audio faster-whisper soundfile torch torchaudio
+```
+
+---
+
+## 十七、最新功能更新记录
+
+### 17.1 多说话人声音克隆 (2026-01)
+
+#### 功能说明
+- 故事上传后自动进行说话人分析
+- 支持为每个说话人单独配置声音档案和头像档案
+- 支持"单声音模式"：用一个声音克隆所有说话人
+- 支持"单头像模式"：用一个头像应用到所有说话人
+
+#### 相关文件
+- `modules/voice_separation/service.py` - 语音分离服务
+- `modules/story_generation/service.py` - 故事生成服务
+- `modules/story_generation/schemas.py` - SpeakerConfig 模型
+- `frontend-user/src/views/Studio.vue` - 用户端生成界面
+
+#### 数据模型变更
+
+```javascript
+// stories 集合新增字段
+{
+  speaker_count: Number,          // 说话人数量
+  speakers: [                     // 说话人列表
+    {
+      speaker_id: String,         // "SPEAKER_00", "SPEAKER_01"
+      label: String,              // "说话人 1", "说话人 2"
+      gender: String,             // "male" | "female" | "unknown"
+      audio_url: String,          // 独立音轨 URL
+      duration: Number            // 发言时长
+    }
+  ],
+  background_audio_url: String,   // 背景音 URL
+  is_analyzed: Boolean,           // 是否已分析
+  analysis_error: String          // 分析错误信息
+}
+
+// story_generation_jobs 集合新增字段
+{
+  speaker_configs: [              // 多说话人配置
+    {
+      speaker_id: String,
+      voice_profile_id: String,   // 可为 null (保持原声)
+      avatar_profile_id: String,  // 可为 null (无数字人)
+      enabled: Boolean
+    }
+  ]
+}
+```
+
+### 17.2 个人资料管理增强 (2026-01)
+
+#### Account.vue 账户设置页面
+- 头像上传功能（支持实时预览和上传状态）
+- 昵称编辑
+- 密码修改
+- 订阅状态显示
+- 快捷入口到声音档案、头像档案、我的作品
+
+#### VoiceProfiles.vue 声音档案管理
+- 声音档案列表展示
+- 档案名称编辑（弹窗模式）
+- 档案删除
+- 音频预览播放
+
+#### AvatarProfiles.vue 头像档案管理
+- 头像档案网格展示
+- 档案名称编辑（弹窗模式）
+- 档案删除
+- 预览视频播放（弹窗模式）
+
+#### MyCreations.vue 我的作品
+- 分标签显示：故事视频 / 有声书
+- 状态过滤：全部/完成/处理中/等待/失败
+- 分页加载更多
+- 刷新功能
+- 错误信息显示
+- 当前处理步骤显示
+
+### 17.3 登录状态持久化修复 (2026-01)
+
+**问题**: 用户登录后刷新页面，导航栏仍显示 "Login" 按钮
+
+**解决方案**: 在 `App.vue` 的 `onMounted` 中调用 `userStore.init()` 从 localStorage 恢复登录状态
+
+```vue
+// App.vue
+<script setup lang="ts">
+import { onMounted } from 'vue'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+
+onMounted(() => {
+  userStore.init()  // 恢复登录状态
+})
+</script>
+```
+
+### 17.4 前端 API 更新
+
+```typescript
+// api/index.ts 新增/更新
+
+// 故事生成 API
+storyGenerationApi.getSpeakers(storyId)      // 获取说话人信息
+storyGenerationApi.analyzeStory(storyId)     // 触发说话人分析
+storyGenerationApi.createJob(data)           // 支持 speaker_configs
+
+// 用户 API
+userApi.uploadAvatar(file)                   // 上传头像
+userApi.changePassword(old, new)             // 修改密码
+
+// 声音档案 API
+voiceCloneApi.updateProfile(id, name)        // 更新档案名称
+
+// 头像档案 API
+digitalHumanApi.updateProfile(id, name)      // 更新档案名称
+```
+
+### 17.5 类型定义更新
+
+```typescript
+// types/index.ts
+
+interface Speaker {
+  speaker_id: string
+  label: string
+  gender: 'male' | 'female' | 'unknown'
+  audio_url: string
+  duration: number
+}
+
+interface SpeakerConfig {
+  speaker_id: string
+  voice_profile_id: string | null
+  avatar_profile_id: string | null
+  enabled: boolean
+}
+
+interface CreateStoryJobRequest {
+  story_id: string
+  speaker_configs?: SpeakerConfig[]  // 多说话人模式
+  voice_profile_id?: string          // 单说话人模式 (向后兼容)
+  avatar_profile_id?: string
+  full_video?: boolean
+}
+```
+
+---
+
+*最后更新: 2026-01-09*

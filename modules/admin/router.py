@@ -523,12 +523,12 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
             except Exception as e:
                 print(f"[AI Processing] Description generation failed: {e}")
 
-        # 4. 更新数据库
+        # 4. 更新数据库（保持 is_processing = True，等说话人分析完成再设为 False）
         update_data = {
             "audio_url": audio_url,
             "subtitle_text": subtitle_text,
-            "subtitles": subtitles,
-            "is_processing": False  # 处理完成
+            "subtitles": subtitles
+            # is_processing 保持 True，等说话人分析完成再设为 False
         }
         if title:
             update_data["title"] = title
@@ -537,6 +537,22 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
 
         await story_service.story_repo.update(story_id, update_data)
         print(f"[AI Processing] Story {story_id} updated successfully!")
+
+        # 5. 触发说话人分析（直接 await 执行）
+        print(f"[AI Processing] Starting speaker analysis for story {story_id}...")
+        try:
+            from modules.story_generation.service import get_story_generation_service
+            story_gen_service = get_story_generation_service()
+            await story_gen_service.analyze_story_audio_task(story_id, video_path, None)
+            print(f"[AI Processing] Speaker analysis completed for story {story_id}")
+            # 说话人分析完成后才设置 is_processing = False
+            await story_service.story_repo.update(story_id, {"is_processing": False})
+        except Exception as e:
+            print(f"[AI Processing] Failed to analyze speakers: {e}")
+            import traceback
+            traceback.print_exc()
+            # 分析失败也要设置 is_processing = False
+            await story_service.story_repo.update(story_id, {"is_processing": False})
 
     except Exception as e:
         print(f"[AI Processing] Error processing video: {e}")
@@ -771,21 +787,35 @@ async def batch_publish_stories(
 
     Args:
         story_ids: 要上架的故事ID列表
+
+    注意：处理中的故事会被跳过
     """
     story_service = get_story_service()
 
     success_count = 0
+    skipped_count = 0
     for story_id in story_ids:
         try:
+            # 检查故事是否正在处理中
+            story = await story_service.story_repo.get_by_id(story_id)
+            if story and story.get("is_processing"):
+                skipped_count += 1
+                continue
+
             await story_service.story_repo.update(story_id, {"is_published": True})
             success_count += 1
         except Exception as e:
             print(f"Failed to publish story {story_id}: {e}")
 
+    message = f"成功上架 {success_count} 个故事"
+    if skipped_count > 0:
+        message += f"，跳过 {skipped_count} 个处理中的故事"
+
     return success_response({
         "total": len(story_ids),
         "success": success_count,
-        "message": f"成功上架 {success_count} 个故事"
+        "skipped": skipped_count,
+        "message": message
     })
 
 
@@ -975,7 +1005,7 @@ async def get_story_detail(
     story_service: StoryService = Depends(get_story_service),
     _=Depends(require_admin)
 ):
-    """获取故事详情（包含字幕）"""
+    """获取故事详情（包含字幕和说话人信息）"""
     story = await story_service.get_story(story_id)
 
     # 获取分类信息
@@ -998,6 +1028,10 @@ async def get_story_detail(
         "category": category,
         "subtitles": story.subtitles,
         "subtitle_text": story.subtitle_text,
+        "speakers": story.speakers,
+        "speaker_count": story.speaker_count,
+        "is_analyzed": story.is_analyzed,
+        "background_audio_url": story.background_audio_url,
         "created_at": story.created_at.isoformat() if story.created_at else None
     })
 

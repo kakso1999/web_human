@@ -27,6 +27,64 @@ class SubtitleSegment(BaseModel):
     )
 
 
+class SpeakerInfo(BaseModel):
+    """说话人信息
+
+    表示视频中识别出的一个说话人。
+    """
+    speaker_id: str = Field(..., description="说话人ID", json_schema_extra={"example": "SPEAKER_00"})
+    label: str = Field(default="", description="用户可编辑的标签", json_schema_extra={"example": "爸爸"})
+    gender: str = Field(default="unknown", description="性别: male/female/unknown", json_schema_extra={"example": "male"})
+    audio_url: Optional[str] = Field(None, description="该说话人的独立音轨URL")
+    duration: float = Field(default=0.0, description="该说话人总发言时长（秒）")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "speaker_id": "SPEAKER_00",
+                "label": "爸爸",
+                "gender": "male",
+                "audio_url": "http://example.com/speaker_00.wav",
+                "duration": 120.5
+            }
+        }
+    )
+
+
+class DiarizationSegment(BaseModel):
+    """说话人分割片段
+
+    表示某个时间段内的说话人。
+    """
+    start: float = Field(..., description="开始时间（秒）")
+    end: float = Field(..., description="结束时间（秒）")
+    speaker: str = Field(..., description="说话人ID")
+
+
+class SingleSpeakerAnalysis(BaseModel):
+    """单人模式分析结果
+
+    不进行说话人分割，将所有人声作为一个整体处理。
+    适用于：用同一个声音和头像替换所有人声。
+    """
+    vocals_url: Optional[str] = Field(None, description="完整人声音轨URL")
+    background_url: Optional[str] = Field(None, description="背景音URL")
+    duration: float = Field(default=0.0, description="人声总时长（秒）")
+    is_analyzed: bool = Field(default=False, description="是否已完成分析")
+
+
+class DualSpeakerAnalysis(BaseModel):
+    """双人模式分析结果
+
+    进行说话人分割（最多2人），为每个说话人分离独立音轨。
+    适用于：为爸爸和妈妈分别配置不同的声音和头像。
+    """
+    speakers: List[SpeakerInfo] = Field(default=[], description="说话人列表（最多2人）")
+    background_url: Optional[str] = Field(None, description="背景音URL")
+    diarization_segments: List[DiarizationSegment] = Field(default=[], description="说话人分割片段")
+    is_analyzed: bool = Field(default=False, description="是否已完成分析")
+
+
 class CategoryBase(BaseModel):
     """分类基础模型
 
@@ -130,6 +188,7 @@ class StoryCreate(BaseModel):
     2. 获取视频时长
     3. 提取音频并生成字幕
     4. 使用 AI 生成标题（如未提供）
+    5. 进行说话人分析和人声分离
     """
     title: str = Field(
         default="",
@@ -148,6 +207,21 @@ class StoryCreate(BaseModel):
     is_processing: bool = Field(default=False, description="是否处理中")
     subtitles: Optional[List[SubtitleSegment]] = Field(None, description="字幕数据")
     subtitle_text: Optional[str] = Field(None, description="完整字幕文本")
+    # 说话人分析相关字段 (旧字段，保持向后兼容)
+    speaker_count: int = Field(default=0, description="说话人数量")
+    speakers: Optional[List[SpeakerInfo]] = Field(None, description="说话人列表")
+    background_audio_url: Optional[str] = Field(None, description="背景音/环境音URL")
+    diarization_segments: Optional[List[DiarizationSegment]] = Field(None, description="说话人分割片段")
+    is_analyzed: bool = Field(default=False, description="是否已完成说话人分析")
+    analysis_error: Optional[str] = Field(None, description="分析失败原因")
+
+    # 新架构：单人/双人两种分析模式
+    single_speaker_analysis: Optional[SingleSpeakerAnalysis] = Field(
+        None, description="单人模式分析结果（人声整体 + 背景音）"
+    )
+    dual_speaker_analysis: Optional[DualSpeakerAnalysis] = Field(
+        None, description="双人模式分析结果（说话人1 + 说话人2 + 背景音）"
+    )
 
 
 class StoryUpdate(BaseModel):
@@ -167,6 +241,21 @@ class StoryUpdate(BaseModel):
     is_published: Optional[bool] = Field(None, description="是否发布")
     subtitles: Optional[List[SubtitleSegment]] = Field(None, description="字幕数据")
     subtitle_text: Optional[str] = Field(None, description="完整字幕文本")
+    # 说话人分析相关字段 (旧字段，保持向后兼容)
+    speaker_count: Optional[int] = Field(None, description="说话人数量")
+    speakers: Optional[List[SpeakerInfo]] = Field(None, description="说话人列表")
+    background_audio_url: Optional[str] = Field(None, description="背景音/环境音URL")
+    diarization_segments: Optional[List[DiarizationSegment]] = Field(None, description="说话人分割片段")
+    is_analyzed: Optional[bool] = Field(None, description="是否已完成说话人分析")
+    analysis_error: Optional[str] = Field(None, description="分析失败原因")
+
+    # 新架构：单人/双人两种分析模式
+    single_speaker_analysis: Optional[SingleSpeakerAnalysis] = Field(
+        None, description="单人模式分析结果（人声整体 + 背景音）"
+    )
+    dual_speaker_analysis: Optional[DualSpeakerAnalysis] = Field(
+        None, description="双人模式分析结果（说话人1 + 说话人2 + 背景音）"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -200,6 +289,19 @@ class StoryResponse(BaseModel):
     view_count: int = Field(default=0, description="播放次数")
     subtitles: Optional[List[SubtitleSegment]] = Field(None, description="字幕数据列表")
     subtitle_text: Optional[str] = Field(None, description="完整字幕文本")
+    # 说话人分析相关字段 (旧字段，保持向后兼容)
+    speaker_count: int = Field(default=0, description="说话人数量")
+    speakers: Optional[List[SpeakerInfo]] = Field(None, description="说话人列表")
+    background_audio_url: Optional[str] = Field(None, description="背景音/环境音URL")
+    is_analyzed: bool = Field(default=False, description="是否已完成说话人分析")
+    analysis_error: Optional[str] = Field(None, description="分析失败原因")
+    # 新架构：单人/双人两种分析模式
+    single_speaker_analysis: Optional[SingleSpeakerAnalysis] = Field(
+        None, description="单人模式分析结果（人声整体 + 背景音）"
+    )
+    dual_speaker_analysis: Optional[DualSpeakerAnalysis] = Field(
+        None, description="双人模式分析结果（说话人1 + 说话人2 + 背景音）"
+    )
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
@@ -218,6 +320,8 @@ class StoryResponse(BaseModel):
                 "is_published": True,
                 "is_processing": False,
                 "view_count": 1234,
+                "speaker_count": 2,
+                "is_analyzed": True,
                 "created_at": "2025-01-01T12:00:00",
                 "updated_at": "2025-01-01T12:00:00"
             }
@@ -239,6 +343,12 @@ class StoryListItem(BaseModel):
     is_published: bool = Field(default=False, description="是否已发布")
     is_processing: bool = Field(default=False, description="是否处理中")
     view_count: int = Field(default=0, description="播放次数")
+    # 说话人分析状态 (旧字段，保持向后兼容)
+    speaker_count: int = Field(default=0, description="说话人数量")
+    is_analyzed: bool = Field(default=False, description="是否已完成说话人分析")
+    # 新架构：分析状态
+    single_speaker_ready: bool = Field(default=False, description="单人模式是否已就绪")
+    dual_speaker_ready: bool = Field(default=False, description="双人模式是否已就绪")
     created_at: datetime = Field(..., description="创建时间")
 
     model_config = ConfigDict(
@@ -253,6 +363,8 @@ class StoryListItem(BaseModel):
                 "is_published": True,
                 "is_processing": False,
                 "view_count": 1234,
+                "speaker_count": 2,
+                "is_analyzed": True,
                 "created_at": "2025-01-01T12:00:00"
             }
         }

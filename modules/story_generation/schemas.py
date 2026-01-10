@@ -29,11 +29,45 @@ class StoryJobStep(str, Enum):
 
 # =============== 请求模型 ===============
 
+class SpeakerConfig(BaseModel):
+    """说话人配置
+
+    为每个说话人指定要使用的声音档案和头像档案
+    """
+    speaker_id: str = Field(..., description="说话人ID，如 SPEAKER_00")
+    voice_profile_id: Optional[str] = Field(None, description="声音档案ID，为空表示不替换该说话人的声音")
+    avatar_profile_id: Optional[str] = Field(None, description="头像档案ID，为空表示不生成该说话人的数字人")
+    enabled: bool = Field(default=True, description="是否启用此说话人的替换")
+
+
+class GenerationMode(str, Enum):
+    """生成模式"""
+    SINGLE = "single"  # 单人模式：一个声音一个数字人
+    DUAL = "dual"      # 双人模式：两个说话人各自的声音和数字人
+
+
 class CreateStoryJobRequest(BaseModel):
-    """创建故事生成任务请求"""
+    """创建故事生成任务请求
+
+    支持两种模式：
+    1. 单人模式 (single)：使用 voice_profile_id 和 avatar_profile_id，一个声音一个数字人
+    2. 双人模式 (dual)：使用 speaker_configs 数组，为每个说话人配置声音和头像
+    """
     story_id: str = Field(..., description="故事 ID")
-    voice_profile_id: str = Field(..., description="声音档案 ID")
-    avatar_profile_id: str = Field(..., description="头像档案 ID")
+
+    # 生成模式
+    mode: GenerationMode = Field(default=GenerationMode.SINGLE, description="生成模式: single=单人模式, dual=双人模式")
+
+    # 单人模式配置
+    voice_profile_id: Optional[str] = Field(None, description="声音档案 ID（单人模式）")
+    avatar_profile_id: Optional[str] = Field(None, description="头像档案 ID（单人模式）")
+
+    # 双人模式配置
+    speaker_configs: Optional[List[SpeakerConfig]] = Field(
+        None,
+        description="说话人配置列表（双人模式），为每个说话人指定声音和头像"
+    )
+
     replace_all_voice: bool = Field(default=True, description="是否替换全部人声")
     full_video: bool = Field(default=False, description="是否生成完整视频，默认只生成前2个片段")
 
@@ -99,6 +133,47 @@ class SubtitleListResponse(BaseModel):
     """字幕列表响应"""
     subtitles: List[SubtitleItem]
     total_duration: float = Field(..., description="总时长 (秒)")
+
+
+# =============== 说话人分析响应模型 ===============
+
+class SpeakerInfo(BaseModel):
+    """说话人信息"""
+    speaker_id: str = Field(..., description="说话人ID，如 SPEAKER_00")
+    label: str = Field(default="", description="用户可编辑的标签，如 '爸爸'")
+    gender: str = Field(default="unknown", description="性别: male/female/unknown")
+    audio_url: Optional[str] = Field(None, description="该说话人的独立音轨URL")
+    duration: float = Field(default=0.0, description="该说话人总发言时长（秒）")
+
+
+class DiarizationSegment(BaseModel):
+    """说话人分割片段"""
+    start: float = Field(..., description="开始时间（秒）")
+    end: float = Field(..., description="结束时间（秒）")
+    speaker: str = Field(..., description="说话人ID")
+
+
+class AnalyzeStoryResponse(BaseModel):
+    """说话人分析响应"""
+    story_id: str = Field(..., description="故事ID")
+    speaker_count: int = Field(default=0, description="说话人数量")
+    speakers: List[SpeakerInfo] = Field(default=[], description="说话人列表")
+    is_analyzed: bool = Field(default=False, description="是否已完成分析")
+    status: Optional[str] = Field(None, description="分析状态: analyzing/completed/failed")
+
+
+class SpeakersResponse(BaseModel):
+    """获取说话人信息响应"""
+    story_id: str = Field(..., description="故事ID")
+    speaker_count: int = Field(default=0, description="说话人数量")
+    speakers: List[SpeakerInfo] = Field(default=[], description="说话人列表")
+    background_audio_url: Optional[str] = Field(None, description="背景音URL")
+    diarization_segments: List[DiarizationSegment] = Field(default=[], description="说话人分割片段")
+    is_analyzed: bool = Field(default=False, description="是否已完成分析")
+    analysis_error: Optional[str] = Field(None, description="分析失败原因")
+    # 新架构：两种分析模式
+    single_speaker_analysis: Optional[dict] = Field(None, description="单人模式分析结果")
+    dual_speaker_analysis: Optional[dict] = Field(None, description="双人模式分析结果")
 
 
 # =============== APICore 响应模型 ===============

@@ -60,6 +60,46 @@ export interface Category {
   story_count?: number
 }
 
+// 说话人信息
+export interface Speaker {
+  speaker_id: string
+  label: string
+  gender: 'male' | 'female' | 'unknown'
+  audio_url?: string
+  duration: number
+}
+
+// 说话人配置（用于生成任务）
+export interface SpeakerConfig {
+  speaker_id: string
+  voice_profile_id: string | null
+  avatar_profile_id: string | null
+  enabled: boolean
+}
+
+// 单人模式分析结果
+export interface SingleSpeakerAnalysis {
+  vocals_url?: string
+  background_url?: string
+  duration: number
+  is_analyzed: boolean
+}
+
+// 双人模式分析结果
+export interface DualSpeakerAnalysis {
+  speakers: Speaker[]
+  background_url?: string
+  diarization_segments: Array<{
+    start: number
+    end: number
+    speaker: string
+  }>
+  is_analyzed: boolean
+}
+
+// 生成模式
+export type GenerationMode = 'single' | 'dual'
+
 export interface Story {
   id: string
   title: string
@@ -74,6 +114,15 @@ export interface Story {
   is_published: boolean
   view_count: number
   subtitles?: Subtitle[]
+  // 说话人相关字段 (旧字段，保持向后兼容)
+  speaker_count?: number
+  speakers?: Speaker[]
+  background_audio_url?: string
+  is_analyzed?: boolean
+  analysis_error?: string
+  // 新架构：单人/双人两种分析模式
+  single_speaker_analysis?: SingleSpeakerAnalysis
+  dual_speaker_analysis?: DualSpeakerAnalysis
   created_at: string
   updated_at?: string
 }
@@ -126,8 +175,14 @@ export interface StoryGenerationJob {
   id: string
   user_id: string
   story_id: string
-  voice_profile_id: string
-  avatar_profile_id: string
+  mode: GenerationMode
+  voice_profile_id?: string
+  avatar_profile_id?: string
+  speaker_configs?: SpeakerConfig[]
+  speaker_results?: Record<string, {
+    cloned_audio_url?: string
+    digital_human_video_url?: string
+  }>
   status: 'pending' | 'processing' | 'completed' | 'failed'
   progress: number
   current_step: string
@@ -135,6 +190,20 @@ export interface StoryGenerationJob {
   error?: string
   created_at: string
   completed_at?: string
+}
+
+// 创建故事生成任务请求
+export interface CreateStoryJobRequest {
+  story_id: string
+  // 生成模式：single=单人模式, dual=双人模式
+  mode?: GenerationMode
+  // 单说话人模式
+  voice_profile_id?: string
+  avatar_profile_id?: string
+  // 多说话人模式
+  speaker_configs?: SpeakerConfig[]
+  replace_all_voice?: boolean
+  full_video?: boolean
 }
 
 // 有声书故事

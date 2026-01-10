@@ -69,20 +69,59 @@
               <p class="title-en-text">{{ story.title_en }}</p>
             </div>
 
-            <!-- 字幕显示 -->
-            <div class="subtitle-section" v-if="story.subtitles && story.subtitles.length > 0">
+            <!-- 说话人信息 -->
+            <div class="speakers-section" v-if="story.speakers && story.speakers.length > 0">
+              <div class="section-header">
+                <span class="section-title">说话人分析</span>
+                <span class="speaker-count">{{ story.speakers.length }} 位</span>
+              </div>
+              <div class="speakers-list">
+                <div
+                  v-for="speaker in story.speakers"
+                  :key="speaker.speaker_id"
+                  class="speaker-item"
+                >
+                  <div class="speaker-avatar" :class="speaker.gender">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                  </div>
+                  <div class="speaker-info">
+                    <span class="speaker-label">{{ speaker.label || speaker.speaker_id }}</span>
+                    <span class="speaker-duration">{{ Math.round(speaker.duration) }}秒</span>
+                  </div>
+                  <audio v-if="speaker.audio_url" :src="speaker.audio_url" controls class="speaker-audio"></audio>
+                </div>
+              </div>
+            </div>
+
+            <!-- 字幕显示 - 支持新旧两种格式 -->
+            <div class="subtitle-section" v-if="hasSubtitles">
               <div class="section-header">
                 <span class="section-title">字幕内容</span>
-                <span class="subtitle-count">{{ story.subtitles.length }} 条</span>
+                <div class="subtitle-tabs" v-if="isNewSubtitleFormat">
+                  <button
+                    v-for="tab in subtitleTabs"
+                    :key="tab.key"
+                    :class="['tab-btn', { active: activeSubtitleTab === tab.key }]"
+                    @click="activeSubtitleTab = tab.key"
+                  >
+                    {{ tab.label }} ({{ tab.count }})
+                  </button>
+                </div>
+                <span v-else class="subtitle-count">{{ legacySubtitleCount }} 条</span>
               </div>
               <div class="subtitle-list">
                 <div
-                  v-for="(segment, index) in story.subtitles"
+                  v-for="(segment, index) in displaySubtitles"
                   :key="index"
                   class="subtitle-item"
                 >
                   <span class="subtitle-time">
-                    {{ formatSubtitleTime(segment.start) }} - {{ formatSubtitleTime(segment.end) }}
+                    {{ formatSubtitleTime(segment.start_time || segment.start) }} - {{ formatSubtitleTime(segment.end_time || segment.end) }}
+                  </span>
+                  <span v-if="segment.speaker_id && activeSubtitleTab === 'ALL'" class="subtitle-speaker">
+                    {{ getSpeakerLabel(segment.speaker_id) }}
                   </span>
                   <span class="subtitle-text">{{ segment.text }}</span>
                 </div>
@@ -200,7 +239,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAdminStore } from '../stores/admin'
 import api from '../api'
@@ -220,6 +259,23 @@ interface SubtitleSegment {
   text: string
 }
 
+interface Speaker {
+  speaker_id: string
+  label: string | null
+  gender: string
+  audio_url: string | null
+  duration: number
+}
+
+interface NewSubtitleSegment {
+  index: number
+  speaker_id: string
+  start_time: number
+  end_time: number
+  text: string
+  words?: Array<{ word: string; start: number; end: number }>
+}
+
 interface Story {
   id: string
   title: string
@@ -231,8 +287,11 @@ interface Story {
   duration: number
   status: string
   category: Category | null
-  subtitles: SubtitleSegment[] | null
+  subtitles: SubtitleSegment[] | NewSubtitleSegment[] | null
   subtitle_text: string | null
+  speakers: Speaker[] | null
+  speaker_count: number | null
+  is_analyzed: boolean | null
   created_at: string
 }
 
@@ -243,6 +302,7 @@ const error = ref('')
 const saving = ref(false)
 const message = ref('')
 const messageType = ref<'success' | 'error'>('success')
+const activeSubtitleTab = ref('ALL')
 
 const form = ref({
   title: '',
@@ -295,6 +355,63 @@ function formatDate(dateStr: string): string {
     month: 'long',
     day: 'numeric'
   })
+}
+
+// 字幕相关计算属性
+const hasSubtitles = computed(() => {
+  return story.value?.subtitles && Array.isArray(story.value.subtitles) && story.value.subtitles.length > 0
+})
+
+const isNewSubtitleFormat = computed(() => {
+  if (!hasSubtitles.value || !story.value?.subtitles) return false
+  const first = story.value.subtitles[0] as any
+  return 'speaker_id' in first && 'start_time' in first
+})
+
+const subtitleTabs = computed(() => {
+  if (!isNewSubtitleFormat.value || !story.value?.subtitles) return []
+
+  const tabs = [{ key: 'ALL', label: '全部', count: story.value.subtitles.length }]
+
+  if (story.value.speakers) {
+    for (const speaker of story.value.speakers) {
+      const count = (story.value.subtitles as NewSubtitleSegment[]).filter(
+        s => s.speaker_id === speaker.speaker_id
+      ).length
+      tabs.push({
+        key: speaker.speaker_id,
+        label: speaker.label || speaker.speaker_id,
+        count
+      })
+    }
+  }
+
+  return tabs
+})
+
+const displaySubtitles = computed(() => {
+  if (!hasSubtitles.value || !story.value?.subtitles) return []
+
+  if (isNewSubtitleFormat.value) {
+    const subs = story.value.subtitles as NewSubtitleSegment[]
+    if (activeSubtitleTab.value === 'ALL') {
+      return subs
+    }
+    return subs.filter(s => s.speaker_id === activeSubtitleTab.value)
+  }
+
+  return story.value.subtitles
+})
+
+const legacySubtitleCount = computed(() => {
+  if (!story.value?.subtitles) return 0
+  return story.value.subtitles.length
+})
+
+function getSpeakerLabel(speakerId: string): string {
+  if (!story.value?.speakers) return speakerId
+  const speaker = story.value.speakers.find(s => s.speaker_id === speakerId)
+  return speaker?.label || speakerId
 }
 
 function goBack() {
@@ -616,6 +733,122 @@ onMounted(() => {
   color: var(--color-text-muted);
   font-style: italic;
   margin: 0;
+}
+
+/* 说话人部分 */
+.speakers-section {
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border);
+}
+
+.speaker-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-dark-tertiary);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.speakers-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.speaker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--color-bg-dark-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.speaker-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.speaker-avatar svg {
+  width: 20px;
+  height: 20px;
+}
+
+.speaker-avatar.male {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.speaker-avatar.female {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
+.speaker-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.speaker-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.speaker-duration {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.speaker-audio {
+  height: 28px;
+  max-width: 180px;
+}
+
+/* 字幕标签页 */
+.subtitle-tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.tab-btn {
+  padding: 4px 10px;
+  font-size: var(--font-size-xs);
+  background: var(--color-bg-dark-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tab-btn:hover {
+  background: var(--color-bg-dark-hover);
+  color: var(--color-text-primary);
+}
+
+.tab-btn.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+}
+
+.subtitle-speaker {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  background: rgba(45, 107, 107, 0.15);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
 }
 
 .edit-section {
