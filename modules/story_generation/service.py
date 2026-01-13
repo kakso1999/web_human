@@ -21,6 +21,13 @@ from datetime import datetime
 import subprocess
 import httpx
 
+# DNS 补丁：解决本地 DNS 服务器无法解析阿里云域名的问题
+try:
+    from core.utils.dns_patch import patch_dns
+    # patch_dns() 在导入时自动执行
+except ImportError:
+    pass  # DNS 补丁可选
+
 from core.config.settings import get_settings
 from .repository import get_story_generation_repository, StoryGenerationRepository
 from .apicore_client import get_apicore_client, APICoreClient
@@ -28,6 +35,17 @@ from .schemas import StoryJobStatus, StoryJobStep
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+# 配置代理绕过：阿里云域名不走代理
+# 解决代理开启时无法访问 dashscope.aliyuncs.com 的问题
+_no_proxy_domains = "aliyuncs.com,dashscope.aliyuncs.com,alibabacloud.com"
+_existing_no_proxy = os.environ.get("NO_PROXY", os.environ.get("no_proxy", ""))
+if _existing_no_proxy:
+    os.environ["NO_PROXY"] = f"{_existing_no_proxy},{_no_proxy_domains}"
+else:
+    os.environ["NO_PROXY"] = _no_proxy_domains
+os.environ["no_proxy"] = os.environ["NO_PROXY"]  # 兼容小写
+logger.info(f"NO_PROXY configured: {os.environ['NO_PROXY']}")
 
 
 async def run_ffmpeg_command(cmd: List[str]) -> tuple[int, bytes, bytes]:
@@ -289,19 +307,34 @@ class StoryGenerationService:
             # 更新状态为处理中
             await self._update_progress(job_id, StoryJobStep.INIT, 0)
 
-            # Step 1: 提取音频
+            # 获取任务和故事信息
+            job = await self.repository.get_job(job_id)
+            story_id = job.get("story_id")
+
+            from modules.story.repository import StoryRepository
+            story_repo = StoryRepository()
+            story = await story_repo.get_by_id(story_id)
+
+            # Step 1: 提取音频（用于保存本地视频文件）
             await self._update_progress(job_id, StoryJobStep.EXTRACTING_AUDIO, 5)
             audio_url = await self._extract_audio(job_id)
             if not audio_url:
                 raise Exception("Failed to extract audio from video")
 
-            # Step 2: 尝试分离人声（可选，失败则跳过）
+            # Step 2: 使用故事分析结果中已有的分离音频（无需再次分离）
             await self._update_progress(job_id, StoryJobStep.SEPARATING_VOCALS, 10)
-            vocals_url, instrumental_url = await self._separate_vocals(job_id, audio_url)
 
-            # 如果分离失败，使用原始音频
-            if not vocals_url:
-                logger.warning(f"[{job_id}] Vocal separation failed, using original audio")
+            # 从故事分析结果获取已分离的人声和背景音
+            single_analysis = story.get("single_speaker_analysis", {}) if story else {}
+            vocals_url = single_analysis.get("vocals_url")
+            instrumental_url = single_analysis.get("background_url")
+
+            if vocals_url:
+                logger.info(f"[{job_id}] Using pre-analyzed vocals: {vocals_url}")
+                logger.info(f"[{job_id}] Using pre-analyzed background: {instrumental_url}")
+            else:
+                # 如果没有分析结果，使用原始音频
+                logger.warning(f"[{job_id}] No pre-analyzed vocals found, using original audio")
                 vocals_url = audio_url
                 instrumental_url = None
 
@@ -533,10 +566,55 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] Voice profile not found")
                 return None
 
-            voice_id = profile.get("voice_id")  # 数据库字段名是 voice_id
-            if not voice_id:
-                logger.error(f"[{job_id}] No voice_id in profile")
-                return None
+            # 检查服务模式
+            from core.config.settings import get_settings
+            settings = get_settings()
+            service_mode = getattr(settings, 'AI_SERVICE_MODE', 'cloud').lower()
+
+            reference_audio_path = None
+            voice_id = profile.get("voice_id")
+
+            if service_mode == "local":
+                # 本地模式：需要下载参考音频
+                reference_audio_url = profile.get("reference_audio_url")
+                if not reference_audio_url:
+                    logger.error(f"[{job_id}] No reference audio URL in profile")
+                    return None
+
+                # 下载参考音频到本地
+                import httpx
+                import tempfile
+
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.get(reference_audio_url)
+                    if response.status_code != 200:
+                        logger.error(f"[{job_id}] Failed to download reference audio: {response.status_code}")
+                        return None
+
+                # 保存到临时文件
+                ref_audio_dir = self.upload_dir / f"{job_id}_ref"
+                ref_audio_dir.mkdir(parents=True, exist_ok=True)
+                reference_audio_path = str(ref_audio_dir / "reference.wav")
+
+                with open(reference_audio_path, 'wb') as f:
+                    f.write(response.content)
+
+                logger.info(f"[{job_id}] Downloaded reference audio to: {reference_audio_path}")
+
+                # 创建本地 voice_id
+                from modules.voice_clone.factory import get_voice_clone_service
+                vc_service = get_voice_clone_service()
+                voice_id = await vc_service._create_voice(f"{job_id}_seg{segment_index}", reference_audio_url)
+
+                if not voice_id:
+                    logger.error(f"[{job_id}] Failed to create local voice")
+                    return None
+
+            else:
+                # 云端模式
+                if not voice_id:
+                    logger.error(f"[{job_id}] No voice_id in profile")
+                    return None
 
             logger.info(f"[{job_id}] Using voice_id: {voice_id}")
 
@@ -558,7 +636,7 @@ class StoryGenerationService:
                 logger.info(f"[{job_id}] Seg{segment_index} Sub{i}: '{text[:20]}...' at {relative_start_time:.2f}s")
 
                 # 调用 TTS
-                audio_content = await self._call_cosyvoice_tts(voice_id, text)
+                audio_content = await self._call_cosyvoice_tts(voice_id, text, reference_audio_path)
                 if not audio_content:
                     logger.warning(f"[{job_id}] TTS failed for subtitle {i}")
                     continue
@@ -638,8 +716,8 @@ class StoryGenerationService:
                 return None
 
             # 调用 EMO API
-            from modules.digital_human.service import DigitalHumanService
-            dh_service = DigitalHumanService()
+            from modules.digital_human.factory import get_digital_human_service
+            dh_service = get_digital_human_service()
 
             emo_task_id = await dh_service._create_emo_task(
                 task_id=f"{job_id}_seg{segment_index}",
@@ -715,6 +793,64 @@ class StoryGenerationService:
             logger.error(f"[{job_id}] Extract video segment error: {e}")
             return None
 
+    async def _get_local_file_path(self, url_or_path: str, target_path: Path) -> Optional[Path]:
+        """
+        获取本地文件路径，支持：
+        - 本地相对路径 (/uploads/...)
+        - HTTP URL
+        - 已存在的本地绝对路径
+        """
+        import shutil
+
+        # 如果是本地相对路径
+        if url_or_path.startswith('/uploads/'):
+            # 使用 removeprefix 而不是 lstrip（lstrip 是逐字符删除的）
+            rel_path = url_or_path[len('/uploads/'):]
+            uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
+            local_path = uploads_absolute / rel_path
+
+            logger.info(f"Local path resolution: {url_or_path} -> {local_path}")
+
+            if local_path.exists():
+                shutil.copy(str(local_path), str(target_path))
+                return target_path
+            else:
+                logger.error(f"Local file not found: {local_path}")
+                return None
+
+        elif url_or_path.startswith('uploads/'):
+            # 相对路径（不带前导斜杠）
+            rel_path = url_or_path[len('uploads/'):]
+            uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
+            local_path = uploads_absolute / rel_path
+
+            if local_path.exists():
+                shutil.copy(str(local_path), str(target_path))
+                return target_path
+            else:
+                logger.error(f"Local file not found: {local_path}")
+                return None
+
+        # 如果已经是本地绝对路径
+        elif Path(url_or_path).exists():
+            shutil.copy(url_or_path, str(target_path))
+            return target_path
+
+        # HTTP URL - 下载
+        elif url_or_path.startswith('http'):
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                response = await client.get(url_or_path)
+                if response.status_code != 200:
+                    logger.error(f"Failed to download: {url_or_path}")
+                    return None
+                with open(target_path, 'wb') as f:
+                    f.write(response.content)
+                return target_path
+
+        else:
+            logger.error(f"Unknown URL format: {url_or_path}")
+            return None
+
     async def _composite_segment_pip(
         self,
         job_id: str,
@@ -729,25 +865,19 @@ class StoryGenerationService:
         try:
             import httpx
 
-            # 下载数字人视频
+            # 获取数字人视频（支持本地路径和 HTTP URL）
             dh_video_path = self.upload_dir / f"{job_id}_seg{segment_index}_dh.mp4"
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.get(digital_human_url)
-                if response.status_code != 200:
-                    logger.error(f"[{job_id}] Failed to download digital human video")
-                    return None
-                with open(dh_video_path, 'wb') as f:
-                    f.write(response.content)
+            result = await self._get_local_file_path(digital_human_url, dh_video_path)
+            if not result:
+                logger.error(f"[{job_id}] Failed to get digital human video")
+                return None
 
-            # 下载克隆语音
+            # 获取克隆语音（支持本地路径和 HTTP URL）
             audio_path = self.upload_dir / f"{job_id}_seg{segment_index}_audio.mp3"
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.get(audio_url)
-                if response.status_code != 200:
-                    logger.error(f"[{job_id}] Failed to download audio")
-                    return None
-                with open(audio_path, 'wb') as f:
-                    f.write(response.content)
+            result = await self._get_local_file_path(audio_url, audio_path)
+            if not result:
+                logger.error(f"[{job_id}] Failed to get audio")
+                return None
 
             output_path = self.upload_dir / f"{job_id}_seg{segment_index}_composited.mp4"
 
@@ -840,16 +970,12 @@ class StoryGenerationService:
         logger.info(f"[{job_id}] Compositing segment {segment_index} audio only")
 
         try:
-            import httpx
-
-            # 下载克隆语音
+            # 获取克隆语音（支持本地路径和 HTTP URL）
             audio_path = self.upload_dir / f"{job_id}_seg{segment_index}_audio.mp3"
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.get(audio_url)
-                if response.status_code != 200:
-                    return None
-                with open(audio_path, 'wb') as f:
-                    f.write(response.content)
+            result = await self._get_local_file_path(audio_url, audio_path)
+            if not result:
+                logger.error(f"[{job_id}] Failed to get audio")
+                return None
 
             output_path = self.upload_dir / f"{job_id}_seg{segment_index}_composited.mp4"
 
@@ -950,7 +1076,11 @@ class StoryGenerationService:
             # 检查是否是本地路径
             if video_url.startswith("/uploads/"):
                 # 本地路径，直接复制
-                local_video_path = Path(settings.UPLOAD_DIR).parent / video_url.lstrip("/")
+                # 获取 /uploads/ 之后的相对路径
+                rel_path = video_url[len("/uploads/"):]
+                # 使用 resolve() 获取 uploads 目录的绝对路径
+                uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
+                local_video_path = uploads_absolute / rel_path
                 logger.info(f"[{job_id}] Using local video: {local_video_path}")
                 if local_video_path.exists():
                     import shutil
@@ -1065,6 +1195,16 @@ class StoryGenerationService:
             }
         """
         logger.info(f"[{job_id}] Transcribing audio with word timestamps")
+        print(f"[DEBUG] Starting transcription for {job_id}", flush=True)
+
+        # 写入调试日志（使用固定绝对路径）
+        try:
+            debug_path = r"E:\工作代码\73_web_human\uploads\transcribe_debug.log"
+            with open(debug_path, "a", encoding="utf-8") as f:
+                f.write(f"[{job_id}] _transcribe_audio START, audio_url={audio_url}\n")
+                f.flush()
+        except Exception as debug_err:
+            logger.error(f"[{job_id}] Debug log write failed: {debug_err}")
 
         try:
             import json
@@ -1089,18 +1229,23 @@ class StoryGenerationService:
             # 获取音频时长
             audio_duration = await self._get_audio_duration(str(audio_path))
             logger.info(f"[{job_id}] Audio duration: {audio_duration:.2f}s")
+            print(f"[DEBUG] Audio duration: {audio_duration:.2f}s")
 
-            # 分块阈值：3 分钟
+            # 分块阈值：3 分钟 (临时禁用分块)
             CHUNK_MAX_DURATION = 180  # 秒
 
-            if audio_duration <= CHUNK_MAX_DURATION:
+            # 临时：跳过分块，直接转写整个音频
+            if True:  # audio_duration <= CHUNK_MAX_DURATION:
                 # 短音频，直接转写
+                print(f"[DEBUG] Direct transcription (no chunking)")
                 result = await self._transcribe_audio_chunk(job_id, str(audio_path), 0)
             else:
                 # 长音频，分块转写
                 logger.info(f"[{job_id}] Audio too long ({audio_duration:.0f}s), splitting into chunks")
+                print(f"[DEBUG] Long audio path, chunking ({audio_duration:.0f}s)")
                 result = await self._transcribe_audio_chunked(job_id, str(audio_path), audio_duration, CHUNK_MAX_DURATION)
 
+            print(f"[DEBUG] Transcription result: {result is not None}")
             if not result:
                 return None
 
@@ -1247,8 +1392,211 @@ class StoryGenerationService:
         """
         转写单个音频块
 
-        包含重试逻辑
+        优先使用本地 faster-whisper，失败时回退到 APICORE API
         """
+        # Debug logging
+        try:
+            with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                f.write(f"[{job_id}] _transcribe_audio_chunk START, chunk={chunk_index}, path={audio_path}\n")
+                f.flush()
+        except:
+            pass
+
+        # 只使用本地 faster-whisper（不再回退到 APICORE API）
+        try:
+            with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                f.write(f"[{job_id}] About to call _transcribe_with_local_whisper...\n")
+                f.flush()
+        except:
+            pass
+        result = await self._transcribe_with_local_whisper(job_id, audio_path, chunk_index)
+        if result:
+            return result
+
+        # 本地 Whisper 失败，记录错误但不使用 API
+        logger.error(f"[{job_id}] Local Whisper failed, no API fallback available")
+        return None
+
+    async def _transcribe_with_local_whisper(
+        self,
+        job_id: str,
+        audio_path: str,
+        chunk_index: int
+    ) -> Optional[Dict[str, Any]]:
+        """使用本地 faster-whisper 进行转写（简化版，移除冗余调试代码）"""
+        # Debug entry
+        try:
+            with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                f.write(f"[{job_id}] _transcribe_with_local_whisper ENTERED\n")
+                f.flush()
+        except:
+            pass
+
+        try:
+            logger.info(f"[{job_id}] Chunk {chunk_index}: Using local faster-whisper, audio={audio_path}")
+
+            def transcribe_sync():
+                import os
+                # 完全禁用所有 HuggingFace 网络请求
+                os.environ['HF_HUB_OFFLINE'] = '1'
+                os.environ['TRANSFORMERS_OFFLINE'] = '1'
+                os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+                os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
+                os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+                os.environ['DO_NOT_TRACK'] = '1'
+                os.environ['HF_HOME'] = r'E:\huggingface_cache'
+                os.environ['HF_HUB_CACHE'] = r'E:\huggingface_cache\hub'
+
+                # Debug: function started
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] transcribe_sync STARTED\n")
+                    f.flush()
+
+                # 直接使用 CTranslate2 避免 HuggingFace 依赖
+                import ctranslate2
+                import soundfile as sf
+                import numpy as np
+
+                # Debug: imports done
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] imports done (ctranslate2 direct)\n")
+                    f.flush()
+
+                # 使用本地缓存的模型
+                model_path = r'E:\huggingface_cache\hub\models--Systran--faster-whisper-base\snapshots\ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66'
+
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] model_path={model_path}\n")
+                    f.flush()
+
+                # 使用 faster_whisper 但指定完整本地路径
+                from faster_whisper import WhisperModel
+
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Creating WhisperModel...\n")
+                    f.flush()
+
+                # 强制使用 CPU 避免 CUDA 上下文清理问题（CUDA 版本在线程池中会卡死）
+                model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=True)
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Model loaded (CPU - forced to avoid CUDA hang)\n")
+                    f.flush()
+
+                # 加载音频
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Loading audio from {audio_path}...\n")
+                    f.flush()
+
+                audio, sr = sf.read(audio_path)
+                if audio.ndim > 1:
+                    audio = audio.mean(axis=1)
+                audio = audio.astype(np.float32)
+
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Audio loaded: shape={audio.shape}, sr={sr}\n")
+                    f.flush()
+
+                # 转写
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Starting transcription...\n")
+                    f.flush()
+
+                segments, info = model.transcribe(
+                    audio,
+                    language="en",
+                    word_timestamps=True,
+                    vad_filter=False
+                )
+
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Transcription complete, collecting results...\n")
+                    f.flush()
+
+                # 收集结果
+                all_text = []
+                all_words = []
+                all_segments = []
+
+                seg_count = 0
+                for seg in segments:
+                    seg_count += 1
+                    all_text.append(seg.text)
+                    all_segments.append({
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip()
+                    })
+                    if seg.words:
+                        for word in seg.words:
+                            all_words.append({
+                                "word": word.word,
+                                "start": word.start,
+                                "end": word.end
+                            })
+
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Collected {seg_count} segments, {len(all_words)} words\n")
+                    f.flush()
+
+                # 构建结果
+                result_dict = {
+                    "text": " ".join(all_text),
+                    "words": all_words,
+                    "segments": all_segments
+                }
+
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Result created with {len(all_words)} words, returning...\n")
+                    f.flush()
+
+                # CPU 模式下不需要显式清理，直接返回
+                return result_dict
+
+            # 在线程池中执行同步转写
+            loop = asyncio.get_running_loop()
+
+            try:
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] About to run transcribe_sync in executor...\n")
+                    f.flush()
+            except:
+                pass
+
+            result = await loop.run_in_executor(None, transcribe_sync)
+
+            try:
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] Executor returned, result={result is not None}\n")
+                    f.flush()
+            except:
+                pass
+
+            if result:
+                logger.info(f"[{job_id}] Chunk {chunk_index}: Local Whisper success, {len(result.get('words', []))} words")
+            return result
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Chunk {chunk_index}: Local Whisper error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Write error to debug file
+            try:
+                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                    f.write(f"[{job_id}] LOCAL WHISPER ERROR: {e}\n")
+                    f.write(traceback.format_exc())
+                    f.flush()
+            except:
+                pass
+            traceback.print_exc()
+            return None
+
+    async def _transcribe_with_api(
+        self,
+        job_id: str,
+        audio_path: str,
+        chunk_index: int
+    ) -> Optional[Dict[str, Any]]:
+        """使用 APICORE API 进行转写"""
         try:
             with open(audio_path, 'rb') as f:
                 audio_bytes = f.read()
@@ -1306,7 +1654,7 @@ class StoryGenerationService:
             return result
 
         except Exception as e:
-            logger.error(f"[{job_id}] Transcribe chunk {chunk_index} error: {e}")
+            logger.error(f"[{job_id}] Transcribe chunk {chunk_index} API error: {e}")
             return None
 
     def _words_to_segments(
@@ -1602,17 +1950,35 @@ class StoryGenerationService:
             traceback.print_exc()
             return None
 
-    async def _call_cosyvoice_tts(self, voice_id: str, text: str) -> Optional[bytes]:
+    async def _call_cosyvoice_tts(self, voice_id: str, text: str, reference_audio_path: str = None) -> Optional[bytes]:
         """
-        调用 CosyVoice TTS 生成克隆语音
+        调用 TTS 生成克隆语音
+
+        根据 AI_SERVICE_MODE 选择：
+        - local: 使用本地 SpeechT5 模型
+        - cloud: 使用阿里云 CosyVoice API
 
         Args:
-            voice_id: 声音克隆ID
+            voice_id: 声音克隆ID (cloud) 或本地 voice_id (local)
             text: 要合成的文本
+            reference_audio_path: 参考音频路径 (仅 local 模式需要)
 
         Returns:
             音频字节数据，失败返回 None
         """
+        from core.config.settings import get_settings
+        settings = get_settings()
+        service_mode = getattr(settings, 'AI_SERVICE_MODE', 'cloud').lower()
+
+        if service_mode == "local":
+            # 本地模式：使用 SpeechT5
+            return await self._call_local_tts(voice_id, text, reference_audio_path)
+        else:
+            # 云端模式：使用 CosyVoice
+            return await self._call_cloud_tts(voice_id, text)
+
+    async def _call_cloud_tts(self, voice_id: str, text: str) -> Optional[bytes]:
+        """云端 TTS (CosyVoice)"""
         try:
             from dashscope.audio.tts_v2 import SpeechSynthesizer
 
@@ -1634,6 +2000,51 @@ class StoryGenerationService:
 
         except Exception as e:
             logger.error(f"CosyVoice TTS error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _call_local_tts(self, voice_id: str, text: str, reference_audio_path: str = None) -> Optional[bytes]:
+        """本地 TTS (SpeechT5)"""
+        try:
+            from modules.voice_clone.factory import get_voice_clone_service
+            import tempfile
+            import os
+
+            vc_service = get_voice_clone_service()
+
+            # 如果没有 reference_audio_path，尝试从本地 voice 缓存获取
+            if not reference_audio_path:
+                local_voices = getattr(vc_service, '_local_voices', {})
+                reference_audio_path = local_voices.get(voice_id)
+
+            if not reference_audio_path or not os.path.exists(reference_audio_path):
+                logger.error(f"[LocalTTS] Reference audio not found for voice_id: {voice_id}")
+                return None
+
+            # 生成临时输出文件
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+                output_path = f.name
+
+            # 使用本地服务合成
+            result = await vc_service.clone_audio_with_text(
+                reference_audio_path=reference_audio_path,
+                text=text,
+                output_path=output_path
+            )
+
+            if result and os.path.exists(output_path):
+                with open(output_path, 'rb') as f:
+                    audio_data = f.read()
+                os.unlink(output_path)
+                logger.info(f"[LocalTTS] Generated {len(audio_data)} bytes for text: '{text[:30]}...'")
+                return audio_data
+            else:
+                logger.error(f"[LocalTTS] Failed to generate audio")
+                return None
+
+        except Exception as e:
+            logger.error(f"[LocalTTS] Error: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -1891,8 +2302,8 @@ class StoryGenerationService:
             logger.info(f"[{job_id}] Using truncated audio for EMO: {truncated_audio_url}")
 
             # 调用 EMO API 生成数字人视频
-            from modules.digital_human.service import DigitalHumanService
-            dh_service = DigitalHumanService()
+            from modules.digital_human.factory import get_digital_human_service
+            dh_service = get_digital_human_service()
 
             # 创建 EMO 任务
             emo_task_id = await dh_service._create_emo_task(
@@ -2441,23 +2852,23 @@ class StoryGenerationService:
 
             logger.info(f"[{job_id}] Subtitles with speakers: {len(subtitles)} items")
 
-            # Step 3: 为每个说话人生成克隆语音和数字人
+            # Step 3: 为每个说话人生成克隆语音（顺序执行）
             await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 25)
 
             # 过滤启用的说话人配置
             enabled_configs = [cfg for cfg in speaker_configs if cfg.get("enabled", True)]
             logger.info(f"[{job_id}] Processing {len(enabled_configs)} enabled speakers")
 
+            # Phase 1: 生成所有克隆语音
             speaker_results = {}
             for i, config in enumerate(enabled_configs):
                 speaker_id = config.get("speaker_id")
                 voice_profile_id = config.get("voice_profile_id")
-                avatar_profile_id = config.get("avatar_profile_id")
 
-                logger.info(f"[{job_id}] Processing speaker {speaker_id}: voice={voice_profile_id}, avatar={avatar_profile_id}")
+                logger.info(f"[{job_id}] Phase 1 - Voice cloning for speaker {speaker_id}")
 
                 # 更新进度
-                progress = 25 + int((i / len(enabled_configs)) * 50)
+                progress = 25 + int((i / len(enabled_configs)) * 25)
                 await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
 
                 # 获取该说话人的字幕片段
@@ -2478,15 +2889,100 @@ class StoryGenerationService:
                     result["cloned_audio_url"] = cloned_audio_url
                     logger.info(f"[{job_id}] Speaker {speaker_id} cloned audio: {cloned_audio_url}")
 
-                # 生成数字人视频（如果指定了头像档案且有克隆语音）
-                if avatar_profile_id and result.get("cloned_audio_url"):
-                    digital_human_url = await self._generate_digital_human_for_speaker(
-                        job_id, speaker_id, result["cloned_audio_url"], avatar_profile_id
-                    )
-                    result["digital_human_video_url"] = digital_human_url
-                    logger.info(f"[{job_id}] Speaker {speaker_id} digital human: {digital_human_url}")
-
                 speaker_results[speaker_id] = result
+
+            # Phase 2: 分段生成数字人视频（最大45秒/段，最多5并发）
+            await self._update_progress(job_id, StoryJobStep.GENERATING_DIGITAL_HUMAN, 50)
+            logger.info(f"[{job_id}] Phase 2 - Creating segmented EMO tasks")
+
+            MAX_SEGMENT_DURATION = 45  # 每段最大 45 秒
+            MAX_CONCURRENT_EMO = 5     # 最大并发 5 个
+
+            configs_by_speaker = {cfg.get("speaker_id"): cfg for cfg in enabled_configs}
+            all_emo_tasks = []  # [(speaker_id, segment_index, emo_task_id), ...]
+
+            for speaker_id, result in speaker_results.items():
+                config = configs_by_speaker.get(speaker_id, {})
+                avatar_profile_id = config.get("avatar_profile_id")
+                cloned_audio_url = result.get("cloned_audio_url")
+
+                if not avatar_profile_id or not cloned_audio_url:
+                    continue
+
+                # 下载克隆语音并获取时长
+                audio_path = await self._download_audio_for_segmentation(
+                    job_id, speaker_id, cloned_audio_url
+                )
+                if not audio_path:
+                    continue
+
+                audio_duration = await self._get_audio_duration(audio_path)
+                logger.info(f"[{job_id}] Speaker {speaker_id} audio duration: {audio_duration:.2f}s")
+
+                # 计算需要多少个片段
+                import math
+                num_segments = math.ceil(audio_duration / MAX_SEGMENT_DURATION)
+                logger.info(f"[{job_id}] Speaker {speaker_id} will have {num_segments} segments")
+
+                # 分割音频并创建 EMO 任务
+                for seg_idx in range(num_segments):
+                    start_time = seg_idx * MAX_SEGMENT_DURATION
+                    duration = min(MAX_SEGMENT_DURATION, audio_duration - start_time)
+
+                    # 提取音频片段
+                    segment_audio_path = await self._extract_audio_segment_for_emo(
+                        job_id, speaker_id, seg_idx, audio_path, start_time, duration
+                    )
+                    if not segment_audio_path:
+                        continue
+
+                    # 上传音频片段
+                    segment_audio_url = await self._upload_to_media_bed(segment_audio_path)
+                    if not segment_audio_url:
+                        continue
+
+                    # 创建 EMO 任务
+                    emo_task_id = await self._create_emo_task_for_segment(
+                        job_id, speaker_id, seg_idx, segment_audio_url, avatar_profile_id
+                    )
+                    if emo_task_id:
+                        all_emo_tasks.append((speaker_id, seg_idx, emo_task_id))
+                        logger.info(f"[{job_id}] EMO task created: {speaker_id}_seg{seg_idx} -> {emo_task_id}")
+
+                    # 控制并发：每 5 个任务暂停一下让 API 处理
+                    if len(all_emo_tasks) % MAX_CONCURRENT_EMO == 0:
+                        await asyncio.sleep(2)
+
+            # 持久化 EMO 任务列表到数据库（用于断点恢复）
+            emo_tasks_data = [
+                {"speaker_id": spk, "seg_idx": idx, "task_id": tid, "status": "pending"}
+                for spk, idx, tid in all_emo_tasks
+            ]
+            await self.repository.update_job_field(job_id, "emo_tasks", emo_tasks_data)
+            logger.info(f"[{job_id}] Saved {len(emo_tasks_data)} EMO tasks to database")
+
+            # Phase 3: 等待所有 EMO 任务完成（每 60 秒轮询一次）
+            if all_emo_tasks:
+                logger.info(f"[{job_id}] Phase 3 - Waiting for {len(all_emo_tasks)} EMO tasks (poll every 60s)")
+                emo_results = await self._wait_for_segmented_emo_tasks(job_id, all_emo_tasks, poll_interval=60)
+
+                # Phase 4: 为每个说话人拼接数字人视频片段
+                for speaker_id in speaker_results:
+                    # 收集该说话人的所有片段
+                    speaker_segments = [
+                        (seg_idx, video_url)
+                        for (spk_id, seg_idx, video_url) in emo_results
+                        if spk_id == speaker_id and video_url
+                    ]
+                    speaker_segments.sort(key=lambda x: x[0])  # 按片段索引排序
+
+                    if speaker_segments:
+                        logger.info(f"[{job_id}] Concatenating {len(speaker_segments)} segments for {speaker_id}")
+                        concat_video_url = await self._concat_digital_human_segments(
+                            job_id, speaker_id, [url for _, url in speaker_segments]
+                        )
+                        speaker_results[speaker_id]["digital_human_video_url"] = concat_video_url
+                        logger.info(f"[{job_id}] Speaker {speaker_id} digital human: {concat_video_url}")
 
             # 保存说话人结果
             await self.repository.update_job_field(job_id, "speaker_results", speaker_results)
@@ -2589,6 +3085,7 @@ class StoryGenerationService:
 
         只处理属于该说话人的字幕片段
         重要：使用原视频时长确保音轨对齐
+        重要：每次都从 reference_audio_url 创建新的临时 voice_id（因为 CosyVoice 的 voice_id 会过期）
         """
         logger.info(f"[{job_id}] Generating cloned voice for speaker {speaker_id}, {len(subtitles)} subtitles")
 
@@ -2601,12 +3098,30 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] Voice profile not found: {voice_profile_id}")
                 return None
 
-            voice_id = profile.get("voice_id")
-            if not voice_id:
-                logger.error(f"[{job_id}] No voice_id in profile")
+            # 使用 reference_audio_url 创建新的临时 voice_id（而不是使用存储的 voice_id）
+            reference_audio_url = profile.get("reference_audio_url")
+            if not reference_audio_url:
+                logger.error(f"[{job_id}] No reference_audio_url in profile")
                 return None
 
-            logger.info(f"[{job_id}] Using voice_id: {voice_id} for speaker {speaker_id}")
+            logger.info(f"[{job_id}] Creating fresh voice from reference: {reference_audio_url}")
+
+            # 调用 VoiceCloneService 创建新的 voice
+            from modules.voice_clone.factory import get_voice_clone_service
+            vc_service = get_voice_clone_service()
+
+            voice_id = await vc_service._create_voice(f"{job_id}_{speaker_id}", reference_audio_url)
+            if not voice_id:
+                logger.error(f"[{job_id}] Failed to create voice for speaker {speaker_id}")
+                return None
+
+            # 等待 voice 就绪
+            is_ready = await vc_service._wait_for_voice_ready(f"{job_id}_{speaker_id}", voice_id, max_attempts=30, poll_interval=3)
+            if not is_ready:
+                logger.error(f"[{job_id}] Voice not ready for speaker {speaker_id}")
+                return None
+
+            logger.info(f"[{job_id}] Using fresh voice_id: {voice_id} for speaker {speaker_id}")
 
             # 使用原视频时长，如果未提供则从字幕计算
             if not subtitles:
@@ -2712,8 +3227,8 @@ class StoryGenerationService:
                 truncated_audio_url = audio_url
 
             # 调用 EMO API
-            from modules.digital_human.service import DigitalHumanService
-            dh_service = DigitalHumanService()
+            from modules.digital_human.factory import get_digital_human_service
+            dh_service = get_digital_human_service()
 
             emo_task_id = await dh_service._create_emo_task(
                 task_id=f"{job_id}_{speaker_id}",
@@ -2743,6 +3258,165 @@ class StoryGenerationService:
             import traceback
             traceback.print_exc()
             return None
+
+    async def _create_emo_task_for_speaker(
+        self,
+        job_id: str,
+        speaker_id: str,
+        audio_url: str,
+        avatar_profile_id: str
+    ) -> Optional[str]:
+        """
+        为指定说话人创建 EMO 任务（不等待完成）
+
+        返回 emo_task_id，用于后续轮询状态
+        """
+        logger.info(f"[{job_id}] Creating EMO task for speaker {speaker_id}")
+
+        try:
+            # 获取头像档案
+            from modules.digital_human.repository import avatar_profile_repository
+            profile = await avatar_profile_repository.get_by_id(avatar_profile_id)
+
+            if not profile:
+                logger.error(f"[{job_id}] Avatar profile not found: {avatar_profile_id}")
+                return None
+
+            image_url = profile.get("image_url")
+            face_bbox = profile.get("face_bbox")
+            ext_bbox = profile.get("ext_bbox")
+
+            if not image_url or not face_bbox or not ext_bbox:
+                logger.error(f"[{job_id}] Invalid avatar profile for speaker {speaker_id}")
+                return None
+
+            # 截取音频前55秒（EMO限制）
+            truncated_audio_url = await self._truncate_audio_for_emo(
+                job_id, audio_url, max_duration=55
+            )
+            if not truncated_audio_url:
+                truncated_audio_url = audio_url
+
+            # 调用 EMO API 创建任务
+            from modules.digital_human.factory import get_digital_human_service
+            dh_service = get_digital_human_service()
+
+            emo_task_id = await dh_service._create_emo_task(
+                task_id=f"{job_id}_{speaker_id}",
+                image_url=image_url,
+                audio_url=truncated_audio_url,
+                face_bbox=face_bbox,
+                ext_bbox=ext_bbox
+            )
+
+            if not emo_task_id:
+                logger.error(f"[{job_id}] Failed to create EMO task for speaker {speaker_id}")
+                return None
+
+            logger.info(f"[{job_id}] EMO task created for {speaker_id}: {emo_task_id}")
+            return emo_task_id
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Create EMO task for speaker {speaker_id} error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _wait_for_all_emo_tasks(
+        self,
+        job_id: str,
+        emo_tasks: List[tuple],
+        poll_interval: int = 60,
+        max_attempts: int = 30
+    ) -> Dict[str, Optional[str]]:
+        """
+        并行等待所有 EMO 任务完成
+
+        Args:
+            job_id: 任务ID
+            emo_tasks: [(speaker_id, emo_task_id), ...]
+            poll_interval: 轮询间隔（秒），默认 60 秒
+            max_attempts: 最大轮询次数，默认 30 次（30分钟）
+
+        Returns:
+            {speaker_id: video_url or None, ...}
+        """
+        from modules.digital_human.factory import get_digital_human_service
+        import requests
+        import os
+
+        logger.info(f"[{job_id}] Waiting for {len(emo_tasks)} EMO tasks, poll every {poll_interval}s")
+
+        results = {speaker_id: None for speaker_id, _ in emo_tasks}
+        pending_tasks = list(emo_tasks)  # [(speaker_id, emo_task_id), ...]
+
+        api_key = os.getenv("DASHSCOPE_API_KEY")
+
+        for attempt in range(max_attempts):
+            if not pending_tasks:
+                break
+
+            logger.info(f"[{job_id}] EMO poll attempt {attempt + 1}/{max_attempts}, {len(pending_tasks)} pending")
+
+            still_pending = []
+            for i, (speaker_id, emo_task_id) in enumerate(pending_tasks):
+                try:
+                    # 添加小延迟避免并发请求过多
+                    if i > 0:
+                        await asyncio.sleep(0.5)  # 每个请求间隔 0.5 秒
+
+                    # 查询 EMO 任务状态（带重试）
+                    url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{emo_task_id}"
+                    headers = {"Authorization": f"Bearer {api_key}"}
+
+                    # 简单重试机制
+                    response = None
+                    for retry in range(3):
+                        try:
+                            # proxies={"http": None, "https": None} 绕过系统代理
+                            response = requests.get(url, headers=headers, timeout=60, proxies={"http": None, "https": None})
+                            break
+                        except Exception as retry_error:
+                            if retry < 2:
+                                logger.warning(f"[{job_id}] {speaker_id} retry {retry + 1}: {retry_error}")
+                                await asyncio.sleep(2)
+                            else:
+                                raise retry_error
+
+                    data = response.json()
+                    output = data.get("output", {})
+                    status = output.get("task_status")
+
+                    logger.info(f"[{job_id}] {speaker_id} EMO status: {status}")
+
+                    if status == "SUCCEEDED":
+                        video_url = output.get("results", {}).get("video_url")
+                        results[speaker_id] = video_url
+                        logger.info(f"[{job_id}] {speaker_id} EMO completed: {video_url[:60]}...")
+                    elif status == "FAILED":
+                        error_msg = output.get("message", "Unknown error")
+                        logger.error(f"[{job_id}] {speaker_id} EMO failed: {error_msg}")
+                        results[speaker_id] = None
+                    else:
+                        # PENDING 或 RUNNING，继续等待
+                        still_pending.append((speaker_id, emo_task_id))
+
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Error checking {speaker_id} EMO: {e}")
+                    still_pending.append((speaker_id, emo_task_id))
+
+            pending_tasks = still_pending
+
+            if pending_tasks and attempt < max_attempts - 1:
+                logger.info(f"[{job_id}] Waiting {poll_interval}s before next poll...")
+                await asyncio.sleep(poll_interval)
+
+        # 超时的任务
+        for speaker_id, emo_task_id in pending_tasks:
+            logger.error(f"[{job_id}] {speaker_id} EMO timeout after {max_attempts * poll_interval}s")
+            results[speaker_id] = None
+
+        return results
 
     async def _composite_multi_speaker_video(
         self,
@@ -2796,13 +3470,14 @@ class StoryGenerationService:
 
                 # 处理本地路径
                 if audio_url.startswith('/uploads/') or audio_url.startswith('uploads/'):
-                    local_audio_path = audio_url.lstrip('/')
-                    if local_audio_path.startswith('uploads//'):
-                        local_audio_path = local_audio_path.replace('uploads//', 'uploads/')
+                    # 获取相对于 uploads 目录的路径
+                    rel_path = audio_url.lstrip('/').lstrip('uploads/')
+                    uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
+                    local_audio_path = uploads_absolute / rel_path
 
-                    if Path(local_audio_path).exists():
+                    if local_audio_path.exists():
                         import shutil
-                        shutil.copy(local_audio_path, str(audio_path))
+                        shutil.copy(str(local_audio_path), str(audio_path))
                         audio_paths.append(str(audio_path))
                         logger.info(f"[{job_id}] Copied local audio: {local_audio_path}")
                     else:
@@ -2822,14 +3497,14 @@ class StoryGenerationService:
 
                 # 处理本地路径（/uploads/... 或相对路径）
                 if background_audio_url.startswith('/uploads/') or background_audio_url.startswith('uploads/'):
-                    # 本地路径，直接复制文件
-                    local_bg_path = background_audio_url.lstrip('/')
-                    if local_bg_path.startswith('uploads//'):
-                        local_bg_path = local_bg_path.replace('uploads//', 'uploads/')
+                    # 获取相对于 uploads 目录的路径
+                    rel_path = background_audio_url.lstrip('/').lstrip('uploads/')
+                    uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
+                    local_bg_path = uploads_absolute / rel_path
 
-                    if Path(local_bg_path).exists():
+                    if local_bg_path.exists():
                         import shutil
-                        shutil.copy(local_bg_path, str(bg_audio_path))
+                        shutil.copy(str(local_bg_path), str(bg_audio_path))
                         logger.info(f"[{job_id}] Copied local background audio: {local_bg_path}")
                     else:
                         logger.warning(f"[{job_id}] Local background audio not found: {local_bg_path}")
@@ -3207,6 +3882,281 @@ class StoryGenerationService:
 
         except Exception as e:
             logger.error(f"[{job_id}] Audio-only composite error: {e}")
+            return None
+
+    # ===================== 分段数字人生成方法 =====================
+
+    async def _download_audio_for_segmentation(
+        self,
+        job_id: str,
+        speaker_id: str,
+        audio_url: str
+    ) -> Optional[str]:
+        """下载音频文件用于分段"""
+        try:
+            import httpx
+
+            audio_path = self.upload_dir / f"{job_id}_{speaker_id}_full_audio.mp3"
+
+            # 检查本地文件是否存在
+            local_path = self.upload_dir / f"{job_id}_{speaker_id}_cloned.mp3"
+            if local_path.exists():
+                return str(local_path)
+
+            # 下载音频
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.get(audio_url)
+                if response.status_code == 200:
+                    with open(audio_path, 'wb') as f:
+                        f.write(response.content)
+                    return str(audio_path)
+                else:
+                    logger.error(f"[{job_id}] Failed to download audio: {response.status_code}")
+                    return None
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Download audio error: {e}")
+            return None
+
+    async def _extract_audio_segment_for_emo(
+        self,
+        job_id: str,
+        speaker_id: str,
+        segment_index: int,
+        audio_path: str,
+        start_time: float,
+        duration: float
+    ) -> Optional[str]:
+        """提取音频片段用于 EMO"""
+        try:
+            output_path = self.upload_dir / f"{job_id}_{speaker_id}_emo_seg{segment_index}.mp3"
+
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', audio_path,
+                '-ss', str(start_time),
+                '-t', str(duration),
+                '-acodec', 'libmp3lame',
+                '-q:a', '2',
+                str(output_path)
+            ]
+
+            returncode, stdout, stderr = await run_ffmpeg_command(cmd)
+
+            if returncode != 0:
+                logger.error(f"[{job_id}] Extract audio segment error: {stderr.decode()[:200]}")
+                return None
+
+            if output_path.exists():
+                return str(output_path)
+            return None
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Extract audio segment error: {e}")
+            return None
+
+    async def _create_emo_task_for_segment(
+        self,
+        job_id: str,
+        speaker_id: str,
+        segment_index: int,
+        audio_url: str,
+        avatar_profile_id: str
+    ) -> Optional[str]:
+        """为音频片段创建 EMO 任务"""
+        try:
+            # 获取头像档案
+            from modules.digital_human.repository import avatar_profile_repository
+            profile = await avatar_profile_repository.get_by_id(avatar_profile_id)
+
+            if not profile:
+                logger.error(f"[{job_id}] Avatar profile not found: {avatar_profile_id}")
+                return None
+
+            image_url = profile.get("image_url")
+            face_bbox = profile.get("face_bbox")
+            ext_bbox = profile.get("ext_bbox")
+
+            if not image_url or not face_bbox or not ext_bbox:
+                logger.error(f"[{job_id}] Invalid avatar profile")
+                return None
+
+            # 调用 EMO API 创建任务
+            from modules.digital_human.factory import get_digital_human_service
+            dh_service = get_digital_human_service()
+
+            emo_task_id = await dh_service._create_emo_task(
+                task_id=f"{job_id}_{speaker_id}_seg{segment_index}",
+                image_url=image_url,
+                audio_url=audio_url,
+                face_bbox=face_bbox,
+                ext_bbox=ext_bbox
+            )
+
+            return emo_task_id
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Create EMO task for segment error: {e}")
+            return None
+
+    async def _wait_for_segmented_emo_tasks(
+        self,
+        job_id: str,
+        emo_tasks: List[tuple],
+        poll_interval: int = 60,
+        max_attempts: int = 60
+    ) -> List[tuple]:
+        """
+        等待所有分段 EMO 任务完成
+
+        Args:
+            emo_tasks: [(speaker_id, segment_index, emo_task_id), ...]
+
+        Returns:
+            [(speaker_id, segment_index, video_url or None), ...]
+        """
+        import requests
+        import os
+
+        logger.info(f"[{job_id}] Waiting for {len(emo_tasks)} segmented EMO tasks")
+
+        results = []
+        pending_tasks = list(emo_tasks)
+        api_key = os.getenv("DASHSCOPE_API_KEY")
+
+        for attempt in range(max_attempts):
+            if not pending_tasks:
+                break
+
+            logger.info(f"[{job_id}] EMO poll attempt {attempt + 1}/{max_attempts}, {len(pending_tasks)} pending")
+
+            still_pending = []
+            for i, (speaker_id, seg_idx, emo_task_id) in enumerate(pending_tasks):
+                try:
+                    # 添加小延迟避免并发请求过多
+                    if i > 0:
+                        await asyncio.sleep(0.5)  # 每个请求间隔 0.5 秒
+
+                    # 查询 EMO 任务状态（带重试）
+                    url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{emo_task_id}"
+                    headers = {"Authorization": f"Bearer {api_key}"}
+
+                    # 简单重试机制
+                    response = None
+                    for retry in range(3):
+                        try:
+                            # proxies={"http": None, "https": None} 绕过系统代理
+                            response = requests.get(url, headers=headers, timeout=60, proxies={"http": None, "https": None})
+                            break
+                        except Exception as retry_error:
+                            if retry < 2:
+                                logger.warning(f"[{job_id}] {speaker_id}_seg{seg_idx} retry {retry + 1}: {retry_error}")
+                                await asyncio.sleep(2)
+                            else:
+                                raise retry_error
+
+                    data = response.json()
+                    output = data.get("output", {})
+                    status = output.get("task_status")
+
+                    if status == "SUCCEEDED":
+                        video_url = output.get("results", {}).get("video_url")
+                        results.append((speaker_id, seg_idx, video_url))
+                        logger.info(f"[{job_id}] {speaker_id}_seg{seg_idx} completed")
+                    elif status == "FAILED":
+                        error_msg = output.get("message", "Unknown error")
+                        logger.error(f"[{job_id}] {speaker_id}_seg{seg_idx} failed: {error_msg}")
+                        results.append((speaker_id, seg_idx, None))
+                    else:
+                        # PENDING 或 RUNNING
+                        still_pending.append((speaker_id, seg_idx, emo_task_id))
+
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Error checking {speaker_id}_seg{seg_idx}: {e}")
+                    still_pending.append((speaker_id, seg_idx, emo_task_id))
+
+            pending_tasks = still_pending
+
+            if pending_tasks and attempt < max_attempts - 1:
+                await asyncio.sleep(poll_interval)
+
+        # 超时的任务
+        for speaker_id, seg_idx, emo_task_id in pending_tasks:
+            logger.error(f"[{job_id}] {speaker_id}_seg{seg_idx} timeout")
+            results.append((speaker_id, seg_idx, None))
+
+        return results
+
+    async def _concat_digital_human_segments(
+        self,
+        job_id: str,
+        speaker_id: str,
+        video_urls: List[str]
+    ) -> Optional[str]:
+        """拼接数字人视频片段"""
+        try:
+            import httpx
+
+            if not video_urls:
+                return None
+
+            if len(video_urls) == 1:
+                # 只有一个片段，直接返回
+                return video_urls[0]
+
+            # 下载所有视频片段
+            segment_paths = []
+            for i, url in enumerate(video_urls):
+                segment_path = self.upload_dir / f"{job_id}_{speaker_id}_dh_seg{i}.mp4"
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    response = await client.get(url)
+                    if response.status_code == 200:
+                        with open(segment_path, 'wb') as f:
+                            f.write(response.content)
+                        segment_paths.append(str(segment_path))
+                    else:
+                        logger.warning(f"[{job_id}] Failed to download segment {i}")
+
+            if not segment_paths:
+                return None
+
+            # 创建拼接列表文件
+            concat_list_path = self.upload_dir / f"{job_id}_{speaker_id}_dh_concat.txt"
+            with open(concat_list_path, 'w', encoding='utf-8') as f:
+                for path in segment_paths:
+                    abs_path = str(Path(path).resolve()).replace('\\', '/')
+                    f.write(f"file '{abs_path}'\n")
+
+            output_path = self.upload_dir / f"{job_id}_{speaker_id}_dh_full.mp4"
+
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', str(concat_list_path),
+                '-c', 'copy',
+                str(output_path)
+            ]
+
+            returncode, stdout, stderr = await run_ffmpeg_command(cmd)
+
+            if returncode != 0:
+                logger.error(f"[{job_id}] Concat digital human segments error: {stderr.decode()[:300]}")
+                return None
+
+            if not output_path.exists():
+                return None
+
+            # 上传拼接后的视频
+            final_url = await self._upload_to_media_bed(str(output_path))
+            logger.info(f"[{job_id}] {speaker_id} concatenated digital human: {final_url}")
+
+            return final_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Concat digital human segments error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     # ===================== 工具方法 =====================

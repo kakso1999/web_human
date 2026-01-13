@@ -111,7 +111,60 @@ class VoiceSeparationService:
             with open(segments_path, "w", encoding="utf-8") as f:
                 json.dump(segments, f, ensure_ascii=False, indent=2)
 
-            # Step 4: 提取各说话人音轨
+            # Step 3.5: 分析说话人比例，判断是否实际为单人
+            # 如果主说话人占比超过80%，则判定为单人模式
+            speaker_durations = {}
+            for seg in segments:
+                spk = seg["speaker"]
+                dur = seg["end"] - seg["start"]
+                speaker_durations[spk] = speaker_durations.get(spk, 0) + dur
+
+            total_speech_duration = sum(speaker_durations.values())
+            unique_speakers = list(speaker_durations.keys())
+
+            # 检查是否应该切换到单人模式
+            if len(unique_speakers) >= 2 and total_speech_duration > 0:
+                # 按时长排序
+                sorted_speakers = sorted(speaker_durations.items(), key=lambda x: x[1], reverse=True)
+                dominant_speaker, dominant_duration = sorted_speakers[0]
+                dominant_ratio = dominant_duration / total_speech_duration
+
+                logger.info(f"[{story_id}] Speaker ratio analysis: {dict(speaker_durations)}")
+                logger.info(f"[{story_id}] Dominant speaker: {dominant_speaker}, ratio: {dominant_ratio:.2%}")
+
+                if dominant_ratio >= 0.80:
+                    # 主说话人占比超过80%，切换到单人模式
+                    logger.info(f"[{story_id}] Dominant speaker ratio {dominant_ratio:.2%} >= 80%, switching to single-speaker mode")
+
+                    # 上传人声和背景音到媒体床
+                    vocals_url = await self._upload_to_media_bed(separation_result["vocals"])
+                    background_url = await self._upload_to_media_bed(separation_result["background"])
+
+                    # 计算人声总时长
+                    import soundfile as sf
+                    audio, sr = sf.read(separation_result["vocals"])
+                    vocals_duration = len(audio) / sr
+
+                    # 返回单人模式结果结构
+                    result = {
+                        "speaker_count": 1,
+                        "speakers": [{
+                            "speaker_id": "SPEAKER_00",
+                            "label": "说话人 1",
+                            "gender": "unknown",
+                            "audio_url": vocals_url,
+                            "duration": round(vocals_duration, 2)
+                        }],
+                        "background_audio_url": background_url,
+                        "segments": segments,  # 保留原始分割信息用于调试
+                        "single_speaker_mode": True,  # 标记为自动切换的单人模式
+                        "dominant_ratio": round(dominant_ratio, 4)
+                    }
+
+                    logger.info(f"[{story_id}] Auto-switched to single-speaker mode")
+                    return result
+
+            # Step 4: 提取各说话人音轨（多说话人模式）
             logger.info(f"[{story_id}] Step 4: Extracting speaker tracks")
             speaker_tracks = await self._extract_speaker_tracks(
                 separation_result["vocals"],
@@ -280,7 +333,64 @@ class VoiceSeparationService:
             with open(segments_path, "w", encoding="utf-8") as f:
                 json.dump(segments, f, ensure_ascii=False, indent=2)
 
-            # Step 4: 提取各说话人音轨
+            # Step 3.5: 分析说话人比例，判断是否实际为单人
+            # 如果主说话人占比超过80%，则判定为单人模式
+            speaker_durations = {}
+            for seg in segments:
+                spk = seg["speaker"]
+                dur = seg["end"] - seg["start"]
+                speaker_durations[spk] = speaker_durations.get(spk, 0) + dur
+
+            total_speech_duration = sum(speaker_durations.values())
+            unique_speakers = list(speaker_durations.keys())
+
+            # 检查是否应该切换到单人模式
+            if len(unique_speakers) >= 2 and total_speech_duration > 0:
+                # 按时长排序
+                sorted_speakers = sorted(speaker_durations.items(), key=lambda x: x[1], reverse=True)
+                dominant_speaker, dominant_duration = sorted_speakers[0]
+                dominant_ratio = dominant_duration / total_speech_duration
+
+                logger.info(f"[{story_id}] Speaker ratio analysis: {dict(speaker_durations)}")
+                logger.info(f"[{story_id}] Dominant speaker: {dominant_speaker}, ratio: {dominant_ratio:.2%}")
+
+                if dominant_ratio >= 0.80:
+                    # 主说话人占比超过80%，切换到单人模式
+                    logger.info(f"[{story_id}] Dominant speaker ratio {dominant_ratio:.2%} >= 80%, returning single-speaker result")
+
+                    # 上传人声和背景音到媒体床
+                    vocals_url = await self._upload_to_media_bed(separation_result["vocals"])
+                    background_url = await self._upload_to_media_bed(separation_result["background"])
+
+                    # 计算人声总时长
+                    import soundfile as sf
+                    audio, sr = sf.read(separation_result["vocals"])
+                    vocals_duration = len(audio) / sr
+
+                    # 返回单人模式结果结构（只有一个说话人）
+                    # 前端会根据 speakers.length <= 1 判断为单人模式
+                    result = {
+                        "speakers": [{
+                            "speaker_id": "SPEAKER_00",
+                            "label": "说话人 1",
+                            "gender": "unknown",
+                            "audio_url": vocals_url,
+                            "duration": round(vocals_duration, 2)
+                        }],
+                        "background_url": background_url,
+                        "diarization_segments": [
+                            {"start": seg["start"], "end": seg["end"], "speaker": seg["speaker"]}
+                            for seg in segments
+                        ],
+                        "is_analyzed": True,
+                        "single_speaker_mode": True,  # 标记为自动切换的单人模式
+                        "dominant_ratio": round(dominant_ratio, 4)
+                    }
+
+                    logger.info(f"[{story_id}] Auto-switched to single-speaker mode (1 speaker)")
+                    return result
+
+            # Step 4: 提取各说话人音轨（多说话人模式）
             logger.info(f"[{story_id}] Dual: Extracting speaker tracks")
             speaker_tracks = await self._extract_speaker_tracks(
                 separation_result["vocals"],
@@ -539,16 +649,25 @@ class VoiceSeparationService:
             print(f"正在进行说话人分割 (限制为 {effective_speakers} 个说话人)...")
             diarization = pipeline(audio_input, num_speakers=effective_speakers)
 
-            # 新版 pyannote 返回结构
-            annotation = diarization.speaker_diarization
-
+            # 兼容不同版本的 pyannote 返回结构
             segments = []
-            for turn, _, speaker in annotation.itertracks(yield_label=True):
-                segments.append({
-                    "start": turn.start,
-                    "end": turn.end,
-                    "speaker": speaker
-                })
+            try:
+                # 新版格式: DiarizeOutput 直接有 itertracks 方法
+                for turn, _, speaker in diarization.itertracks(yield_label=True):
+                    segments.append({
+                        "start": turn.start,
+                        "end": turn.end,
+                        "speaker": speaker
+                    })
+            except AttributeError:
+                # 旧版格式: 需要访问 speaker_diarization 属性
+                annotation = diarization.speaker_diarization
+                for turn, _, speaker in annotation.itertracks(yield_label=True):
+                    segments.append({
+                        "start": turn.start,
+                        "end": turn.end,
+                        "speaker": speaker
+                    })
 
             speaker_count = len(set(s['speaker'] for s in segments))
             print(f"检测到 {speaker_count} 个说话人 (已限制为最多2个)")

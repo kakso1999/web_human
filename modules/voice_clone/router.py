@@ -25,7 +25,12 @@ from .schemas import (
     UpdateVoiceProfileRequest
 )
 from .preset_stories import get_all_stories, get_story_by_id
-from .service import voice_clone_service, voice_clone_tasks
+from .factory import get_voice_clone_service
+
+
+def _get_service():
+    """获取声音克隆服务实例"""
+    return get_voice_clone_service()
 
 router = APIRouter(prefix="/voice-clone", tags=["语音克隆"])
 
@@ -127,19 +132,20 @@ async def create_voice_clone_preview(
         raise HTTPException(status_code=400, detail="音频文件过大，最大支持 10MB")
 
     # 保存参考音频
-    reference_path = voice_clone_service.save_reference_audio(
+    service = _get_service()
+    reference_path = service.save_reference_audio(
         user_id=user_id,
         file_content=content,
         filename=audio.filename or "audio.wav"
     )
 
     # 创建任务
-    task_id = voice_clone_service.create_task(user_id)
+    task_id = service.create_task(user_id)
 
     # 使用 asyncio.create_task 在独立协程中执行（而非 BackgroundTasks）
     # 这样可以避免 BackgroundTasks 的一些潜在问题
     asyncio.create_task(
-        voice_clone_service.generate_preview(
+        service.generate_preview(
             task_id=task_id,
             reference_audio_path=reference_path,
             text=story["preview_text"]
@@ -193,7 +199,8 @@ async def get_voice_clone_status(
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
     # 获取任务状态
-    task = voice_clone_service.get_task_status(task_id)
+    service = _get_service()
+    task = service.get_task_status(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -243,7 +250,8 @@ async def save_voice_profile(
     }
     ```
     """
-    profile = await voice_clone_service.save_voice_profile(
+    service = _get_service()
+    profile = await service.save_voice_profile(
         user_id=user_id,
         task_id=request.task_id,
         name=request.name
@@ -295,7 +303,8 @@ async def get_voice_profiles(
     }
     ```
     """
-    profiles = await voice_clone_service.get_user_voice_profiles(user_id)
+    service = _get_service()
+    profiles = await service.get_user_voice_profiles(user_id)
 
     return success_response({
         "profiles": [
@@ -340,7 +349,8 @@ async def get_voice_profile(
     }
     ```
     """
-    profile = await voice_clone_service.get_voice_profile(profile_id, user_id)
+    service = _get_service()
+    profile = await service.get_voice_profile(profile_id, user_id)
 
     if not profile:
         raise HTTPException(status_code=404, detail="声音档案不存在")
@@ -381,7 +391,8 @@ async def update_voice_profile(
     }
     ```
     """
-    success = await voice_clone_service.update_voice_profile(
+    service = _get_service()
+    success = await service.update_voice_profile(
         profile_id=profile_id,
         user_id=user_id,
         name=request.name
@@ -415,7 +426,8 @@ async def delete_voice_profile(
     }
     ```
     """
-    success = await voice_clone_service.delete_voice_profile(profile_id, user_id)
+    service = _get_service()
+    success = await service.delete_voice_profile(profile_id, user_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="声音档案不存在或无权删除")

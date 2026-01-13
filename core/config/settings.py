@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # HuggingFace Token (Pyannote 说话人分割)
     HF_TOKEN: Optional[str] = None
 
+    # AI 服务模式配置
+    # "local": 使用本地模型 (SpeechT5 声音克隆, FFmpeg 数字人)
+    # "cloud": 使用阿里云 API (CosyVoice 声音克隆, EMO 数字人)
+    AI_SERVICE_MODE: str = "local"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

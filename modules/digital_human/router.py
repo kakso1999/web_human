@@ -21,7 +21,12 @@ from .schemas import (
     UpdateAvatarProfileRequest,
     AudioSourceType
 )
-from .service import digital_human_service, digital_human_tasks
+from .factory import get_digital_human_service
+
+
+def _get_service():
+    """获取数字人服务实例"""
+    return get_digital_human_service()
 
 router = APIRouter(prefix="/digital-human", tags=["数字人"])
 
@@ -111,7 +116,8 @@ async def create_digital_human_preview(
         audio_source = AudioSourceType.VOICE_PROFILE
 
     # 保存图片
-    image_path = digital_human_service.save_image(
+    service = _get_service()
+    image_path = service.save_image(
         user_id=user_id,
         file_content=image_content,
         filename=image.filename or "avatar.jpg"
@@ -119,20 +125,24 @@ async def create_digital_human_preview(
 
     # 保存音频（如果上传了）
     if audio_content:
-        audio_path = digital_human_service.save_audio(
+        audio_path = service.save_audio(
             user_id=user_id,
             file_content=audio_content,
             filename=audio.filename or "audio.wav"
         )
 
     # 创建任务
-    task_id = digital_human_service.create_task(user_id)
-    digital_human_tasks[task_id]["image_local"] = image_path
-    digital_human_tasks[task_id]["audio_source"] = audio_source.value
+    task_id = service.create_task(user_id)
+
+    # 获取任务状态并更新（兼容本地和云端服务）
+    task_status = service.get_task_status(task_id)
+    if task_status:
+        task_status["image_local"] = image_path
+        task_status["audio_source"] = audio_source.value
 
     # 启动后台任务
     asyncio.create_task(
-        digital_human_service.generate_preview(
+        service.generate_preview(
             task_id=task_id,
             image_path=image_path,
             audio_source=audio_source,
@@ -191,7 +201,8 @@ async def get_digital_human_status(
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
     # 获取任务状态
-    task = digital_human_service.get_task_status(task_id)
+    service = _get_service()
+    task = service.get_task_status(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
 
@@ -240,7 +251,8 @@ async def save_avatar_profile(
     }
     ```
     """
-    profile = await digital_human_service.save_avatar_profile(
+    service = _get_service()
+    profile = await service.save_avatar_profile(
         user_id=user_id,
         task_id=request.task_id,
         name=request.name
@@ -290,7 +302,8 @@ async def get_avatar_profiles(
     }
     ```
     """
-    profiles = await digital_human_service.get_user_avatar_profiles(user_id)
+    service = _get_service()
+    profiles = await service.get_user_avatar_profiles(user_id)
 
     return success_response({
         "profiles": [
@@ -333,7 +346,8 @@ async def get_avatar_profile(
     }
     ```
     """
-    profile = await digital_human_service.get_avatar_profile(profile_id, user_id)
+    service = _get_service()
+    profile = await service.get_avatar_profile(profile_id, user_id)
 
     if not profile:
         raise HTTPException(status_code=404, detail="头像档案不存在")
@@ -373,7 +387,8 @@ async def update_avatar_profile(
     }
     ```
     """
-    success = await digital_human_service.update_avatar_profile(
+    service = _get_service()
+    success = await service.update_avatar_profile(
         profile_id=profile_id,
         user_id=user_id,
         name=request.name
@@ -407,7 +422,8 @@ async def delete_avatar_profile(
     }
     ```
     """
-    success = await digital_human_service.delete_avatar_profile(profile_id, user_id)
+    service = _get_service()
+    success = await service.delete_avatar_profile(profile_id, user_id)
 
     if not success:
         raise HTTPException(status_code=404, detail="头像档案不存在或无权删除")

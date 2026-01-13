@@ -1306,6 +1306,180 @@ interface CreateStoryJobRequest {
 }
 ```
 
+### 17.6 AI 服务工厂模式 (2026-01-13)
+
+#### 功能说明
+实现了本地/云端 AI 服务的工厂模式切换，通过 `AI_SERVICE_MODE` 环境变量控制：
+- `cloud`: 使用阿里云 DashScope API（CosyVoice + EMO）
+- `local`: 使用本地模型（SpeechT5 + FFmpeg）
+
+#### 相关文件
+
+**声音克隆模块:**
+```
+modules/voice_clone/
+├── base.py              # 抽象基类 VoiceCloneServiceBase
+├── cloud_service.py     # 云端服务 CloudVoiceCloneService (CosyVoice)
+├── local_service.py     # 本地服务 LocalVoiceCloneService (SpeechT5)
+├── factory.py           # 工厂类 get_voice_clone_service()
+└── service.py           # 原服务（已废弃，保留兼容）
+```
+
+**数字人模块:**
+```
+modules/digital_human/
+├── base.py              # 抽象基类 DigitalHumanServiceBase
+├── cloud_service.py     # 云端服务 CloudDigitalHumanService (EMO API)
+├── local_service.py     # 本地服务 LocalDigitalHumanService (FFmpeg)
+├── factory.py           # 工厂类 get_digital_human_service()
+└── service.py           # 原服务（已废弃，保留兼容）
+```
+
+#### 本地服务技术栈
+
+| 服务 | 本地实现 | 说明 |
+|------|---------|------|
+| 声音克隆 | SpeechT5 + SpeechBrain | 使用说话人嵌入进行声音风格迁移 |
+| 数字人生成 | FFmpeg | 静态图片 + 音频合成视频（无口型同步） |
+| 语音识别 | faster-whisper | 本地 Whisper 模型，词级时间戳 |
+| 人声分离 | Demucs (htdemucs) | 分离人声和背景音乐 |
+
+#### 环境变量配置
+
+```bash
+# .env 文件
+AI_SERVICE_MODE=local  # 或 cloud
+
+# 本地模式需要的模型路径
+WHISPER_MODEL_PATH=E:\huggingface_cache\hub\models--Systran--faster-whisper-base
+```
+
+#### 使用方式
+
+```python
+# 自动根据环境变量选择服务
+from modules.voice_clone.factory import get_voice_clone_service
+from modules.digital_human.factory import get_digital_human_service
+
+vc_service = get_voice_clone_service()  # 返回 Local 或 Cloud 服务
+dh_service = get_digital_human_service()
+```
+
+### 17.7 故事生成流程优化 (2026-01-13)
+
+#### 流程说明
+故事生成现在复用故事分析阶段的音频分离结果，不再重复调用 API：
+
+```
+故事上传
+    ↓
+┌──────────────────────┐
+│ 故事分析（自动触发）  │
+│ - Demucs 分离人声    │  → story.single_speaker_analysis.vocals_url
+│ - Demucs 分离背景音  │  → story.single_speaker_analysis.background_url
+│ - Pyannote 说话人分割│  → story.dual_speaker_analysis (可选)
+└──────────────────────┘
+    ↓
+用户选择声音/头像档案
+    ↓
+┌──────────────────────┐
+│ 故事生成任务         │
+│ 1. 提取音频          │  → 保存本地视频文件
+│ 2. 复用分析结果      │  → 使用 vocals_url, background_url
+│ 3. 语音识别          │  → faster-whisper 生成字幕
+│ 4. 智能分段          │  → 最大 30 秒/段
+│ 5. 克隆语音生成      │  → SpeechT5 或 CosyVoice
+│ 6. 数字人生成        │  → FFmpeg 或 EMO API
+│ 7. 画中画合成        │  → FFmpeg overlay
+│ 8. 片段拼接          │  → FFmpeg concat
+└──────────────────────┘
+    ↓
+最终视频 URL
+```
+
+#### 关键代码位置
+
+| 功能 | 文件 | 方法 |
+|------|------|------|
+| 复用分析结果 | `modules/story_generation/service.py` | `_process_job()` 第 326-339 行 |
+| 本地文件路径处理 | `modules/story_generation/service.py` | `_get_local_file_path()` 第 796-852 行 |
+| 分段克隆语音 | `modules/story_generation/service.py` | `_generate_cloned_voice_for_segment()` |
+| 分段数字人 | `modules/story_generation/service.py` | `_generate_digital_human_for_segment()` |
+| 画中画合成 | `modules/story_generation/service.py` | `_composite_segment_pip()` |
+| 视频拼接 | `modules/story_generation/service.py` | `_concat_video_segments()` |
+
+#### 数据模型
+
+```javascript
+// stories 集合 - 单人模式分析结果
+{
+  single_speaker_analysis: {
+    is_analyzed: Boolean,
+    vocals_url: String,      // 完整人声音轨
+    background_url: String,  // 背景音乐
+    duration: Number
+  },
+  dual_speaker_analysis: {
+    is_analyzed: Boolean,
+    speakers: [...],         // 说话人列表
+    background_url: String,
+    diarization_segments: [...]
+  }
+}
+```
+
+### 17.8 说话人比例检测 (2026-01-13)
+
+#### 功能说明
+当检测到主要说话人占比超过 80% 时，自动切换为单人模式处理。
+
+#### 相关文件
+- `modules/voice_separation/service.py` - `analyze_both_modes()` 方法
+
+#### 逻辑
+
+```python
+# 计算主要说话人占比
+total_duration = sum(speaker.duration for speaker in speakers)
+max_duration = max(speaker.duration for speaker in speakers)
+dominant_ratio = max_duration / total_duration
+
+if dominant_ratio >= 0.8:
+    # 80% 以上由一个人说话，视为单人模式
+    use_single_mode = True
+```
+
 ---
 
-*最后更新: 2026-01-09*
+## 十八、测试脚本
+
+### 18.1 完整故事生成测试
+
+```bash
+# 测试单人模式故事生成（本地模式）
+python tests/test_complete_generation.py
+```
+
+**文件**: `tests/test_complete_generation.py`
+
+**功能**:
+- 连接数据库获取测试数据
+- 创建故事生成任务
+- 轮询任务状态直到完成
+- 验证最终视频 URL
+
+### 18.2 声音克隆测试
+
+```bash
+python tests/test_voice_clone_local.py
+```
+
+### 18.3 数字人生成测试
+
+```bash
+python tests/test_digital_human_local.py
+```
+
+---
+
+*最后更新: 2026-01-13*

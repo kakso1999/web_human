@@ -15,9 +15,25 @@ import io
 
 from PIL import Image
 
+# DNS 补丁：解决本地 DNS 服务器无法解析阿里云域名的问题
+try:
+    from core.utils.dns_patch import patch_dns
+except ImportError:
+    pass
+
 from core.config.settings import get_settings
 
 settings = get_settings()
+
+# 配置代理绕过：阿里云域名不走代理
+_no_proxy_domains = "aliyuncs.com,dashscope.aliyuncs.com,alibabacloud.com"
+_existing_no_proxy = os.environ.get("NO_PROXY", os.environ.get("no_proxy", ""))
+if _existing_no_proxy:
+    if "aliyuncs.com" not in _existing_no_proxy:
+        os.environ["NO_PROXY"] = f"{_existing_no_proxy},{_no_proxy_domains}"
+else:
+    os.environ["NO_PROXY"] = _no_proxy_domains
+os.environ["no_proxy"] = os.environ["NO_PROXY"]
 
 # 任务状态存储（内存中，生产环境可改用 Redis）
 digital_human_tasks: Dict[str, dict] = {}
