@@ -456,28 +456,18 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
 
         Args:
             task_id: 任务ID
-            audio_url: 音频 URL
+            audio_url: 音频 URL 或本地路径
 
         Returns:
             voice_id 或 None
         """
         import httpx
-        import tempfile
-        import os
+        import shutil
 
         try:
             # 初始化存储
             self._local_voices = getattr(self, '_local_voices', {})
 
-            # 下载参考音频
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                print(f"[LocalVoiceClone] Downloading reference audio: {audio_url[:80]}...")
-                response = await client.get(audio_url)
-                if response.status_code != 200:
-                    print(f"[LocalVoiceClone] Failed to download audio: {response.status_code}")
-                    return None
-
-            # 保存到临时文件
             from core.config.settings import get_settings
             settings = get_settings()
             voice_dir = os.path.join(settings.UPLOAD_DIR, 'voice_clone', 'local_voices')
@@ -486,8 +476,38 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
             voice_id = f"local_{task_id}_{int(asyncio.get_event_loop().time())}"
             audio_path = os.path.join(voice_dir, f"{voice_id}.wav")
 
-            with open(audio_path, 'wb') as f:
-                f.write(response.content)
+            # 检查是否是本地路径
+            is_local_path = not audio_url.startswith(('http://', 'https://'))
+
+            if is_local_path:
+                # 本地路径处理
+                local_path = audio_url
+                # 处理以 / 开头的相对路径
+                if local_path.startswith('/'):
+                    local_path = local_path.lstrip('/')
+                # 如果不是绝对路径，拼接工作目录
+                if not os.path.isabs(local_path):
+                    local_path = os.path.join(os.getcwd(), local_path)
+
+                if not os.path.exists(local_path):
+                    print(f"[LocalVoiceClone] Local audio file not found: {local_path}")
+                    return None
+
+                print(f"[LocalVoiceClone] Using local reference audio: {local_path}")
+                # 复制文件到 voice_dir
+                shutil.copy2(local_path, audio_path)
+
+            else:
+                # HTTP URL 处理
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    print(f"[LocalVoiceClone] Downloading reference audio: {audio_url[:80]}...")
+                    response = await client.get(audio_url)
+                    if response.status_code != 200:
+                        print(f"[LocalVoiceClone] Failed to download audio: {response.status_code}")
+                        return None
+
+                with open(audio_path, 'wb') as f:
+                    f.write(response.content)
 
             # 存储映射关系
             self._local_voices[voice_id] = audio_path
@@ -500,6 +520,40 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
             import traceback
             traceback.print_exc()
             return None
+
+    async def _wait_for_voice_ready(
+        self,
+        task_id: str,
+        voice_id: str,
+        max_attempts: int = 30,
+        poll_interval: int = 3
+    ) -> bool:
+        """
+        等待音色准备完成（本地兼容版）
+
+        本地模式下，音色在 _create_voice 返回后立即可用，
+        所以这里直接返回 True
+
+        Args:
+            task_id: 任务ID
+            voice_id: voice_id
+            max_attempts: 最大尝试次数（忽略）
+            poll_interval: 轮询间隔（忽略）
+
+        Returns:
+            True 表示音色已准备好
+        """
+        # 本地模式下，音色在创建后立即可用
+        self._local_voices = getattr(self, '_local_voices', {})
+
+        if voice_id in self._local_voices:
+            audio_path = self._local_voices[voice_id]
+            if os.path.exists(audio_path):
+                print(f"[LocalVoiceClone] Voice {voice_id} is ready")
+                return True
+
+        print(f"[LocalVoiceClone] Voice {voice_id} not found in local voices")
+        return False
 
     async def synthesize_with_voice_id(
         self,

@@ -457,29 +457,57 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
             image_url = task_params['image_url']
             audio_url = task_params['audio_url']
 
-            # 下载图片和音频
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                # 下载图片
-                print(f"[LocalDigitalHuman] Downloading image: {image_url[:80]}...")
-                img_response = await client.get(image_url)
-                if img_response.status_code != 200:
-                    print(f"[LocalDigitalHuman] Failed to download image: {img_response.status_code}")
-                    return None
+            # 辅助函数：获取文件内容（支持本地路径和HTTP URL）
+            async def get_file_content(url: str, file_type: str) -> bytes:
+                is_local = not url.startswith(('http://', 'https://'))
 
-                # 下载音频
-                print(f"[LocalDigitalHuman] Downloading audio: {audio_url[:80]}...")
-                audio_response = await client.get(audio_url)
-                if audio_response.status_code != 200:
-                    print(f"[LocalDigitalHuman] Failed to download audio: {audio_response.status_code}")
-                    return None
+                if is_local:
+                    # 本地路径处理
+                    local_path = url
+                    if local_path.startswith('/'):
+                        local_path = local_path.lstrip('/')
+                    if not os.path.isabs(local_path):
+                        local_path = os.path.join(os.getcwd(), local_path)
+
+                    if os.path.exists(local_path):
+                        print(f"[LocalDigitalHuman] Using local {file_type}: {local_path}")
+                        with open(local_path, 'rb') as f:
+                            return f.read()
+                    else:
+                        print(f"[LocalDigitalHuman] Local {file_type} not found: {local_path}")
+                        return None
+                else:
+                    # HTTP URL 处理
+                    async with httpx.AsyncClient(timeout=120.0) as client:
+                        print(f"[LocalDigitalHuman] Downloading {file_type}: {url[:80]}...")
+                        try:
+                            response = await client.get(url)
+                            if response.status_code == 200:
+                                return response.content
+                            else:
+                                print(f"[LocalDigitalHuman] Failed to download {file_type}: {response.status_code}")
+                                return None
+                        except Exception as e:
+                            print(f"[LocalDigitalHuman] Download {file_type} error: {e}")
+                            return None
+
+            # 获取图片内容
+            image_content = await get_file_content(image_url, "image")
+            if not image_content:
+                return None
+
+            # 获取音频内容
+            audio_content = await get_file_content(audio_url, "audio")
+            if not audio_content:
+                return None
 
             # 保存到临时文件
             with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as img_file:
-                img_file.write(img_response.content)
+                img_file.write(image_content)
                 image_path = img_file.name
 
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as audio_file:
-                audio_file.write(audio_response.content)
+                audio_file.write(audio_content)
                 audio_path = audio_file.name
 
             # 生成输出路径

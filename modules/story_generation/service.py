@@ -3546,14 +3546,36 @@ class StoryGenerationService:
             dh_video_paths = []
             for i, dh in enumerate(digital_humans[:2]):  # 最多处理2个数字人
                 dh_video_path = self.upload_dir / f"{job_id}_dh_{dh['speaker_id']}.mp4"
-                async with httpx.AsyncClient(timeout=300.0) as client:
-                    response = await client.get(dh["video_url"])
-                    if response.status_code == 200:
-                        with open(dh_video_path, 'wb') as f:
-                            f.write(response.content)
+                video_url = dh["video_url"]
+
+                # 处理本地路径
+                if video_url.startswith('/uploads') or video_url.startswith('uploads'):
+                    # 本地路径处理
+                    rel_path = video_url.lstrip('/').replace('\\', '/')
+                    if rel_path.startswith('uploads/'):
+                        rel_path = rel_path[8:]  # 去掉 uploads/
+                    elif rel_path.startswith('uploads\\'):
+                        rel_path = rel_path[8:]
+                    uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
+                    local_video_path = uploads_absolute / rel_path
+
+                    if local_video_path.exists():
+                        import shutil
+                        shutil.copy(str(local_video_path), str(dh_video_path))
                         dh_video_paths.append(str(dh_video_path))
+                        logger.info(f"[{job_id}] Copied local digital human video: {local_video_path}")
                     else:
-                        logger.warning(f"[{job_id}] Failed to download digital human video for {dh['speaker_id']}")
+                        logger.warning(f"[{job_id}] Local digital human video not found: {local_video_path}")
+                elif video_url.startswith('http'):
+                    # HTTP URL，下载
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        response = await client.get(video_url)
+                        if response.status_code == 200:
+                            with open(dh_video_path, 'wb') as f:
+                                f.write(response.content)
+                            dh_video_paths.append(str(dh_video_path))
+                        else:
+                            logger.warning(f"[{job_id}] Failed to download digital human video for {dh['speaker_id']}")
 
             # 下载克隆语音
             audio_paths = []
@@ -3561,10 +3583,13 @@ class StoryGenerationService:
                 audio_path = self.upload_dir / f"{job_id}_audio_{audio['speaker_id']}.mp3"
                 audio_url = audio["audio_url"]
 
+                # 统一路径分隔符
+                audio_url_normalized = audio_url.replace('\\', '/')
+
                 # 处理本地路径
-                if audio_url.startswith('/uploads/') or audio_url.startswith('uploads/'):
+                if audio_url_normalized.startswith('/uploads/') or audio_url_normalized.startswith('uploads/'):
                     # 获取相对于 uploads 目录的路径
-                    rel_path = audio_url.lstrip('/').lstrip('uploads/')
+                    rel_path = audio_url_normalized.lstrip('/').lstrip('uploads/')
                     uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
                     local_audio_path = uploads_absolute / rel_path
 
@@ -3588,10 +3613,13 @@ class StoryGenerationService:
             if background_audio_url:
                 bg_audio_path = self.upload_dir / f"{job_id}_background.wav"
 
+                # 统一路径分隔符
+                bg_url_normalized = background_audio_url.replace('\\', '/')
+
                 # 处理本地路径（/uploads/... 或相对路径）
-                if background_audio_url.startswith('/uploads/') or background_audio_url.startswith('uploads/'):
+                if bg_url_normalized.startswith('/uploads/') or bg_url_normalized.startswith('uploads/'):
                     # 获取相对于 uploads 目录的路径
-                    rel_path = background_audio_url.lstrip('/').lstrip('uploads/')
+                    rel_path = bg_url_normalized.lstrip('/').lstrip('uploads/')
                     uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
                     local_bg_path = uploads_absolute / rel_path
 
@@ -3632,6 +3660,10 @@ class StoryGenerationService:
                 width, height = 1920, 1080
 
             logger.info(f"[{job_id}] Original video: {width}x{height}")
+
+            # Debug: 显示音频文件列表
+            logger.info(f"[{job_id}] Audio files for compositing: {audio_paths}")
+            logger.info(f"[{job_id}] Digital human videos: {dh_video_paths}")
 
             # 计算数字人画中画尺寸和位置
             pip_width = width // 5  # 占 1/5 宽度
@@ -3765,7 +3797,7 @@ class StoryGenerationService:
             returncode, stdout, stderr = await run_ffmpeg_command(cmd)
 
             if returncode != 0:
-                logger.error(f"[{job_id}] FFmpeg dual PIP error: {stderr.decode()[:500]}")
+                logger.error(f"[{job_id}] FFmpeg dual PIP error: {stderr.decode()[-2000:]}")
                 return None
 
             if not Path(output_path).exists():
@@ -4246,7 +4278,7 @@ class StoryGenerationService:
     # ===================== 工具方法 =====================
 
     async def _upload_to_media_bed(self, file_path: str) -> Optional[str]:
-        """上传文件到图床"""
+        """上传文件到图床，如果失败则返回本地路径"""
         try:
             import httpx
 
@@ -4280,12 +4312,20 @@ class StoryGenerationService:
                     if relative_url:
                         # 返回完整URL，确保前端可以直接使用
                         return f"{self.media_bed_url}{relative_url}"
-                    return None
 
-            return None
+            # 上传失败，返回本地路径
+            logger.warning(f"Media bed upload failed, using local path: {file_path}")
+            return f"/{file_path}"
 
         except Exception as e:
             logger.error(f"Upload to media bed error: {e}")
+            # 失败时返回本地路径作为后备
+            try:
+                if Path(file_path).exists():
+                    logger.info(f"Falling back to local path: {file_path}")
+                    return f"/{file_path}"
+            except:
+                pass
             return None
 
 
