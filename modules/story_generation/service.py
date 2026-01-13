@@ -4102,81 +4102,48 @@ class StoryGenerationService:
         """
         等待所有分段 EMO 任务完成
 
+        使用工厂模式的 digital human 服务，支持本地和云端模式
+
         Args:
             emo_tasks: [(speaker_id, segment_index, emo_task_id), ...]
 
         Returns:
             [(speaker_id, segment_index, video_url or None), ...]
         """
-        import requests
-        import os
+        from modules.digital_human.factory import get_digital_human_service
 
-        logger.info(f"[{job_id}] Waiting for {len(emo_tasks)} segmented EMO tasks")
+        logger.info(f"[{job_id}] Processing {len(emo_tasks)} segmented EMO tasks")
 
+        dh_service = get_digital_human_service()
         results = []
-        pending_tasks = list(emo_tasks)
-        api_key = os.getenv("DASHSCOPE_API_KEY")
 
-        for attempt in range(max_attempts):
-            if not pending_tasks:
-                break
+        # 逐个处理每个任务（使用工厂模式的服务）
+        for i, (speaker_id, seg_idx, emo_task_id) in enumerate(emo_tasks):
+            try:
+                logger.info(f"[{job_id}] Processing EMO task {i+1}/{len(emo_tasks)}: {speaker_id}_seg{seg_idx}")
 
-            logger.info(f"[{job_id}] EMO poll attempt {attempt + 1}/{max_attempts}, {len(pending_tasks)} pending")
+                # 使用工厂模式的服务等待/处理任务
+                # 本地模式：直接调用 FFmpeg 生成视频
+                # 云端模式：轮询阿里云 API
+                video_url = await dh_service._wait_for_emo_task(
+                    task_id=emo_task_id,
+                    emo_task_id=emo_task_id,
+                    max_attempts=max_attempts,
+                    poll_interval=poll_interval
+                )
 
-            still_pending = []
-            for i, (speaker_id, seg_idx, emo_task_id) in enumerate(pending_tasks):
-                try:
-                    # 添加小延迟避免并发请求过多
-                    if i > 0:
-                        await asyncio.sleep(0.5)  # 每个请求间隔 0.5 秒
+                if video_url:
+                    results.append((speaker_id, seg_idx, video_url))
+                    logger.info(f"[{job_id}] {speaker_id}_seg{seg_idx} completed: {video_url[:50] if video_url else 'None'}...")
+                else:
+                    results.append((speaker_id, seg_idx, None))
+                    logger.error(f"[{job_id}] {speaker_id}_seg{seg_idx} failed")
 
-                    # 查询 EMO 任务状态（带重试）
-                    url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{emo_task_id}"
-                    headers = {"Authorization": f"Bearer {api_key}"}
-
-                    # 简单重试机制
-                    response = None
-                    for retry in range(3):
-                        try:
-                            # proxies={"http": None, "https": None} 绕过系统代理
-                            response = requests.get(url, headers=headers, timeout=60, proxies={"http": None, "https": None})
-                            break
-                        except Exception as retry_error:
-                            if retry < 2:
-                                logger.warning(f"[{job_id}] {speaker_id}_seg{seg_idx} retry {retry + 1}: {retry_error}")
-                                await asyncio.sleep(2)
-                            else:
-                                raise retry_error
-
-                    data = response.json()
-                    output = data.get("output", {})
-                    status = output.get("task_status")
-
-                    if status == "SUCCEEDED":
-                        video_url = output.get("results", {}).get("video_url")
-                        results.append((speaker_id, seg_idx, video_url))
-                        logger.info(f"[{job_id}] {speaker_id}_seg{seg_idx} completed")
-                    elif status == "FAILED":
-                        error_msg = output.get("message", "Unknown error")
-                        logger.error(f"[{job_id}] {speaker_id}_seg{seg_idx} failed: {error_msg}")
-                        results.append((speaker_id, seg_idx, None))
-                    else:
-                        # PENDING 或 RUNNING
-                        still_pending.append((speaker_id, seg_idx, emo_task_id))
-
-                except Exception as e:
-                    logger.warning(f"[{job_id}] Error checking {speaker_id}_seg{seg_idx}: {e}")
-                    still_pending.append((speaker_id, seg_idx, emo_task_id))
-
-            pending_tasks = still_pending
-
-            if pending_tasks and attempt < max_attempts - 1:
-                await asyncio.sleep(poll_interval)
-
-        # 超时的任务
-        for speaker_id, seg_idx, emo_task_id in pending_tasks:
-            logger.error(f"[{job_id}] {speaker_id}_seg{seg_idx} timeout")
-            results.append((speaker_id, seg_idx, None))
+            except Exception as e:
+                logger.error(f"[{job_id}] Error processing {speaker_id}_seg{seg_idx}: {e}")
+                import traceback
+                traceback.print_exc()
+                results.append((speaker_id, seg_idx, None))
 
         return results
 
@@ -4189,6 +4156,8 @@ class StoryGenerationService:
         """拼接数字人视频片段"""
         try:
             import httpx
+            from core.config.settings import get_settings
+            settings = get_settings()
 
             if not video_urls:
                 return None
@@ -4197,18 +4166,40 @@ class StoryGenerationService:
                 # 只有一个片段，直接返回
                 return video_urls[0]
 
-            # 下载所有视频片段
+            # 下载所有视频片段（支持本地路径和远程URL）
             segment_paths = []
             for i, url in enumerate(video_urls):
                 segment_path = self.upload_dir / f"{job_id}_{speaker_id}_dh_seg{i}.mp4"
-                async with httpx.AsyncClient(timeout=300.0) as client:
-                    response = await client.get(url)
-                    if response.status_code == 200:
-                        with open(segment_path, 'wb') as f:
-                            f.write(response.content)
-                        segment_paths.append(str(segment_path))
+
+                # 判断是本地路径还是远程URL
+                if url.startswith('/uploads/') or url.startswith('uploads/'):
+                    # 本地相对路径，直接转为绝对路径
+                    local_path = url.lstrip('/')
+                    local_abs_path = Path(settings.BASE_DIR) / local_path if hasattr(settings, 'BASE_DIR') else Path(local_path)
+                    if not local_abs_path.exists():
+                        # 尝试当前目录
+                        local_abs_path = Path(local_path)
+                    if local_abs_path.exists():
+                        segment_paths.append(str(local_abs_path))
+                        logger.info(f"[{job_id}] Using local segment {i}: {local_abs_path}")
                     else:
-                        logger.warning(f"[{job_id}] Failed to download segment {i}")
+                        logger.warning(f"[{job_id}] Local segment not found: {local_path}")
+                elif url.startswith('http://') or url.startswith('https://'):
+                    # 远程URL，下载
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        response = await client.get(url)
+                        if response.status_code == 200:
+                            with open(segment_path, 'wb') as f:
+                                f.write(response.content)
+                            segment_paths.append(str(segment_path))
+                        else:
+                            logger.warning(f"[{job_id}] Failed to download segment {i}")
+                else:
+                    # 可能是绝对路径
+                    if Path(url).exists():
+                        segment_paths.append(url)
+                    else:
+                        logger.warning(f"[{job_id}] Unknown URL format for segment {i}: {url}")
 
             if not segment_paths:
                 return None
