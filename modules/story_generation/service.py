@@ -339,8 +339,10 @@ class StoryGenerationService:
                 instrumental_url = None
 
             # Step 3: 语音识别生成字幕（使用词级时间戳）
+            # 注意：转录使用原始音频（audio_url），而不是分离后的 vocals
+            # 因为分离后的 vocals 可能有质量问题，VAD 检测不到语音
             await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 15)
-            transcription = await self._transcribe_audio(job_id, vocals_url)
+            transcription = await self._transcribe_audio(job_id, audio_url)
             if not transcription:
                 raise Exception("Failed to transcribe audio")
 
@@ -641,15 +643,36 @@ class StoryGenerationService:
                     logger.warning(f"[{job_id}] TTS failed for subtitle {i}")
                     continue
 
-                # 保存临时文件
-                temp_file = self.upload_dir / f"{job_id}_seg{segment_index}_sub{i}.mp3"
-                with open(temp_file, 'wb') as f:
+                # 保存 TTS 原始输出
+                raw_file = self.upload_dir / f"{job_id}_seg{segment_index}_sub{i}_raw.mp3"
+                with open(raw_file, 'wb') as f:
                     f.write(audio_content)
 
+                # 获取 TTS 生成的实际时长
+                actual_duration = await self._get_audio_duration(str(raw_file))
+                target_duration = duration  # 原始字幕时长
+
+                # 音轨对齐：调整 TTS 音频时长以匹配原始字幕时长
+                aligned_file = self.upload_dir / f"{job_id}_seg{segment_index}_sub{i}.mp3"
+
+                if actual_duration > 0 and target_duration > 0 and abs(actual_duration - target_duration) > 0.1:
+                    # 时长差异超过 0.1 秒才进行调整
+                    logger.info(f"[{job_id}] Seg{segment_index} Sub{i}: Aligning audio {actual_duration:.2f}s -> {target_duration:.2f}s")
+                    success = await self._adjust_audio_duration(
+                        str(raw_file), str(aligned_file),
+                        actual_duration, target_duration
+                    )
+                    if not success:
+                        logger.warning(f"[{job_id}] Audio alignment failed, using original")
+                        aligned_file = raw_file
+                else:
+                    # 时长接近，直接使用原始文件
+                    aligned_file = raw_file
+
                 segment_files.append({
-                    "path": str(temp_file),
+                    "path": str(aligned_file),
                     "start_time": relative_start_time,  # 使用相对时间
-                    "target_duration": duration
+                    "target_duration": target_duration
                 })
 
             if not segment_files:
@@ -1462,7 +1485,7 @@ class StoryGenerationService:
                     f.write(f"[{job_id}] imports done (ctranslate2 direct)\n")
                     f.flush()
 
-                # 使用本地缓存的模型
+                # 使用本地缓存的模型 - base 模型适合 2核4G 服务器
                 model_path = r'E:\huggingface_cache\hub\models--Systran--faster-whisper-base\snapshots\ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66'
 
                 with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
@@ -1492,6 +1515,16 @@ class StoryGenerationService:
                     audio = audio.mean(axis=1)
                 audio = audio.astype(np.float32)
 
+                # Whisper 期望 16kHz 采样率，如果不是则需要重采样
+                TARGET_SR = 16000
+                if sr != TARGET_SR:
+                    import librosa
+                    with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                        f.write(f"[{job_id}] Resampling from {sr}Hz to {TARGET_SR}Hz...\n")
+                        f.flush()
+                    audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
+                    sr = TARGET_SR
+
                 with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
                     f.write(f"[{job_id}] Audio loaded: shape={audio.shape}, sr={sr}\n")
                     f.flush()
@@ -1505,7 +1538,10 @@ class StoryGenerationService:
                     audio,
                     language="en",
                     word_timestamps=True,
-                    vad_filter=False
+                    vad_filter=False,  # 禁用 VAD，因为可能误过滤整个音频
+                    condition_on_previous_text=False,  # 减少幻觉
+                    no_speech_threshold=0.6,  # 静音检测阈值
+                    compression_ratio_threshold=2.4  # 压缩比阈值，检测重复
                 )
 
                 with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
@@ -1537,6 +1573,40 @@ class StoryGenerationService:
                 with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
                     f.write(f"[{job_id}] Collected {seg_count} segments, {len(all_words)} words\n")
                     f.flush()
+
+                # 幻觉检测：检查转录结果是否合理
+                audio_duration = len(audio) / sr
+                is_hallucination = False
+                hallucination_reason = ""
+
+                if all_words:
+                    first_word_start = all_words[0]["start"]
+                    last_word_end = all_words[-1]["end"]
+
+                    # 检查1: 第一个词的时间戳是否异常（超过10秒才开始说话很可疑）
+                    if first_word_start > 30:
+                        is_hallucination = True
+                        hallucination_reason = f"First word starts at {first_word_start:.1f}s (too late)"
+
+                    # 检查2: 最后一个词的时间戳是否超过音频时长
+                    if last_word_end > audio_duration + 5:  # 允许5秒误差
+                        is_hallucination = True
+                        hallucination_reason = f"Last word at {last_word_end:.1f}s exceeds audio duration {audio_duration:.1f}s"
+
+                    # 检查3: 文本重复率过高（幻觉常见模式）
+                    if len(all_text) > 5:
+                        unique_texts = set(t.strip().lower() for t in all_text)
+                        repetition_ratio = 1 - (len(unique_texts) / len(all_text))
+                        if repetition_ratio > 0.8:  # 超过80%重复
+                            is_hallucination = True
+                            hallucination_reason = f"High text repetition: {repetition_ratio:.1%}"
+
+                if is_hallucination:
+                    with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
+                        f.write(f"[{job_id}] HALLUCINATION DETECTED: {hallucination_reason}\n")
+                        f.flush()
+                    # 返回 None 表示转录失败，让上层处理
+                    return None
 
                 # 构建结果
                 result_dict = {
@@ -3144,8 +3214,10 @@ class StoryGenerationService:
 
                 # 使用绝对时间（相对于视频开始）
                 abs_start_time = sub.get("start_time", 0)
+                abs_end_time = sub.get("end_time", 0)
+                target_duration = abs_end_time - abs_start_time  # 原始字幕时长
 
-                logger.info(f"[{job_id}] Speaker {speaker_id} Sub{i}: '{text[:20]}...' at {abs_start_time:.2f}s")
+                logger.info(f"[{job_id}] Speaker {speaker_id} Sub{i}: '{text[:20]}...' at {abs_start_time:.2f}s (dur: {target_duration:.2f}s)")
 
                 # 调用 TTS
                 audio_content = await self._call_cosyvoice_tts(voice_id, text)
@@ -3153,14 +3225,35 @@ class StoryGenerationService:
                     logger.warning(f"[{job_id}] TTS failed for subtitle {i}")
                     continue
 
-                # 保存临时文件
-                temp_file = self.upload_dir / f"{job_id}_{speaker_id}_sub{i}.mp3"
-                with open(temp_file, 'wb') as f:
+                # 保存 TTS 原始输出
+                raw_file = self.upload_dir / f"{job_id}_{speaker_id}_sub{i}_raw.mp3"
+                with open(raw_file, 'wb') as f:
                     f.write(audio_content)
 
+                # 获取 TTS 生成的实际时长
+                actual_duration = await self._get_audio_duration(str(raw_file))
+
+                # 音轨对齐：调整 TTS 音频时长以匹配原始字幕时长
+                aligned_file = self.upload_dir / f"{job_id}_{speaker_id}_sub{i}.mp3"
+
+                if actual_duration > 0 and target_duration > 0 and abs(actual_duration - target_duration) > 0.1:
+                    # 时长差异超过 0.1 秒才进行调整
+                    logger.info(f"[{job_id}] Speaker {speaker_id} Sub{i}: Aligning audio {actual_duration:.2f}s -> {target_duration:.2f}s")
+                    success = await self._adjust_audio_duration(
+                        str(raw_file), str(aligned_file),
+                        actual_duration, target_duration
+                    )
+                    if not success:
+                        logger.warning(f"[{job_id}] Audio alignment failed, using original")
+                        aligned_file = raw_file
+                else:
+                    # 时长接近，直接使用原始文件
+                    aligned_file = raw_file
+
                 segment_files.append({
-                    "path": str(temp_file),
-                    "start_time": abs_start_time  # 使用绝对时间
+                    "path": str(aligned_file),
+                    "start_time": abs_start_time,  # 使用绝对时间
+                    "target_duration": target_duration
                 })
 
             if not segment_files:
