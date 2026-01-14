@@ -3588,8 +3588,8 @@ class StoryGenerationService:
 
                 # 处理本地路径
                 if audio_url_normalized.startswith('/uploads/') or audio_url_normalized.startswith('uploads/'):
-                    # 获取相对于 uploads 目录的路径
-                    rel_path = audio_url_normalized.lstrip('/').lstrip('uploads/')
+                    # 获取相对于 uploads 目录的路径（使用 removeprefix 而不是 lstrip）
+                    rel_path = audio_url_normalized.removeprefix('/').removeprefix('uploads/')
                     uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
                     local_audio_path = uploads_absolute / rel_path
 
@@ -3618,8 +3618,8 @@ class StoryGenerationService:
 
                 # 处理本地路径（/uploads/... 或相对路径）
                 if bg_url_normalized.startswith('/uploads/') or bg_url_normalized.startswith('uploads/'):
-                    # 获取相对于 uploads 目录的路径
-                    rel_path = bg_url_normalized.lstrip('/').lstrip('uploads/')
+                    # 获取相对于 uploads 目录的路径（使用 removeprefix 而不是 lstrip）
+                    rel_path = bg_url_normalized.removeprefix('/').removeprefix('uploads/')
                     uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
                     local_bg_path = uploads_absolute / rel_path
 
