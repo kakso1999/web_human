@@ -577,36 +577,63 @@ class StoryGenerationService:
             voice_id = profile.get("voice_id")
 
             if service_mode == "local":
-                # 本地模式：需要下载参考音频
+                # 本地模式：获取参考音频
                 reference_audio_url = profile.get("reference_audio_url")
                 if not reference_audio_url:
                     logger.error(f"[{job_id}] No reference audio URL in profile")
                     return None
-
-                # 下载参考音频到本地
-                import httpx
-                import tempfile
-
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    response = await client.get(reference_audio_url)
-                    if response.status_code != 200:
-                        logger.error(f"[{job_id}] Failed to download reference audio: {response.status_code}")
-                        return None
 
                 # 保存到临时文件
                 ref_audio_dir = self.upload_dir / f"{job_id}_ref"
                 ref_audio_dir.mkdir(parents=True, exist_ok=True)
                 reference_audio_path = str(ref_audio_dir / "reference.wav")
 
-                with open(reference_audio_path, 'wb') as f:
-                    f.write(response.content)
+                # 检查是否是本地路径
+                is_local_path = not reference_audio_url.startswith(('http://', 'https://'))
 
-                logger.info(f"[{job_id}] Downloaded reference audio to: {reference_audio_path}")
+                if is_local_path:
+                    # 本地路径：直接复制文件
+                    import shutil
+                    from core.config.settings import get_settings
+                    settings = get_settings()
+
+                    local_ref_path = reference_audio_url
+                    if local_ref_path.startswith('/uploads/'):
+                        local_ref_path = local_ref_path.removeprefix('/uploads/')
+                        local_ref_path = str(Path(settings.UPLOAD_DIR) / local_ref_path)
+                    elif local_ref_path.startswith('/'):
+                        local_ref_path = local_ref_path.lstrip('/')
+
+                    if os.path.exists(local_ref_path):
+                        shutil.copy(local_ref_path, reference_audio_path)
+                        logger.info(f"[{job_id}] Copied local reference audio: {local_ref_path}")
+                    else:
+                        logger.error(f"[{job_id}] Local reference audio not found: {local_ref_path}")
+                        return None
+                else:
+                    # HTTP URL：下载参考音频
+                    import httpx
+
+                    try:
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            response = await client.get(reference_audio_url)
+                            if response.status_code != 200:
+                                logger.error(f"[{job_id}] Failed to download reference audio: {response.status_code}")
+                                return None
+
+                        with open(reference_audio_path, 'wb') as f:
+                            f.write(response.content)
+
+                        logger.info(f"[{job_id}] Downloaded reference audio to: {reference_audio_path}")
+                    except Exception as e:
+                        logger.error(f"[{job_id}] Failed to download reference audio: {e}")
+                        return None
 
                 # 创建本地 voice_id
                 from modules.voice_clone.factory import get_voice_clone_service
                 vc_service = get_voice_clone_service()
-                voice_id = await vc_service._create_voice(f"{job_id}_seg{segment_index}", reference_audio_url)
+                # 使用本地路径创建 voice
+                voice_id = await vc_service._create_voice(f"{job_id}_seg{segment_index}", reference_audio_path)
 
                 if not voice_id:
                     logger.error(f"[{job_id}] Failed to create local voice")
@@ -824,6 +851,9 @@ class StoryGenerationService:
         - 已存在的本地绝对路径
         """
         import shutil
+
+        # 规范化路径分隔符（Windows 上可能会有混合的 / 和 \）
+        url_or_path = url_or_path.replace('\\', '/')
 
         # 如果是本地相对路径
         if url_or_path.startswith('/uploads/'):
