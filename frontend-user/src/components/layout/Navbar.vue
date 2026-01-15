@@ -18,8 +18,10 @@ if (typeof window !== 'undefined') {
 
 const navLinks = [
   { name: 'Discover', path: '/discover' },
+  { name: 'Create Profile', path: '/create-profile' },
   { name: 'AI Studio', path: '/studio' },
   { name: 'Audiobook', path: '/audiobook' },
+  { name: 'Pricing', path: '/subscription' },
 ]
 
 const isActive = (path: string) => route.path === path

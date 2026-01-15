@@ -69,6 +69,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Account Settings - Echobot', requiresAuth: true }
   },
   {
+    path: '/subscription',
+    name: 'Subscription',
+    component: () => import('@/views/Subscription.vue'),
+    meta: { title: 'Subscription Plans - Echobot', requiresAuth: true }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
@@ -79,6 +85,49 @@ const routes: RouteRecordRaw[] = [
     name: 'Register',
     component: () => import('@/views/Register.vue'),
     meta: { title: 'Sign Up - Echobot', hideNavbar: true }
+  },
+  {
+    path: '/auth/callback',
+    name: 'AuthCallback',
+    component: () => import('@/views/AuthCallback.vue'),
+    meta: { title: 'Signing in... - Echobot', hideNavbar: true }
+  },
+  // Footer pages
+  {
+    path: '/help',
+    name: 'HelpCenter',
+    component: () => import('@/views/HelpCenter.vue'),
+    meta: { title: 'Help Center - Echobot' }
+  },
+  {
+    path: '/contact',
+    name: 'Contact',
+    component: () => import('@/views/Contact.vue'),
+    meta: { title: 'Contact Us - Echobot' }
+  },
+  {
+    path: '/faq',
+    name: 'FAQ',
+    component: () => import('@/views/FAQ.vue'),
+    meta: { title: 'FAQ - Echobot' }
+  },
+  {
+    path: '/about',
+    name: 'About',
+    component: () => import('@/views/About.vue'),
+    meta: { title: 'About Us - Echobot' }
+  },
+  {
+    path: '/privacy',
+    name: 'Privacy',
+    component: () => import('@/views/Privacy.vue'),
+    meta: { title: 'Privacy Policy - Echobot' }
+  },
+  {
+    path: '/terms',
+    name: 'Terms',
+    component: () => import('@/views/Terms.vue'),
+    meta: { title: 'Terms of Service - Echobot' }
   },
   {
     path: '/:pathMatch(.*)*',

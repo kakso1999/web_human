@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import { storyGenerationApi, audiobookApi } from '@/api'
 import type { StoryGenerationJob, AudiobookJob } from '@/types'
 
@@ -11,6 +11,30 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const hasMore = computed(() => storyJobs.value.length < total.value)
+
+// Video player modal
+const showVideoModal = ref(false)
+const currentVideoUrl = ref('')
+const currentVideoTitle = ref('')
+const videoPlayer = ref<HTMLVideoElement | null>(null)
+
+const openVideoPlayer = async (videoUrl: string, title: string) => {
+  currentVideoUrl.value = videoUrl
+  currentVideoTitle.value = title
+  showVideoModal.value = true
+  await nextTick()
+  if (videoPlayer.value) {
+    videoPlayer.value.play()
+  }
+}
+
+const closeVideoPlayer = () => {
+  if (videoPlayer.value) {
+    videoPlayer.value.pause()
+  }
+  showVideoModal.value = false
+  currentVideoUrl.value = ''
+}
 
 // 任务类型过滤
 const activeTab = ref<'story' | 'audiobook'>('story')
@@ -217,15 +241,15 @@ const formatDateTime = (dateStr: string) => {
             </p>
           </div>
           <div v-if="job.status === 'completed' && job.final_video_url" class="flex items-center gap-2">
-            <RouterLink
-              :to="`/story/${job.story_id}`"
+            <button
+              @click="openVideoPlayer(job.final_video_url!, `Story #${job.id.slice(-6)}`)"
               class="p-2 text-gray-500 hover:text-primary-500 rounded-lg hover:bg-gray-200"
-              title="View Story"
+              title="Play Video"
             >
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M8 5v14l11-7z"/>
               </svg>
-            </RouterLink>
+            </button>
             <a
               :href="job.final_video_url"
               download
@@ -295,5 +319,38 @@ const formatDateTime = (dateStr: string) => {
         </div>
       </div>
     </template>
+
+    <!-- Video Player Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showVideoModal"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+        @click.self="closeVideoPlayer"
+      >
+        <div class="relative w-full max-w-4xl mx-4">
+          <!-- Close button -->
+          <button
+            @click="closeVideoPlayer"
+            class="absolute -top-12 right-0 p-2 text-white/70 hover:text-white rounded-full hover:bg-white/10 transition-colors"
+          >
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+
+          <!-- Video title -->
+          <h3 class="absolute -top-12 left-0 text-white text-lg font-medium">{{ currentVideoTitle }}</h3>
+
+          <!-- Video player -->
+          <video
+            ref="videoPlayer"
+            :src="currentVideoUrl"
+            controls
+            class="w-full rounded-xl shadow-2xl"
+            controlsList="nodownload"
+          ></video>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>

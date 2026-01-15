@@ -2,7 +2,8 @@
 Auth 模块 - API 路由
 登录、注册、Token 刷新等接口
 """
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, Query
+from fastapi.responses import RedirectResponse
 
 from core.schemas.base import success_response
 from core.middleware.auth import get_current_user_id
@@ -164,3 +165,46 @@ async def get_google_auth_url():
     )
 
     return success_response({"url": google_auth_url})
+
+
+@router.get("/google/callback")
+async def google_callback(
+    code: str = Query(..., description="Google 授权码"),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """
+    Google OAuth 回调
+
+    Google 认证成功后重定向到此地址，携带授权码。
+    处理授权码并重定向到前端。
+    """
+    try:
+        user, tokens = await auth_service.google_login(code)
+
+        # 重定向到前端，带上 token 信息
+        frontend_url = "http://localhost:3001"
+        redirect_url = (
+            f"{frontend_url}/auth/callback"
+            f"?access_token={tokens.access_token}"
+            f"&user_id={user.id}"
+            f"&nickname={user.nickname}"
+        )
+
+        response = RedirectResponse(url=redirect_url)
+
+        # 设置 refresh_token 到 Cookie
+        response.set_cookie(
+            key="refresh_token",
+            value=tokens.refresh_token,
+            httponly=True,
+            secure=not settings.DEBUG,
+            samesite="lax",
+            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+        )
+
+        return response
+
+    except Exception as e:
+        # 认证失败，重定向到登录页并带上错误信息
+        frontend_url = "http://localhost:3001"
+        return RedirectResponse(url=f"{frontend_url}/login?error=google_auth_failed")

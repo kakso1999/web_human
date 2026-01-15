@@ -94,6 +94,15 @@ const changePassword = async () => {
     changingPassword.value = false
   }
 }
+
+const getPlanDisplayName = (plan: string) => {
+  const names: Record<string, string> = {
+    free: 'Free',
+    basic: 'Basic',
+    premium: 'Premium'
+  }
+  return names[plan] || plan
+}
 </script>
 
 <template>
@@ -256,12 +265,15 @@ const changePassword = async () => {
       </div>
 
       <!-- Subscription Info -->
-      <div class="bg-white rounded-2xl shadow-soft p-6 mt-6">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">Subscription</h2>
+      <RouterLink
+        to="/subscription"
+        class="block bg-white rounded-2xl shadow-soft p-6 mt-6 hover:shadow-md transition-shadow cursor-pointer"
+      >
         <div class="flex items-center justify-between">
           <div>
-            <p class="font-medium text-gray-900 capitalize">
-              {{ userStore.user?.subscription?.plan || 'Free' }} Plan
+            <h2 class="text-xl font-bold text-gray-900 mb-1">Subscription</h2>
+            <p class="font-medium text-gray-700 capitalize">
+              {{ getPlanDisplayName(userStore.user?.subscription?.plan || 'free') }} Plan
             </p>
             <p class="text-sm text-gray-500">
               <template v-if="userStore.user?.subscription?.expires_at">
@@ -272,16 +284,21 @@ const changePassword = async () => {
               </template>
             </p>
           </div>
-          <span
-            class="px-3 py-1 rounded-full text-sm font-medium"
-            :class="userStore.user?.subscription?.plan === 'free'
-              ? 'bg-gray-100 text-gray-700'
-              : 'bg-primary-100 text-primary-700'"
-          >
-            {{ userStore.user?.subscription?.plan === 'free' ? 'Free' : 'Active' }}
-          </span>
+          <div class="flex items-center gap-3">
+            <span
+              class="px-3 py-1 rounded-full text-sm font-medium"
+              :class="userStore.user?.subscription?.plan === 'free'
+                ? 'bg-gray-100 text-gray-700'
+                : 'bg-primary-100 text-primary-700'"
+            >
+              Active
+            </span>
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
         </div>
-      </div>
+      </RouterLink>
     </div>
   </div>
 </template>
