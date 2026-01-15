@@ -59,6 +59,49 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
         # 缓存已提取的 speaker embeddings
         self._embedding_cache: Dict[str, torch.Tensor] = {}
 
+    def _convert_local_path_to_url(self, local_path: str) -> str:
+        """
+        将本地文件路径转换为可访问的 URL 路径
+
+        例如:
+        - E:\\工作代码\\73_web_human\\uploads\\voice_clones\\references\\user_xxx.wav
+        - 转换为: /uploads/voice_clones/references/user_xxx.wav
+        """
+        if not local_path:
+            return ""
+
+        # 统一路径分隔符
+        normalized_path = local_path.replace("\\", "/")
+
+        # 方法1: 查找 uploads 目录的位置
+        if "/uploads/" in normalized_path:
+            idx = normalized_path.find("/uploads/")
+            return normalized_path[idx:]
+
+        # 方法2: 查找 voice_clones 目录
+        if "voice_clones" in normalized_path:
+            idx = normalized_path.find("voice_clones")
+            return "/uploads/" + normalized_path[idx:]
+
+        # 方法3: 使用配置的 UPLOAD_DIR 进行替换
+        from core.config.settings import get_settings
+        settings = get_settings()
+        upload_dir = settings.UPLOAD_DIR.replace("\\", "/")
+
+        if normalized_path.startswith(upload_dir):
+            relative_path = normalized_path[len(upload_dir):]
+            if not relative_path.startswith("/"):
+                relative_path = "/" + relative_path
+            return "/uploads" + relative_path
+
+        # 如果路径中包含 uploads，尝试提取
+        if "uploads" in normalized_path:
+            idx = normalized_path.find("uploads")
+            return "/" + normalized_path[idx:]
+
+        # 最后的回退: 返回原路径（可能无法访问，但至少有值）
+        return normalized_path
+
     async def check_service_health(self) -> bool:
         """检查服务是否可用"""
         try:
@@ -255,12 +298,16 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
         if not task_id.startswith(user_id):
             return None
 
+        # 本地模式下，将本地路径转换为相对 URL 路径
+        reference_audio_local = task.get("reference_audio_local", "")
+        reference_audio_url = self._convert_local_path_to_url(reference_audio_local)
+
         profile_data = {
             "user_id": user_id,
             "name": name,
             "voice_id": f"local_{task_id}",  # 本地模式没有云端 voice_id
-            "reference_audio_url": None,
-            "reference_audio_local": task.get("reference_audio_local"),
+            "reference_audio_url": reference_audio_url,
+            "reference_audio_local": reference_audio_local,
             "preview_audio_url": task.get("audio_url"),
             "status": "active",
             "service_mode": "local"  # 标记为本地模式

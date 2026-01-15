@@ -44,6 +44,36 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
         self.images_dir.mkdir(parents=True, exist_ok=True)
         self.previews_dir.mkdir(parents=True, exist_ok=True)
 
+    def _convert_local_path_to_url(self, local_path: str) -> str:
+        """
+        将本地文件路径转换为可访问的 URL 路径
+        例如: E:/uploads/digital_human/images/xxx.jpg
+        转换为: /uploads/digital_human/images/xxx.jpg
+        """
+        if not local_path:
+            return ""
+
+        # 标准化路径分隔符
+        normalized_path = local_path.replace("\\", "/")
+
+        # 尝试多种方式提取 URL 路径
+        # 方式1: 查找 /uploads/ 开头的部分
+        if "/uploads/" in normalized_path:
+            idx = normalized_path.find("/uploads/")
+            return normalized_path[idx:]
+
+        # 方式2: 查找 digital_human 目录
+        if "digital_human" in normalized_path:
+            idx = normalized_path.find("digital_human")
+            return "/uploads/" + normalized_path[idx:]
+
+        # 方式3: 只保留文件名，构建默认路径
+        filename = os.path.basename(normalized_path)
+        if filename:
+            return f"/uploads/digital_human/images/{filename}"
+
+        return normalized_path
+
     def _run_ffmpeg(self, cmd: list, desc: str = "") -> bool:
         """执行 FFmpeg 命令"""
         print(f"[FFmpeg] {desc}")
@@ -137,7 +167,7 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
             local_digital_human_tasks[task_id]["status"] = "completed"
             local_digital_human_tasks[task_id]["progress"] = 100
             local_digital_human_tasks[task_id]["video_url"] = f"/uploads/digital_human/previews/{output_filename}"
-            local_digital_human_tasks[task_id]["image_url"] = image_path
+            local_digital_human_tasks[task_id]["image_url"] = self._convert_local_path_to_url(image_path)
             local_digital_human_tasks[task_id]["image_local"] = image_path
             local_digital_human_tasks[task_id]["completed_at"] = datetime.utcnow()
 
@@ -322,11 +352,15 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
         if not task_id.startswith(user_id):
             return None
 
+        # 转换本地路径为 URL 路径
+        image_local = task.get("image_local", "")
+        image_url = self._convert_local_path_to_url(image_local) if image_local else task.get("image_url", "")
+
         profile_data = {
             "user_id": user_id,
             "name": name,
-            "image_url": task.get("image_url"),
-            "image_local": task.get("image_local", ""),
+            "image_url": image_url,
+            "image_local": image_local,
             "face_bbox": [],  # 本地模式不做人脸检测
             "ext_bbox": [],
             "preview_video_url": task.get("video_url"),
@@ -459,25 +493,38 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
 
             # 辅助函数：获取文件内容（支持本地路径和HTTP URL）
             async def get_file_content(url: str, file_type: str) -> bytes:
-                is_local = not url.startswith(('http://', 'https://'))
+                media_bed_url = getattr(settings, 'MEDIA_BED_URL', '')
+                local_path = None
 
-                if is_local:
-                    # 本地路径处理
+                if url.startswith(('http://', 'https://')):
+                    # HTTP URL - 检查是否是媒体床 URL
+                    if media_bed_url and url.startswith(media_bed_url):
+                        # 媒体床 URL：在本地模式下转换为本地路径
+                        url_path = url[len(media_bed_url):]
+                        if url_path.startswith('/uploads/'):
+                            local_path = os.path.join(settings.UPLOAD_DIR, url_path[len('/uploads/'):])
+                        elif url_path.startswith('/'):
+                            local_path = os.path.join(settings.UPLOAD_DIR, url_path.lstrip('/'))
+                        print(f"[LocalDigitalHuman] Converting media bed URL to local path: {local_path}")
+                else:
+                    # 相对路径
                     local_path = url
-                    if local_path.startswith('/'):
+                    if local_path.startswith('/uploads/'):
+                        local_path = os.path.join(settings.UPLOAD_DIR, local_path[len('/uploads/'):])
+                    elif local_path.startswith('/'):
                         local_path = local_path.lstrip('/')
                     if not os.path.isabs(local_path):
                         local_path = os.path.join(os.getcwd(), local_path)
 
-                    if os.path.exists(local_path):
-                        print(f"[LocalDigitalHuman] Using local {file_type}: {local_path}")
-                        with open(local_path, 'rb') as f:
-                            return f.read()
-                    else:
-                        print(f"[LocalDigitalHuman] Local {file_type} not found: {local_path}")
-                        return None
+                if local_path and os.path.exists(local_path):
+                    print(f"[LocalDigitalHuman] Using local {file_type}: {local_path}")
+                    with open(local_path, 'rb') as f:
+                        return f.read()
+                elif local_path:
+                    print(f"[LocalDigitalHuman] Local {file_type} not found: {local_path}")
+                    return None
                 else:
-                    # HTTP URL 处理
+                    # 非媒体床的外部 HTTP URL：尝试下载
                     async with httpx.AsyncClient(timeout=120.0) as client:
                         print(f"[LocalDigitalHuman] Downloading {file_type}: {url[:80]}...")
                         try:

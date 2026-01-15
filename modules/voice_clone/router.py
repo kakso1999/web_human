@@ -265,7 +265,7 @@ async def save_voice_profile(
             id=profile["id"],
             name=profile["name"],
             voice_id=profile["voice_id"],
-            reference_audio_url=profile["reference_audio_url"],
+            reference_audio_url=profile.get("reference_audio_url") or "",
             preview_audio_url=profile.get("preview_audio_url"),
             created_at=profile["created_at"]
         ).model_dump()
@@ -312,7 +312,7 @@ async def get_voice_profiles(
                 id=p["_id"],
                 name=p["name"],
                 voice_id=p["voice_id"],
-                reference_audio_url=p["reference_audio_url"],
+                reference_audio_url=p.get("reference_audio_url") or "",
                 preview_audio_url=p.get("preview_audio_url"),
                 created_at=p["created_at"]
             ).model_dump()
@@ -360,7 +360,7 @@ async def get_voice_profile(
             id=profile["_id"],
             name=profile["name"],
             voice_id=profile["voice_id"],
-            reference_audio_url=profile["reference_audio_url"],
+            reference_audio_url=profile.get("reference_audio_url") or "",
             preview_audio_url=profile.get("preview_audio_url"),
             created_at=profile["created_at"]
         ).model_dump()

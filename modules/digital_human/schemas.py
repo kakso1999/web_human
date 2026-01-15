@@ -57,7 +57,7 @@ class AvatarProfileResponse(BaseModel):
     """
     id: str = Field(..., description="档案唯一标识ID")
     name: str = Field(..., description="头像名称")
-    image_url: str = Field(..., description="头像图片URL")
+    image_url: str = Field(default="", description="头像图片URL（本地模式可能为空）")
     preview_video_url: Optional[str] = Field(None, description="预览视频URL（数字人动态效果）")
     created_at: datetime = Field(..., description="创建时间")
 

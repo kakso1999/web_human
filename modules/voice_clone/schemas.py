@@ -76,7 +76,7 @@ class VoiceProfileResponse(BaseModel):
     id: str = Field(..., description="档案唯一标识ID")
     name: str = Field(..., description="声音名称")
     voice_id: str = Field(..., description="阿里云 CosyVoice 声音ID，用于 TTS 调用")
-    reference_audio_url: str = Field(..., description="参考音频文件URL")
+    reference_audio_url: str = Field(default="", description="参考音频文件URL（本地模式可能为空）")
     preview_audio_url: Optional[str] = Field(None, description="预览音频URL（克隆后生成的）")
     created_at: datetime = Field(..., description="创建时间")
 

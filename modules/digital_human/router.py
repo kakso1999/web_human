@@ -108,11 +108,9 @@ async def create_digital_human_preview(
 
     elif voice_profile_id:
         # 使用声音档案
+        # 如果没有提供 preview_text，使用默认文本
         if not preview_text:
-            raise HTTPException(
-                status_code=400,
-                detail="使用声音档案时必须提供 preview_text 参数"
-            )
+            preview_text = "Hello, I am your digital avatar. Nice to meet you!"
         audio_source = AudioSourceType.VOICE_PROFILE
 
     # 保存图片
@@ -265,7 +263,7 @@ async def save_avatar_profile(
         "profile": AvatarProfileResponse(
             id=profile["id"],
             name=profile["name"],
-            image_url=profile["image_url"],
+            image_url=profile.get("image_url") or "",
             preview_video_url=profile.get("preview_video_url"),
             created_at=profile["created_at"]
         ).model_dump()
@@ -310,7 +308,7 @@ async def get_avatar_profiles(
             AvatarProfileResponse(
                 id=p["_id"],
                 name=p["name"],
-                image_url=p["image_url"],
+                image_url=p.get("image_url") or "",
                 preview_video_url=p.get("preview_video_url"),
                 created_at=p["created_at"]
             ).model_dump()
@@ -356,7 +354,7 @@ async def get_avatar_profile(
         AvatarProfileResponse(
             id=profile["_id"],
             name=profile["name"],
-            image_url=profile["image_url"],
+            image_url=profile.get("image_url") or "",
             preview_video_url=profile.get("preview_video_url"),
             created_at=profile["created_at"]
         ).model_dump()
