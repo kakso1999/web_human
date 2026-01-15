@@ -49,6 +49,8 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
         将本地文件路径转换为可访问的 URL 路径
         例如: E:/uploads/digital_human/images/xxx.jpg
         转换为: /uploads/digital_human/images/xxx.jpg
+        或者: uploads/story_generation/xxx/emo.mp4
+        转换为: /uploads/story_generation/xxx/emo.mp4
         """
         if not local_path:
             return ""
@@ -56,18 +58,31 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
         # 标准化路径分隔符
         normalized_path = local_path.replace("\\", "/")
 
-        # 尝试多种方式提取 URL 路径
-        # 方式1: 查找 /uploads/ 开头的部分
+        # 方式1: 查找 /uploads/ 开头的部分（绝对路径）
         if "/uploads/" in normalized_path:
             idx = normalized_path.find("/uploads/")
             return normalized_path[idx:]
 
-        # 方式2: 查找 digital_human 目录
+        # 方式2: 路径以 uploads/ 开头（相对路径）
+        if normalized_path.startswith("uploads/"):
+            return "/" + normalized_path
+
+        # 方式3: 查找 uploads/ 在路径中间的位置
+        if "uploads/" in normalized_path:
+            idx = normalized_path.find("uploads/")
+            return "/" + normalized_path[idx:]
+
+        # 方式4: 查找 story_generation 目录
+        if "story_generation" in normalized_path:
+            idx = normalized_path.find("story_generation")
+            return "/uploads/" + normalized_path[idx:]
+
+        # 方式5: 查找 digital_human 目录
         if "digital_human" in normalized_path:
             idx = normalized_path.find("digital_human")
             return "/uploads/" + normalized_path[idx:]
 
-        # 方式3: 只保留文件名，构建默认路径
+        # 方式6: 只保留文件名，构建默认路径
         filename = os.path.basename(normalized_path)
         if filename:
             return f"/uploads/digital_human/images/{filename}"
@@ -581,12 +596,10 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
                 del self._emo_pending_tasks[task_id]
 
             if success:
-                # 返回相对 URL 路径
-                relative_path = output_path.replace('\\', '/')
-                if not relative_path.startswith('/'):
-                    relative_path = '/' + relative_path
-                print(f"[LocalDigitalHuman] Video generated: {relative_path}")
-                return relative_path
+                # 使用正确的路径转换函数，将绝对路径转换为相对 URL
+                relative_url = self._convert_local_path_to_url(output_path)
+                print(f"[LocalDigitalHuman] Video generated: {relative_url}")
+                return relative_url
             else:
                 return None
 
