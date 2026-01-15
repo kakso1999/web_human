@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { audiobookApi, voiceCloneApi } from '@/api'
 import type { AudiobookStory, VoiceProfile, AudiobookJob, UserEbook } from '@/types'
 
@@ -26,46 +26,91 @@ const newEbook = ref({
   language: 'zh'
 })
 
+// Job 下拉菜单状态
+const openJobMenuId = ref<string | null>(null)
+
+// 计算收藏和非收藏的任务
+const favoriteJobs = computed(() => jobs.value.filter(job => job.is_favorite))
+const regularJobs = computed(() => jobs.value.filter(job => !job.is_favorite))
+
 // 当前选项卡
 const activeTab = ref<'templates' | 'myebooks'>('templates')
 
 // 选择来源类型
 const sourceType = ref<'story' | 'ebook'>('story')
 
-// 加载数据
+// 点击外部关闭菜单
+const handleClickOutside = (e: MouseEvent) => {
+  if (openJobMenuId.value) {
+    openJobMenuId.value = null
+  }
+}
+
+// 加载数据 - 每个 API 独立处理错误
 onMounted(async () => {
+  // 注册点击外部关闭菜单事件
+  document.addEventListener('click', handleClickOutside)
   try {
-    const [storiesRes, profilesRes, jobsRes, ebooksRes] = await Promise.all([
-      audiobookApi.getStories({ page_size: 20 }),
-      voiceCloneApi.getProfiles(),
-      audiobookApi.getJobs({ page_size: 10 }),
-      audiobookApi.getEbooks({ page_size: 20 })
-    ])
-    stories.value = storiesRes.data.items
-    voiceProfiles.value = profilesRes.data.profiles
-    jobs.value = jobsRes.data.items
-    ebooks.value = ebooksRes.data.items
-  } catch (e) {
-    console.error('Failed to load data:', e)
+    // 加载故事模板
+    audiobookApi.getStories({ page_size: 20 })
+      .then(res => { stories.value = res.data.items })
+      .catch(e => console.error('Failed to load stories:', e))
+
+    // 加载声音档案
+    voiceCloneApi.getProfiles()
+      .then(res => { voiceProfiles.value = res.data.profiles })
+      .catch(e => console.error('Failed to load voice profiles:', e))
+
+    // 加载有声书任务
+    audiobookApi.getJobs({ page_size: 10 })
+      .then(res => { jobs.value = res.data.items })
+      .catch(e => console.error('Failed to load jobs:', e))
+
+    // 加载用户电子书
+    audiobookApi.getEbooks({ page_size: 20 })
+      .then(res => { ebooks.value = res.data.items })
+      .catch(e => console.error('Failed to load ebooks:', e))
   } finally {
-    loading.value = false
+    // 给一点时间让请求完成
+    setTimeout(() => {
+      loading.value = false
+    }, 500)
   }
 })
 
+// 清理事件监听
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
+
+// 刷新声音档案
+const refreshVoiceProfiles = async () => {
+  try {
+    const res = await voiceCloneApi.getProfiles()
+    voiceProfiles.value = res.data.profiles
+  } catch (e) {
+    console.error('Failed to refresh voice profiles:', e)
+  }
+}
+
 // 从模板创建
-const openCreateModal = (story: AudiobookStory) => {
+const openCreateModal = async (story: AudiobookStory) => {
   selectedStory.value = story
   selectedEbook.value = null
   sourceType.value = 'story'
   showModal.value = true
+  // 打开模态框时刷新声音档案
+  await refreshVoiceProfiles()
 }
 
 // 从电子书创建
-const openCreateFromEbook = (ebook: UserEbook) => {
+const openCreateFromEbook = async (ebook: UserEbook) => {
   selectedEbook.value = ebook
   selectedStory.value = null
   sourceType.value = 'ebook'
   showModal.value = true
+  // 打开模态框时刷新声音档案
+  await refreshVoiceProfiles()
 }
 
 // 创建有声书
@@ -132,6 +177,39 @@ const deleteEbook = async (ebook: UserEbook) => {
   }
 }
 
+// 删除有声书任务
+const deleteJob = async (job: AudiobookJob) => {
+  if (!confirm(`Delete "${job.story_title}"?`)) return
+
+  try {
+    await audiobookApi.deleteJob(job.id)
+    jobs.value = jobs.value.filter(j => j.id !== job.id)
+    openJobMenuId.value = null
+  } catch (e) {
+    alert('Delete failed')
+  }
+}
+
+// 切换收藏状态
+const toggleFavorite = async (job: AudiobookJob) => {
+  try {
+    const res = await audiobookApi.toggleFavorite(job.id)
+    // 更新本地状态
+    const index = jobs.value.findIndex(j => j.id === job.id)
+    if (index !== -1) {
+      jobs.value[index].is_favorite = res.data.is_favorite
+    }
+    openJobMenuId.value = null
+  } catch (e) {
+    alert('Operation failed')
+  }
+}
+
+// 切换 Job 菜单
+const toggleJobMenu = (jobId: string) => {
+  openJobMenuId.value = openJobMenuId.value === jobId ? null : jobId
+}
+
 // 格式化时长
 const formatDuration = (seconds: number) => {
   const mins = Math.floor(seconds / 60)
@@ -171,46 +249,178 @@ const selectedTitle = computed(() => {
         </button>
       </div>
 
-      <!-- My Audiobooks -->
-      <div v-if="jobs.length > 0" class="mb-12">
-        <h2 class="text-xl font-bold text-gray-900 mb-4">My Audiobooks</h2>
-        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div
-            v-for="job in jobs"
-            :key="job.id"
-            class="bg-white rounded-xl p-4 shadow-soft"
-          >
-            <div class="flex items-center gap-4">
-              <div class="w-16 h-16 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
-                <svg class="w-8 h-8 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-              </div>
-              <div class="flex-1 min-w-0">
-                <h3 class="font-medium text-gray-900 truncate">{{ job.story_title }}</h3>
-                <p class="text-sm text-gray-500">{{ job.voice_name }}</p>
-                <div class="mt-1">
-                  <span
-                    :class="[
-                      'text-xs px-2 py-0.5 rounded-full',
-                      job.status === 'completed' ? 'bg-green-100 text-green-700' :
-                      job.status === 'processing' ? 'bg-blue-100 text-blue-700' :
-                      job.status === 'failed' ? 'bg-red-100 text-red-700' :
-                      'bg-gray-100 text-gray-700'
-                    ]"
-                  >
-                    {{ job.status === 'completed' ? 'Completed' :
-                       job.status === 'processing' ? 'Processing' :
-                       job.status === 'failed' ? 'Failed' : 'Pending' }}
-                  </span>
+      <!-- Favorites Section -->
+      <div v-if="favoriteJobs.length > 0" class="mb-8">
+        <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+          Favorites
+        </h2>
+        <div class="max-h-[140px] overflow-y-auto pr-2">
+          <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              v-for="job in favoriteJobs"
+              :key="job.id"
+              class="bg-white rounded-xl p-4 shadow-soft relative border-2 border-yellow-100"
+            >
+              <div class="flex items-center gap-4">
+                <div class="w-16 h-16 rounded-lg bg-yellow-50 flex items-center justify-center flex-shrink-0">
+                  <svg class="w-8 h-8 text-yellow-500" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h3 class="font-medium text-gray-900 truncate">{{ job.story_title }}</h3>
+                  <p class="text-sm text-gray-500">{{ job.voice_name }}</p>
+                  <div class="mt-1">
+                    <span
+                      :class="[
+                        'text-xs px-2 py-0.5 rounded-full',
+                        job.status === 'completed' ? 'bg-green-100 text-green-700' :
+                        job.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                        job.status === 'failed' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-700'
+                      ]"
+                    >
+                      {{ job.status === 'completed' ? 'Completed' :
+                         job.status === 'processing' ? 'Processing' :
+                         job.status === 'failed' ? 'Failed' : 'Pending' }}
+                    </span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <audio
+                    v-if="job.status === 'completed' && job.audio_url"
+                    :src="job.audio_url"
+                    controls
+                    class="w-28 h-8"
+                  ></audio>
+                  <div class="relative">
+                    <button
+                      @click.stop="toggleJobMenu(job.id)"
+                      class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="6" r="1.5"/>
+                        <circle cx="12" cy="12" r="1.5"/>
+                        <circle cx="12" cy="18" r="1.5"/>
+                      </svg>
+                    </button>
+                    <div
+                      v-if="openJobMenuId === job.id"
+                      class="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10"
+                    >
+                      <button
+                        @click="toggleFavorite(job)"
+                        class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                        </svg>
+                        Unfavorite
+                      </button>
+                      <button
+                        @click="deleteJob(job)"
+                        class="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <audio
-                v-if="job.status === 'completed' && job.audio_url"
-                :src="job.audio_url"
-                controls
-                class="w-32"
-              ></audio>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- My Audiobooks -->
+      <div v-if="regularJobs.length > 0" class="mb-12">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">My Audiobooks</h2>
+        <!-- 限制最多显示2行，超出滚动 -->
+        <div class="max-h-[280px] overflow-y-auto pr-2">
+          <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div
+              v-for="job in regularJobs"
+              :key="job.id"
+              class="bg-white rounded-xl p-4 shadow-soft relative"
+            >
+              <div class="flex items-center gap-4">
+                <div class="w-16 h-16 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
+                  <svg class="w-8 h-8 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h3 class="font-medium text-gray-900 truncate">{{ job.story_title }}</h3>
+                  <p class="text-sm text-gray-500">{{ job.voice_name }}</p>
+                  <div class="mt-1">
+                    <span
+                      :class="[
+                        'text-xs px-2 py-0.5 rounded-full',
+                        job.status === 'completed' ? 'bg-green-100 text-green-700' :
+                        job.status === 'processing' ? 'bg-blue-100 text-blue-700' :
+                        job.status === 'failed' ? 'bg-red-100 text-red-700' :
+                        'bg-gray-100 text-gray-700'
+                      ]"
+                    >
+                      {{ job.status === 'completed' ? 'Completed' :
+                         job.status === 'processing' ? 'Processing' :
+                         job.status === 'failed' ? 'Failed' : 'Pending' }}
+                    </span>
+                  </div>
+                </div>
+                <!-- 播放器或菜单按钮 -->
+                <div class="flex items-center gap-2 flex-shrink-0">
+                  <audio
+                    v-if="job.status === 'completed' && job.audio_url"
+                    :src="job.audio_url"
+                    controls
+                    class="w-28 h-8"
+                  ></audio>
+                  <!-- 三点菜单按钮 -->
+                  <div class="relative">
+                    <button
+                      @click.stop="toggleJobMenu(job.id)"
+                      class="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <circle cx="12" cy="6" r="1.5"/>
+                        <circle cx="12" cy="12" r="1.5"/>
+                        <circle cx="12" cy="18" r="1.5"/>
+                      </svg>
+                    </button>
+                    <!-- 下拉菜单 -->
+                    <div
+                      v-if="openJobMenuId === job.id"
+                      class="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10"
+                    >
+                      <button
+                        @click="toggleFavorite(job)"
+                        class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                        </svg>
+                        Add to Favorites
+                      </button>
+                      <button
+                        @click="deleteJob(job)"
+                        class="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                      >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

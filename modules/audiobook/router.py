@@ -1,6 +1,7 @@
 """
 Audiobook 模块 - API 路由
 有声书相关接口，用户选择故事和声音生成个性化有声书
+Updated: 2026-01-15 - Added delete and favorite endpoints
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -324,6 +325,51 @@ async def get_job(
     return success_response(
         AudiobookJobResponse(**job).model_dump()
     )
+
+
+@router.delete("/jobs/{job_id}", summary="删除有声书任务")
+async def delete_job(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    删除有声书任务
+
+    删除指定的有声书任务记录。
+
+    **路径参数:**
+    - **job_id**: 任务ID
+    """
+    service = get_audiobook_service()
+    success = await service.delete_job(user_id, job_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="任务不存在或无权限删除")
+
+    return success_response({"deleted": True})
+
+
+@router.post("/jobs/{job_id}/favorite", summary="切换收藏状态")
+async def toggle_favorite(
+    job_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    切换有声书任务的收藏状态
+
+    **路径参数:**
+    - **job_id**: 任务ID
+
+    **返回:**
+    - **is_favorite**: 新的收藏状态
+    """
+    service = get_audiobook_service()
+    new_favorite = await service.toggle_favorite(user_id, job_id)
+
+    if new_favorite is None:
+        raise HTTPException(status_code=404, detail="任务不存在")
+
+    return success_response({"is_favorite": new_favorite})
 
 
 # ==================== 用户电子书 API ====================

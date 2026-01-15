@@ -276,6 +276,14 @@ export const audiobookApi = {
     return http.get<AudiobookJob>(`/audiobook/jobs/${id}`)
   },
 
+  deleteJob(id: string) {
+    return http.delete(`/audiobook/jobs/${id}`)
+  },
+
+  toggleFavorite(id: string) {
+    return http.post<{ is_favorite: boolean }>(`/audiobook/jobs/${id}/favorite`)
+  },
+
   // 用户电子书相关
   getEbooks(params?: { page?: number; page_size?: number }) {
     return http.get<PaginatedResponse<UserEbook>>('/audiobook/ebooks', { params })

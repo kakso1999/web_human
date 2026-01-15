@@ -236,6 +236,7 @@ export interface AudiobookJob {
   created_at: string
   completed_at?: string
   error?: string
+  is_favorite?: boolean
 }
 
 // 预设故事

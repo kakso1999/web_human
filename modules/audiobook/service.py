@@ -165,6 +165,30 @@ class AudiobookService:
         """获取用户的任务详情"""
         return await self.job_repo.get_by_user(user_id, job_id)
 
+    async def delete_job(self, user_id: str, job_id: str) -> bool:
+        """删除用户的任务"""
+        # 先验证任务属于该用户
+        job = await self.job_repo.get_by_user(user_id, job_id)
+        if not job:
+            return False
+        return await self.job_repo.delete(job_id)
+
+    async def toggle_favorite(self, user_id: str, job_id: str) -> Optional[bool]:
+        """切换收藏状态，返回新的收藏状态
+        Updated: 2026-01-15
+        """
+        job = await self.job_repo.get_by_user(user_id, job_id)
+        if not job:
+            return None
+
+        # 切换收藏状态
+        current_favorite = job.get("is_favorite", False)
+        new_favorite = not current_favorite
+
+        # 更新数据库
+        await self.job_repo.update_fields(job_id, {"is_favorite": new_favorite})
+        return new_favorite
+
     async def list_jobs(
         self,
         user_id: str,
@@ -250,7 +274,7 @@ class AudiobookService:
             await self.job_repo.update_status(job_id, "processing", 20, "tts")
 
             # 生成 TTS 语音
-            audio_path = await self._generate_tts(job_id, voice_id, content)
+            audio_path = await self._generate_tts(job_id, voice_id, content, voice_profile_id)
             if not audio_path:
                 raise Exception("TTS generation failed")
 
@@ -299,14 +323,102 @@ class AudiobookService:
         self,
         job_id: str,
         voice_id: str,
-        text: str
+        text: str,
+        voice_profile_id: str = None
     ) -> Optional[str]:
         """
-        使用 CosyVoice TTS 生成语音
+        使用 TTS 生成语音
 
+        支持本地模式（SpeechT5）和云端模式（CosyVoice）
         对于长文本，分段生成然后拼接
         """
         logger.info(f"[{job_id}] Generating TTS for {len(text)} characters")
+
+        # 检查是否为本地模式
+        from modules.voice_clone.factory import is_local_mode, get_voice_clone_service
+
+        if is_local_mode():
+            return await self._generate_tts_local(job_id, voice_profile_id, text)
+        else:
+            return await self._generate_tts_cloud(job_id, voice_id, text)
+
+    async def _generate_tts_local(
+        self,
+        job_id: str,
+        voice_profile_id: str,
+        text: str
+    ) -> Optional[str]:
+        """
+        使用本地 TTS 生成语音（SpeechT5）
+        """
+        logger.info(f"[{job_id}] Using LOCAL TTS (SpeechT5)")
+
+        try:
+            from modules.voice_clone.factory import get_voice_clone_service
+
+            vc_service = get_voice_clone_service()
+
+            # 分段处理（每段最多 500 字符，本地模型限制）
+            MAX_CHUNK_SIZE = 500
+            chunks = self._split_text(text, MAX_CHUNK_SIZE)
+
+            logger.info(f"[{job_id}] Split into {len(chunks)} chunks")
+
+            segment_files = []
+            for i, chunk in enumerate(chunks):
+                logger.info(f"[{job_id}] Processing chunk {i+1}/{len(chunks)}: {len(chunk)} chars")
+
+                # 调用本地 TTS
+                chunk_path = str(self.upload_dir / f"{job_id}_chunk_{i}.wav")
+                result = await vc_service.synthesize_speech(
+                    voice_profile_id=voice_profile_id,
+                    text=chunk,
+                    output_path=chunk_path
+                )
+
+                if result:
+                    segment_files.append(chunk_path)
+                else:
+                    logger.warning(f"[{job_id}] Chunk {i+1} TTS failed")
+
+            if not segment_files:
+                logger.error(f"[{job_id}] No audio chunks generated")
+                return None
+
+            # 如果只有一个片段，直接返回
+            if len(segment_files) == 1:
+                final_path = self.upload_dir / f"{job_id}_audio.wav"
+                Path(segment_files[0]).rename(final_path)
+                return str(final_path)
+
+            # 多个片段，使用 FFmpeg 拼接
+            final_path = await self._concat_audio_files(job_id, segment_files)
+
+            # 清理临时文件
+            for f in segment_files:
+                try:
+                    Path(f).unlink()
+                except:
+                    pass
+
+            return final_path
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Local TTS generation error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _generate_tts_cloud(
+        self,
+        job_id: str,
+        voice_id: str,
+        text: str
+    ) -> Optional[str]:
+        """
+        使用云端 TTS 生成语音（CosyVoice）
+        """
+        logger.info(f"[{job_id}] Using CLOUD TTS (CosyVoice)")
 
         try:
             from dashscope.audio.tts_v2 import SpeechSynthesizer
@@ -365,7 +477,7 @@ class AudiobookService:
             return final_path
 
         except Exception as e:
-            logger.error(f"[{job_id}] TTS generation error: {e}")
+            logger.error(f"[{job_id}] Cloud TTS generation error: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -540,32 +652,90 @@ class AudiobookService:
             return 0.0
 
     async def _upload_to_media_bed(self, file_path: str) -> Optional[str]:
-        """上传文件到图床"""
+        """
+        上传文件到图床或返回本地 URL
+
+        优先尝试上传到媒体床，失败时返回本地 URL
+        """
         try:
-            file_path = Path(file_path)
-            if not file_path.exists():
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
+                logger.error(f"Audio file not found: {file_path}")
                 return None
 
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
+            logger.info(f"Audio file exists at: {file_path}, size: {file_path_obj.stat().st_size} bytes")
 
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{self.media_bed_url}/upload",
-                    files={"file": (file_path.name, file_content, "audio/mpeg")}
-                )
+            # 先尝试上传到媒体床
+            try:
+                with open(file_path, 'rb') as f:
+                    file_content = f.read()
 
-                if response.status_code == 200:
-                    result = response.json()
-                    relative_url = result.get("url")
-                    if relative_url:
-                        return f"{self.media_bed_url}{relative_url}"
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        f"{self.media_bed_url}/upload",
+                        files={"file": (file_path_obj.name, file_content, "audio/mpeg")}
+                    )
 
-            return None
+                    if response.status_code == 200:
+                        result = response.json()
+                        relative_url = result.get("url")
+                        if relative_url:
+                            logger.info(f"Uploaded to media bed: {relative_url}")
+                            return f"{self.media_bed_url}{relative_url}"
+            except Exception as e:
+                logger.warning(f"Media bed upload failed, using local URL: {e}")
+
+            # 媒体床不可用，返回本地 URL
+            local_url = self._convert_local_path_to_url(str(file_path))
+            logger.info(f"Using local URL: {local_url}")
+            return local_url
 
         except Exception as e:
             logger.error(f"Upload to media bed error: {e}")
             return None
+
+    def _convert_local_path_to_url(self, local_path: str) -> str:
+        """
+        将本地文件路径转换为可访问的 URL 路径
+
+        例如:
+        - E:\\工作代码\\73_web_human\\uploads\\audiobook\\xxx.wav
+        - 转换为: /uploads/audiobook/xxx.wav
+        """
+        if not local_path:
+            return ""
+
+        # 统一路径分隔符
+        normalized_path = local_path.replace("\\", "/")
+
+        # 方法1: 查找 uploads 目录的位置
+        if "/uploads/" in normalized_path:
+            idx = normalized_path.find("/uploads/")
+            return normalized_path[idx:]
+
+        # 方法2: 查找 audiobook 目录
+        if "audiobook" in normalized_path:
+            idx = normalized_path.find("audiobook")
+            return "/uploads/" + normalized_path[idx:]
+
+        # 方法3: 使用配置的 UPLOAD_DIR 进行替换
+        from core.config.settings import get_settings
+        settings = get_settings()
+        upload_dir = settings.UPLOAD_DIR.replace("\\", "/")
+
+        if normalized_path.startswith(upload_dir):
+            relative_path = normalized_path[len(upload_dir):]
+            if not relative_path.startswith("/"):
+                relative_path = "/" + relative_path
+            return "/uploads" + relative_path
+
+        # 如果路径中包含 uploads，尝试提取
+        if "uploads" in normalized_path:
+            idx = normalized_path.find("uploads")
+            return "/" + normalized_path[idx:]
+
+        # 默认返回原路径
+        return normalized_path
 
     # ==================== 用户电子书管理 ====================
 
@@ -688,7 +858,7 @@ class AudiobookService:
             await self.job_repo.update_status(job_id, "processing", 20, "tts")
 
             # 生成 TTS 语音
-            audio_path = await self._generate_tts(job_id, voice_id, content)
+            audio_path = await self._generate_tts(job_id, voice_id, content, voice_profile_id)
             if not audio_path:
                 raise Exception("TTS generation failed")
 

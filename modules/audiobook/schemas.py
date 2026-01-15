@@ -240,6 +240,7 @@ class AudiobookJobResponse(BaseModel):
     created_at: datetime = Field(..., description="任务创建时间")
     completed_at: Optional[datetime] = Field(None, description="任务完成时间")
     error: Optional[str] = Field(None, description="错误信息（失败时返回）")
+    is_favorite: bool = Field(default=False, description="是否收藏")
 
     model_config = ConfigDict(
         from_attributes=True,
