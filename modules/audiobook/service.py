@@ -20,8 +20,10 @@ from core.config.settings import get_settings
 from .repository import (
     audiobook_story_repository,
     audiobook_job_repository,
+    user_ebook_repository,
     AudiobookStoryRepository,
-    AudiobookJobRepository
+    AudiobookJobRepository,
+    UserEbookRepository
 )
 
 settings = get_settings()
@@ -56,6 +58,7 @@ class AudiobookService:
     def __init__(self):
         self.story_repo = audiobook_story_repository
         self.job_repo = audiobook_job_repository
+        self.ebook_repo = user_ebook_repository
         self.upload_dir = Path(settings.UPLOAD_DIR) / "audiobook"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.media_bed_url = settings.MEDIA_BED_URL
@@ -563,6 +566,164 @@ class AudiobookService:
         except Exception as e:
             logger.error(f"Upload to media bed error: {e}")
             return None
+
+    # ==================== 用户电子书管理 ====================
+
+    async def create_ebook(
+        self,
+        user_id: str,
+        title: str,
+        content: str,
+        language: str = "zh"
+    ) -> Dict[str, Any]:
+        """创建用户电子书"""
+        ebook_id = await self.ebook_repo.create(
+            user_id=user_id,
+            title=title,
+            content=content,
+            language=language,
+            source_format="txt"
+        )
+        ebook = await self.ebook_repo.get_by_id(ebook_id)
+        return ebook
+
+    async def get_ebook(self, user_id: str, ebook_id: str) -> Optional[dict]:
+        """获取用户的电子书详情"""
+        return await self.ebook_repo.get_by_user(user_id, ebook_id)
+
+    async def list_ebooks(
+        self,
+        user_id: str,
+        page: int = 1,
+        page_size: int = 20
+    ) -> Dict[str, Any]:
+        """获取用户的电子书列表"""
+        ebooks, total = await self.ebook_repo.list_by_user(user_id, page, page_size)
+        return {
+            "items": ebooks,
+            "total": total,
+            "page": page,
+            "page_size": page_size
+        }
+
+    async def update_ebook(
+        self,
+        user_id: str,
+        ebook_id: str,
+        update_data: dict
+    ) -> bool:
+        """更新用户的电子书"""
+        return await self.ebook_repo.update(ebook_id, user_id, update_data)
+
+    async def delete_ebook(self, user_id: str, ebook_id: str) -> bool:
+        """删除用户的电子书"""
+        return await self.ebook_repo.delete(ebook_id, user_id)
+
+    async def create_job_from_ebook(
+        self,
+        user_id: str,
+        ebook_id: str,
+        voice_profile_id: str
+    ) -> Dict[str, Any]:
+        """从用户电子书创建有声书生成任务"""
+        # 获取电子书信息
+        ebook = await self.ebook_repo.get_by_user(user_id, ebook_id)
+        if not ebook:
+            raise ValueError(f"Ebook not found: {ebook_id}")
+
+        # 获取声音档案信息
+        from modules.voice_clone.repository import voice_profile_repository
+        voice_profile = await voice_profile_repository.get_by_id(voice_profile_id)
+        if not voice_profile:
+            raise ValueError(f"Voice profile not found: {voice_profile_id}")
+
+        # 创建任务 - 使用 ebook_id 作为 story_id
+        job_id = await self.job_repo.create(
+            user_id=user_id,
+            story_id=ebook_id,  # 存储 ebook_id
+            voice_profile_id=voice_profile_id,
+            story_title=ebook.get("title", ""),
+            voice_name=voice_profile.get("name", "")
+        )
+
+        # 启动异步处理（使用电子书内容）
+        asyncio.create_task(self._process_ebook_job(job_id, ebook))
+
+        return {"job_id": job_id, "status": "pending"}
+
+    async def _process_ebook_job(self, job_id: str, ebook: dict):
+        """
+        处理从电子书生成有声书的任务
+
+        流程与普通任务类似，但内容来源于用户电子书
+        """
+        logger.info(f"[{job_id}] Starting ebook audiobook generation")
+
+        try:
+            # 更新状态为处理中
+            await self.job_repo.update_status(job_id, "processing", 5, "init")
+
+            # 获取任务信息
+            job = await self.job_repo.get_by_id(job_id)
+            if not job:
+                raise Exception("Job not found")
+
+            voice_profile_id = job.get("voice_profile_id")
+            content = ebook.get("content", "")
+
+            if not content:
+                raise Exception("Ebook content is empty")
+
+            # 获取声音档案
+            from modules.voice_clone.repository import voice_profile_repository
+            voice_profile = await voice_profile_repository.get_by_id(voice_profile_id)
+            if not voice_profile:
+                raise Exception("Voice profile not found")
+
+            voice_id = voice_profile.get("voice_id")
+            if not voice_id:
+                raise Exception("No voice_id in profile")
+
+            logger.info(f"[{job_id}] Using voice_id: {voice_id}")
+            await self.job_repo.update_status(job_id, "processing", 20, "tts")
+
+            # 生成 TTS 语音
+            audio_path = await self._generate_tts(job_id, voice_id, content)
+            if not audio_path:
+                raise Exception("TTS generation failed")
+
+            await self.job_repo.update_status(job_id, "processing", 80, "mixing")
+
+            # 获取音频时长
+            duration = await self._get_audio_duration(audio_path)
+
+            await self.job_repo.update_status(job_id, "processing", 90, "mixing")
+
+            # 上传到图床
+            audio_url = await self._upload_to_media_bed(audio_path)
+            if not audio_url:
+                raise Exception("Failed to upload audio")
+
+            # 更新任务完成
+            await self.job_repo.update_fields(job_id, {
+                "status": "completed",
+                "progress": 100,
+                "current_step": "completed",
+                "audio_url": audio_url,
+                "duration": int(duration),
+                "completed_at": datetime.utcnow()
+            })
+
+            logger.info(f"[{job_id}] Ebook audiobook generation completed: {audio_url}")
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Ebook audiobook generation failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+            await self.job_repo.update_status(
+                job_id, "failed", 0, "init", error=str(e)
+            )
 
 
 # 全局服务实例

@@ -14,7 +14,12 @@ from .schemas import (
     AudiobookStoryResponse,
     AudiobookStoryListResponse,
     AudiobookJobResponse,
-    AudiobookJobListResponse
+    AudiobookJobListResponse,
+    CreateUserEbookRequest,
+    UpdateUserEbookRequest,
+    UserEbookResponse,
+    UserEbookListResponse,
+    CreateEbookJobRequest
 )
 from .service import get_audiobook_service
 
@@ -319,3 +324,197 @@ async def get_job(
     return success_response(
         AudiobookJobResponse(**job).model_dump()
     )
+
+
+# ==================== 用户电子书 API ====================
+
+@router.post("/ebooks", summary="上传用户电子书")
+async def create_ebook(
+    request: CreateUserEbookRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    上传用户电子书
+
+    用户可以上传自己的文本内容作为电子书，然后使用声音档案生成有声书。
+
+    **请求参数:**
+    - **title**: 电子书标题
+    - **content**: 文本内容
+    - **language**: 语言代码 en(英语) | zh(中文)，默认中文
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "id": "696342ec383483bf26139d89",
+            "title": "我的故事",
+            "content": "从前有座山...",
+            "language": "zh",
+            "metadata": {
+                "word_count": 100,
+                "char_count": 500,
+                "estimated_duration": 167
+            }
+        }
+    }
+    ```
+    """
+    service = get_audiobook_service()
+    ebook = await service.create_ebook(
+        user_id=user_id,
+        title=request.title,
+        content=request.content,
+        language=request.language
+    )
+    return success_response(
+        UserEbookResponse(**ebook).model_dump()
+    )
+
+
+@router.get("/ebooks", summary="获取用户电子书列表")
+async def list_ebooks(
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量，最大100"),
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    获取用户的电子书列表
+
+    返回当前用户上传的所有电子书。
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "items": [...],
+            "total": 5,
+            "page": 1,
+            "page_size": 20
+        }
+    }
+    ```
+    """
+    service = get_audiobook_service()
+    result = await service.list_ebooks(
+        user_id=user_id,
+        page=page,
+        page_size=page_size
+    )
+    return success_response({
+        "items": [
+            UserEbookResponse(**ebook).model_dump()
+            for ebook in result["items"]
+        ],
+        "total": result["total"],
+        "page": result["page"],
+        "page_size": result["page_size"]
+    })
+
+
+@router.get("/ebooks/{ebook_id}", summary="获取电子书详情")
+async def get_ebook(
+    ebook_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    获取电子书详情
+    """
+    service = get_audiobook_service()
+    ebook = await service.get_ebook(user_id, ebook_id)
+
+    if not ebook:
+        raise HTTPException(status_code=404, detail="电子书不存在")
+
+    return success_response(
+        UserEbookResponse(**ebook).model_dump()
+    )
+
+
+@router.put("/ebooks/{ebook_id}", summary="更新电子书")
+async def update_ebook(
+    ebook_id: str,
+    request: UpdateUserEbookRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    更新电子书信息
+    """
+    service = get_audiobook_service()
+
+    update_data = request.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="没有要更新的内容")
+
+    success = await service.update_ebook(user_id, ebook_id, update_data)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="电子书不存在或无权更新")
+
+    return success_response({"message": "更新成功"})
+
+
+@router.delete("/ebooks/{ebook_id}", summary="删除电子书")
+async def delete_ebook(
+    ebook_id: str,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    删除电子书
+    """
+    service = get_audiobook_service()
+    success = await service.delete_ebook(user_id, ebook_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="电子书不存在或无权删除")
+
+    return success_response({"message": "删除成功"})
+
+
+@router.post("/ebooks/{ebook_id}/jobs", summary="从电子书创建有声书任务")
+async def create_job_from_ebook(
+    ebook_id: str,
+    request: CreateEbookJobRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    从用户电子书创建有声书生成任务
+
+    选择用户自己上传的电子书和声音档案，生成有声书。
+
+    **请求参数:**
+    - **ebook_id**: 电子书ID（URL路径参数）
+    - **voice_profile_id**: 声音档案ID
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "job_id": "695345efc32ffbd6151c18a9",
+            "status": "pending"
+        }
+    }
+    ```
+    """
+    service = get_audiobook_service()
+
+    # 确保 URL 中的 ebook_id 与请求体一致（如果提供）
+    if request.ebook_id and request.ebook_id != ebook_id:
+        raise HTTPException(status_code=400, detail="ebook_id 不匹配")
+
+    try:
+        result = await service.create_job_from_ebook(
+            user_id=user_id,
+            ebook_id=ebook_id,
+            voice_profile_id=request.voice_profile_id
+        )
+        return success_response(result)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

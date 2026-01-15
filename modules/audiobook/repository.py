@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 from bson import ObjectId
 
 from core.database.mongodb import get_database
-from .models import create_audiobook_story_document, create_audiobook_job_document
+from .models import create_audiobook_story_document, create_audiobook_job_document, create_user_ebook_document
 
 
 class AudiobookStoryRepository:
@@ -297,3 +297,129 @@ def get_audiobook_story_repository() -> AudiobookStoryRepository:
 def get_audiobook_job_repository() -> AudiobookJobRepository:
     """获取任务仓储"""
     return audiobook_job_repository
+
+
+class UserEbookRepository:
+    """用户电子书数据访问"""
+
+    def __init__(self):
+        self.collection_name = "user_ebooks"
+
+    @property
+    def collection(self):
+        db = get_database()
+        return db[self.collection_name]
+
+    async def create(
+        self,
+        user_id: str,
+        title: str,
+        content: str,
+        language: str = "zh",
+        source_format: str = "txt",
+        source_file_url: Optional[str] = None,
+        thumbnail_url: Optional[str] = None
+    ) -> str:
+        """创建用户电子书"""
+        doc = create_user_ebook_document(
+            user_id=user_id,
+            title=title,
+            content=content,
+            language=language,
+            source_format=source_format,
+            source_file_url=source_file_url,
+            thumbnail_url=thumbnail_url
+        )
+        result = await self.collection.insert_one(doc)
+        return str(result.inserted_id)
+
+    async def get_by_id(self, ebook_id: str) -> Optional[dict]:
+        """根据ID获取电子书"""
+        try:
+            doc = await self.collection.find_one({"_id": ObjectId(ebook_id)})
+            if doc:
+                doc["id"] = str(doc.pop("_id"))
+            return doc
+        except Exception:
+            return None
+
+    async def get_by_user(self, user_id: str, ebook_id: str) -> Optional[dict]:
+        """获取用户的特定电子书"""
+        try:
+            doc = await self.collection.find_one({
+                "_id": ObjectId(ebook_id),
+                "user_id": user_id
+            })
+            if doc:
+                doc["id"] = str(doc.pop("_id"))
+            return doc
+        except Exception:
+            return None
+
+    async def list_by_user(
+        self,
+        user_id: str,
+        page: int = 1,
+        page_size: int = 20
+    ) -> Tuple[List[dict], int]:
+        """获取用户的电子书列表"""
+        query = {"user_id": user_id}
+
+        total = await self.collection.count_documents(query)
+
+        skip = (page - 1) * page_size
+        cursor = self.collection.find(query).sort("created_at", -1).skip(skip).limit(page_size)
+
+        ebooks = []
+        async for doc in cursor:
+            doc["id"] = str(doc.pop("_id"))
+            ebooks.append(doc)
+
+        return ebooks, total
+
+    async def update(self, ebook_id: str, user_id: str, update_data: dict) -> bool:
+        """更新电子书（仅用户自己可更新）"""
+        update_data["updated_at"] = datetime.utcnow()
+
+        # 如果更新了内容，重新计算元数据
+        if "content" in update_data:
+            content = update_data["content"]
+            language = update_data.get("language", "zh")
+            word_count = len(content.split())
+            char_count = len(content)
+            if language == "zh":
+                estimated_duration = int(char_count / 3)
+            else:
+                estimated_duration = int(word_count / 2.5)
+            update_data["metadata"] = {
+                "word_count": word_count,
+                "char_count": char_count,
+                "estimated_duration": estimated_duration
+            }
+
+        result = await self.collection.update_one(
+            {"_id": ObjectId(ebook_id), "user_id": user_id},
+            {"$set": update_data}
+        )
+        return result.modified_count > 0
+
+    async def delete(self, ebook_id: str, user_id: str) -> bool:
+        """删除电子书（仅用户自己可删除）"""
+        result = await self.collection.delete_one({
+            "_id": ObjectId(ebook_id),
+            "user_id": user_id
+        })
+        return result.deleted_count > 0
+
+    async def count_by_user(self, user_id: str) -> int:
+        """统计用户的电子书数量"""
+        return await self.collection.count_documents({"user_id": user_id})
+
+
+# 全局实例
+user_ebook_repository = UserEbookRepository()
+
+
+def get_user_ebook_repository() -> UserEbookRepository:
+    """获取用户电子书仓储"""
+    return user_ebook_repository

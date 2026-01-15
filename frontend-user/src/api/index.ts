@@ -19,7 +19,8 @@ import type {
   SpeakerConfig,
   CreateStoryJobRequest,
   SingleSpeakerAnalysis,
-  DualSpeakerAnalysis
+  DualSpeakerAnalysis,
+  UserEbook
 } from '@/types'
 
 // ==================== 认证 API ====================
@@ -273,5 +274,33 @@ export const audiobookApi = {
 
   getJob(id: string) {
     return http.get<AudiobookJob>(`/audiobook/jobs/${id}`)
+  },
+
+  // 用户电子书相关
+  getEbooks(params?: { page?: number; page_size?: number }) {
+    return http.get<PaginatedResponse<UserEbook>>('/audiobook/ebooks', { params })
+  },
+
+  getEbook(id: string) {
+    return http.get<UserEbook>(`/audiobook/ebooks/${id}`)
+  },
+
+  createEbook(data: { title: string; content: string; language?: string }) {
+    return http.post<UserEbook>('/audiobook/ebooks', data)
+  },
+
+  updateEbook(id: string, data: { title?: string; content?: string; language?: string }) {
+    return http.put(`/audiobook/ebooks/${id}`, data)
+  },
+
+  deleteEbook(id: string) {
+    return http.delete(`/audiobook/ebooks/${id}`)
+  },
+
+  createJobFromEbook(ebookId: string, voiceProfileId: string) {
+    return http.post<{ job_id: string; status: string }>(`/audiobook/ebooks/${ebookId}/jobs`, {
+      ebook_id: ebookId,
+      voice_profile_id: voiceProfileId
+    })
   }
 }

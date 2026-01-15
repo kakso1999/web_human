@@ -116,3 +116,58 @@ JOB_STEPS = {
     "mixing": "音频混合",
     "completed": "完成"
 }
+
+
+def create_user_ebook_document(
+    user_id: str,
+    title: str,
+    content: str,
+    language: str = "zh",
+    source_format: str = "txt",
+    source_file_url: Optional[str] = None,
+    thumbnail_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    创建用户电子书文档
+
+    Args:
+        user_id: 用户 ID
+        title: 电子书标题
+        content: 提取的文本内容
+        language: 语言 "en" | "zh"
+        source_format: 来源格式 "txt" | "pdf"
+        source_file_url: 原始文件 URL
+        thumbnail_url: 封面图 URL
+    """
+    # 计算文本统计信息
+    word_count = len(content.split())
+    char_count = len(content)
+    # 按平均语速估算时长: 中文约 180字/分钟, 英文约 150词/分钟
+    if language == "zh":
+        estimated_duration = int(char_count / 3)  # 约每秒 3 个字
+    else:
+        estimated_duration = int(word_count / 2.5)  # 约每秒 2.5 个词
+
+    return {
+        "user_id": user_id,
+        "title": title,
+        "content": content,
+        "language": language,
+        "source_format": source_format,
+        "source_file_url": source_file_url,
+        "thumbnail_url": thumbnail_url,
+        "metadata": {
+            "word_count": word_count,
+            "char_count": char_count,
+            "estimated_duration": estimated_duration
+        },
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+
+
+# 支持的电子书格式
+EBOOK_FORMATS = {
+    "txt": "纯文本",
+    "pdf": "PDF 文档"
+}

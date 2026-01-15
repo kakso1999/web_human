@@ -313,3 +313,99 @@ class AdminAudiobookJobListResponse(BaseModel):
     total: int = Field(..., description="总数")
     page: int = Field(..., description="当前页码")
     page_size: int = Field(..., description="每页数量")
+
+
+# ==================== 用户电子书 Schema ====================
+
+class EbookMetadata(BaseModel):
+    """电子书元数据"""
+    word_count: int = Field(default=0, description="词数")
+    char_count: int = Field(default=0, description="字符数")
+    estimated_duration: int = Field(default=0, description="预估时长（秒）")
+
+
+class CreateUserEbookRequest(BaseModel):
+    """创建用户电子书请求（直接上传文本内容）"""
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="电子书标题",
+        json_schema_extra={"example": "我的故事"}
+    )
+    content: str = Field(
+        ...,
+        min_length=1,
+        description="电子书文本内容",
+        json_schema_extra={"example": "从前有座山，山上有座庙..."}
+    )
+    language: str = Field(
+        default="zh",
+        description="语言代码：en(英语) | zh(中文)",
+        json_schema_extra={"example": "zh"}
+    )
+
+
+class UpdateUserEbookRequest(BaseModel):
+    """更新用户电子书请求"""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200, description="电子书标题")
+    content: Optional[str] = Field(default=None, min_length=1, description="电子书内容")
+    language: Optional[str] = Field(default=None, description="语言代码")
+
+
+class UserEbookResponse(BaseModel):
+    """用户电子书响应"""
+    id: str = Field(..., description="电子书唯一标识ID")
+    user_id: str = Field(..., description="用户ID")
+    title: str = Field(..., description="电子书标题")
+    content: str = Field(..., description="电子书文本内容")
+    language: str = Field(..., description="语言代码")
+    source_format: str = Field(default="txt", description="来源格式")
+    source_file_url: Optional[str] = Field(default=None, description="原始文件URL")
+    thumbnail_url: Optional[str] = Field(default=None, description="封面图URL")
+    metadata: EbookMetadata = Field(..., description="元数据")
+    created_at: datetime = Field(..., description="创建时间")
+    updated_at: datetime = Field(..., description="更新时间")
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": "696342ec383483bf26139d89",
+                "user_id": "6948bda91fd873cf81f5addd",
+                "title": "我的故事",
+                "content": "从前有座山...",
+                "language": "zh",
+                "source_format": "txt",
+                "metadata": {
+                    "word_count": 100,
+                    "char_count": 500,
+                    "estimated_duration": 167
+                },
+                "created_at": "2025-01-15T12:00:00",
+                "updated_at": "2025-01-15T12:00:00"
+            }
+        }
+    )
+
+
+class UserEbookListResponse(BaseModel):
+    """用户电子书列表响应"""
+    items: List[UserEbookResponse] = Field(..., description="电子书列表")
+    total: int = Field(..., description="总数")
+    page: int = Field(..., description="当前页码")
+    page_size: int = Field(..., description="每页数量")
+
+
+class CreateEbookJobRequest(BaseModel):
+    """从用户电子书创建有声书任务请求"""
+    ebook_id: str = Field(
+        ...,
+        description="用户电子书ID",
+        json_schema_extra={"example": "696342ec383483bf26139d89"}
+    )
+    voice_profile_id: str = Field(
+        ...,
+        description="声音档案ID",
+        json_schema_extra={"example": "694534f1c32ffbd6151c18a3"}
+    )

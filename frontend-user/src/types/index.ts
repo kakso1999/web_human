@@ -245,3 +245,22 @@ export interface PresetStory {
   preview_text: string
   estimated_duration: number
 }
+
+// 用户电子书
+export interface UserEbook {
+  id: string
+  user_id: string
+  title: string
+  content: string
+  language: 'en' | 'zh'
+  source_format: string
+  source_file_url?: string
+  thumbnail_url?: string
+  metadata: {
+    word_count: number
+    char_count: number
+    estimated_duration: number
+  }
+  created_at: string
+  updated_at: string
+}
