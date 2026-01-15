@@ -588,30 +588,70 @@ class StoryGenerationService:
                 ref_audio_dir.mkdir(parents=True, exist_ok=True)
                 reference_audio_path = str(ref_audio_dir / "reference.wav")
 
-                # 检查是否是本地路径
-                is_local_path = not reference_audio_url.startswith(('http://', 'https://'))
+                # 检查是否是本地路径或媒体床 URL
+                import shutil
+                from core.config.settings import get_settings
+                settings = get_settings()
 
-                if is_local_path:
-                    # 本地路径：直接复制文件
-                    import shutil
-                    from core.config.settings import get_settings
-                    settings = get_settings()
+                media_bed_url = getattr(settings, 'MEDIA_BED_URL', '')
 
-                    local_ref_path = reference_audio_url
-                    if local_ref_path.startswith('/uploads/'):
-                        local_ref_path = local_ref_path.removeprefix('/uploads/')
-                        local_ref_path = str(Path(settings.UPLOAD_DIR) / local_ref_path)
-                    elif local_ref_path.startswith('/'):
-                        local_ref_path = local_ref_path.lstrip('/')
+                # 优先使用本地路径字段 reference_audio_local
+                reference_audio_local = profile.get("reference_audio_local")
 
-                    if os.path.exists(local_ref_path):
-                        shutil.copy(local_ref_path, reference_audio_path)
-                        logger.info(f"[{job_id}] Copied local reference audio: {local_ref_path}")
+                # 调试日志
+                logger.info(f"[{job_id}] reference_audio_url: {reference_audio_url}")
+                logger.info(f"[{job_id}] reference_audio_local: {reference_audio_local}")
+                logger.info(f"[{job_id}] media_bed_url: {media_bed_url}")
+
+                # 判断是否需要转换为本地路径
+                local_ref_path = None
+
+                # 1. 优先使用 reference_audio_local 字段
+                if reference_audio_local:
+                    # 处理可能的路径格式
+                    if os.path.isabs(reference_audio_local):
+                        local_ref_path = reference_audio_local
                     else:
-                        logger.error(f"[{job_id}] Local reference audio not found: {local_ref_path}")
-                        return None
+                        # 相对路径，相对于项目根目录
+                        local_ref_path = str(Path(os.getcwd()) / reference_audio_local)
+                    logger.info(f"[{job_id}] Using reference_audio_local: {local_ref_path}")
+
+                # 2. 如果 reference_audio_local 不存在或文件不存在，尝试从 URL 推断
+                if not local_ref_path or not os.path.exists(local_ref_path):
+                    if reference_audio_url.startswith(('http://', 'https://')):
+                        # HTTP URL - 检查是否是媒体床 URL
+                        if media_bed_url and reference_audio_url.startswith(media_bed_url):
+                            # 媒体床 URL：在本地模式下转换为本地路径
+                            url_path = reference_audio_url[len(media_bed_url):]
+                            # 处理 /files/ 和 /uploads/ 两种路径格式
+                            if url_path.startswith('/uploads/'):
+                                local_ref_path = str(Path(settings.UPLOAD_DIR) / url_path.removeprefix('/uploads/'))
+                            elif url_path.startswith('/files/'):
+                                # /files/ 路径：尝试在 uploads 下查找
+                                local_ref_path = str(Path(settings.UPLOAD_DIR) / url_path.removeprefix('/files/'))
+                            elif url_path.startswith('/'):
+                                local_ref_path = str(Path(settings.UPLOAD_DIR) / url_path.lstrip('/'))
+                            logger.info(f"[{job_id}] Converting media bed URL to local path: {local_ref_path}")
+                        else:
+                            logger.warning(f"[{job_id}] URL does not match media bed: starts_with={reference_audio_url[:50]}")
+                    else:
+                        # 相对路径
+                        local_ref_path = reference_audio_url
+                        if local_ref_path.startswith('/uploads/'):
+                            local_ref_path = str(Path(settings.UPLOAD_DIR) / local_ref_path.removeprefix('/uploads/'))
+                        elif local_ref_path.startswith('/'):
+                            local_ref_path = str(Path(settings.UPLOAD_DIR) / local_ref_path.lstrip('/'))
+
+                if local_ref_path and os.path.exists(local_ref_path):
+                    # 本地文件存在，直接复制
+                    shutil.copy(local_ref_path, reference_audio_path)
+                    logger.info(f"[{job_id}] Copied local reference audio: {local_ref_path}")
+                elif local_ref_path:
+                    # 本地路径但文件不存在
+                    logger.error(f"[{job_id}] Local reference audio not found: {local_ref_path}")
+                    return None
                 else:
-                    # HTTP URL：下载参考音频
+                    # 非媒体床的外部 HTTP URL：尝试下载
                     import httpx
 
                     try:
@@ -3198,19 +3238,85 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] Voice profile not found: {voice_profile_id}")
                 return None
 
-            # 使用 reference_audio_url 创建新的临时 voice_id（而不是使用存储的 voice_id）
+            # 优先使用 reference_audio_local，如果不存在则使用 reference_audio_url
             reference_audio_url = profile.get("reference_audio_url")
-            if not reference_audio_url:
-                logger.error(f"[{job_id}] No reference_audio_url in profile")
+            reference_audio_local = profile.get("reference_audio_local")
+
+            logger.info(f"[{job_id}] Speaker {speaker_id} profile:")
+            logger.info(f"[{job_id}]   reference_audio_url: {reference_audio_url}")
+            logger.info(f"[{job_id}]   reference_audio_local: {reference_audio_local}")
+
+            # 确定最终使用的参考音频路径
+            final_reference_path = None
+
+            # 1. 优先使用 reference_audio_local 字段
+            if reference_audio_local:
+                if os.path.isabs(reference_audio_local):
+                    local_path = reference_audio_local
+                else:
+                    # 相对路径，相对于项目根目录
+                    local_path = str(Path(os.getcwd()) / reference_audio_local)
+
+                if os.path.exists(local_path):
+                    final_reference_path = local_path
+                    logger.info(f"[{job_id}] Using reference_audio_local: {final_reference_path}")
+
+            # 2. 如果 reference_audio_local 不存在或无效，尝试从 reference_audio_url 推断
+            if not final_reference_path and reference_audio_url:
+                from core.config.settings import get_settings
+                settings_local = get_settings()
+                media_bed_url = getattr(settings_local, 'MEDIA_BED_URL', '')
+
+                if reference_audio_url.startswith(('http://', 'https://')):
+                    # HTTP URL - 检查是否是媒体床 URL
+                    if media_bed_url and reference_audio_url.startswith(media_bed_url):
+                        # 媒体床 URL：在本地模式下转换为本地路径
+                        url_path = reference_audio_url[len(media_bed_url):]
+                        if url_path.startswith('/uploads/'):
+                            local_path = str(Path(settings_local.UPLOAD_DIR) / url_path.removeprefix('/uploads/'))
+                        elif url_path.startswith('/files/'):
+                            # /files/ 路径：尝试在 uploads 下查找
+                            local_path = str(Path(settings_local.UPLOAD_DIR) / url_path.removeprefix('/files/'))
+                        elif url_path.startswith('/'):
+                            local_path = str(Path(settings_local.UPLOAD_DIR) / url_path.lstrip('/'))
+                        else:
+                            local_path = None
+
+                        if local_path and os.path.exists(local_path):
+                            final_reference_path = local_path
+                            logger.info(f"[{job_id}] Converted media bed URL to local path: {final_reference_path}")
+                        else:
+                            logger.warning(f"[{job_id}] Media bed local path not found: {local_path}")
+                    else:
+                        # 非媒体床 URL，直接使用（可能会下载失败）
+                        final_reference_path = reference_audio_url
+                        logger.info(f"[{job_id}] Using HTTP URL directly: {reference_audio_url[:60]}...")
+                else:
+                    # 本地路径
+                    if reference_audio_url.startswith('/uploads/'):
+                        local_path = str(Path(settings_local.UPLOAD_DIR) / reference_audio_url.removeprefix('/uploads/'))
+                    elif reference_audio_url.startswith('uploads/'):
+                        local_path = str(Path(settings_local.UPLOAD_DIR) / reference_audio_url.removeprefix('uploads/'))
+                    elif reference_audio_url.startswith('/'):
+                        local_path = str(Path(os.getcwd()) / reference_audio_url.lstrip('/'))
+                    else:
+                        local_path = str(Path(os.getcwd()) / reference_audio_url)
+
+                    if os.path.exists(local_path):
+                        final_reference_path = local_path
+                        logger.info(f"[{job_id}] Using local path from URL: {final_reference_path}")
+
+            if not final_reference_path:
+                logger.error(f"[{job_id}] No valid reference audio path found for speaker {speaker_id}")
                 return None
 
-            logger.info(f"[{job_id}] Creating fresh voice from reference: {reference_audio_url}")
+            logger.info(f"[{job_id}] Creating fresh voice from reference: {final_reference_path}")
 
             # 调用 VoiceCloneService 创建新的 voice
             from modules.voice_clone.factory import get_voice_clone_service
             vc_service = get_voice_clone_service()
 
-            voice_id = await vc_service._create_voice(f"{job_id}_{speaker_id}", reference_audio_url)
+            voice_id = await vc_service._create_voice(f"{job_id}_{speaker_id}", final_reference_path)
             if not voice_id:
                 logger.error(f"[{job_id}] Failed to create voice for speaker {speaker_id}")
                 return None
@@ -3574,9 +3680,11 @@ class StoryGenerationService:
 
             # 下载数字人视频
             dh_video_paths = []
+            dh_speaker_ids = []  # 记录每个数字人对应的说话人ID
             for i, dh in enumerate(digital_humans[:2]):  # 最多处理2个数字人
                 dh_video_path = self.upload_dir / f"{job_id}_dh_{dh['speaker_id']}.mp4"
                 video_url = dh["video_url"]
+                speaker_id = dh["speaker_id"]
 
                 # 处理本地路径
                 if video_url.startswith('/uploads') or video_url.startswith('uploads'):
@@ -3593,6 +3701,7 @@ class StoryGenerationService:
                         import shutil
                         shutil.copy(str(local_video_path), str(dh_video_path))
                         dh_video_paths.append(str(dh_video_path))
+                        dh_speaker_ids.append(speaker_id)
                         logger.info(f"[{job_id}] Copied local digital human video: {local_video_path}")
                     else:
                         logger.warning(f"[{job_id}] Local digital human video not found: {local_video_path}")
@@ -3604,6 +3713,7 @@ class StoryGenerationService:
                             with open(dh_video_path, 'wb') as f:
                                 f.write(response.content)
                             dh_video_paths.append(str(dh_video_path))
+                            dh_speaker_ids.append(speaker_id)
                         else:
                             logger.warning(f"[{job_id}] Failed to download digital human video for {dh['speaker_id']}")
 
@@ -3643,13 +3753,16 @@ class StoryGenerationService:
             if background_audio_url:
                 bg_audio_path = self.upload_dir / f"{job_id}_background.wav"
 
-                # 统一路径分隔符
+                # 统一路径分隔符，并处理可能的双斜杠
                 bg_url_normalized = background_audio_url.replace('\\', '/')
+                # 替换多个连续斜杠为单个斜杠
+                import re
+                bg_url_normalized = re.sub(r'/+', '/', bg_url_normalized)
 
                 # 处理本地路径（/uploads/... 或相对路径）
                 if bg_url_normalized.startswith('/uploads/') or bg_url_normalized.startswith('uploads/'):
-                    # 获取相对于 uploads 目录的路径（使用 removeprefix 而不是 lstrip）
-                    rel_path = bg_url_normalized.removeprefix('/').removeprefix('uploads/')
+                    # 获取相对于 uploads 目录的路径
+                    rel_path = bg_url_normalized.removeprefix('/').removeprefix('uploads/').lstrip('/')
                     uploads_absolute = Path(settings.UPLOAD_DIR).resolve()
                     local_bg_path = uploads_absolute / rel_path
 
@@ -3694,6 +3807,7 @@ class StoryGenerationService:
             # Debug: 显示音频文件列表
             logger.info(f"[{job_id}] Audio files for compositing: {audio_paths}")
             logger.info(f"[{job_id}] Digital human videos: {dh_video_paths}")
+            logger.info(f"[{job_id}] Digital human speaker IDs: {dh_speaker_ids}")
 
             # 计算数字人画中画尺寸和位置
             pip_width = width // 5  # 占 1/5 宽度
@@ -3706,16 +3820,27 @@ class StoryGenerationService:
                     job_id, str(video_path), audio_paths, bg_audio_path, str(output_path)
                 )
             elif len(dh_video_paths) == 1:
-                # 单数字人（左上角）
+                # 单数字人：根据说话人ID决定位置
+                # SPEAKER_00 → 左上角, SPEAKER_01 → 右上角
+                speaker_id = dh_speaker_ids[0] if dh_speaker_ids else "SPEAKER_00"
+                position = "right" if speaker_id == "SPEAKER_01" else "left"
+                logger.info(f"[{job_id}] Single digital human ({speaker_id}) positioned at {position}")
+
                 final_video_url = await self._composite_single_pip_multi(
                     job_id, str(video_path), dh_video_paths[0],
                     audio_paths, bg_audio_path, str(output_path),
-                    pip_width, pip_margin, "left"
+                    pip_width, pip_margin, position
                 )
             else:
-                # 双数字人（左上角 + 右上角）
+                # 双数字人：根据说话人ID排序，确保 SPEAKER_00 在左，SPEAKER_01 在右
+                # 创建 (speaker_id, video_path) 对并排序
+                dh_pairs = list(zip(dh_speaker_ids, dh_video_paths))
+                dh_pairs.sort(key=lambda x: x[0])  # 按 speaker_id 排序
+                sorted_paths = [path for _, path in dh_pairs]
+                logger.info(f"[{job_id}] Dual digital humans sorted: {[s for s, _ in dh_pairs]}")
+
                 final_video_url = await self._composite_dual_pip(
-                    job_id, str(video_path), dh_video_paths[0], dh_video_paths[1],
+                    job_id, str(video_path), sorted_paths[0], sorted_paths[1],
                     audio_paths, bg_audio_path, str(output_path),
                     width, height, pip_width, pip_margin
                 )
@@ -4129,11 +4254,21 @@ class StoryGenerationService:
                 return None
 
             image_url = profile.get("image_url")
-            face_bbox = profile.get("face_bbox")
-            ext_bbox = profile.get("ext_bbox")
+            face_bbox = profile.get("face_bbox", [])
+            ext_bbox = profile.get("ext_bbox", [])
 
-            if not image_url or not face_bbox or not ext_bbox:
-                logger.error(f"[{job_id}] Invalid avatar profile")
+            # 检查 image_url 是否存在
+            if not image_url:
+                logger.error(f"[{job_id}] Invalid avatar profile: missing image_url")
+                return None
+
+            # 检查服务模式 - 本地模式不需要 face_bbox 和 ext_bbox
+            from core.config.settings import get_settings
+            settings = get_settings()
+            service_mode = getattr(settings, 'AI_SERVICE_MODE', 'local')
+
+            if service_mode == 'cloud' and (not face_bbox or not ext_bbox):
+                logger.error(f"[{job_id}] Invalid avatar profile: cloud mode requires face_bbox and ext_bbox")
                 return None
 
             # 调用 EMO API 创建任务
@@ -4311,10 +4446,18 @@ class StoryGenerationService:
         """上传文件到图床，如果失败则返回本地路径"""
         try:
             import httpx
+            from core.config.settings import get_settings
+            settings = get_settings()
 
             file_path = Path(file_path)
             if not file_path.exists():
                 return None
+
+            # 本地模式下，直接返回相对 URL 路径
+            service_mode = getattr(settings, 'AI_SERVICE_MODE', 'local')
+            if service_mode == 'local':
+                # 转换本地绝对路径为相对 URL
+                return self._convert_local_path_to_url(str(file_path))
 
             suffix = file_path.suffix.lower()
             content_type_map = {
@@ -4345,18 +4488,54 @@ class StoryGenerationService:
 
             # 上传失败，返回本地路径
             logger.warning(f"Media bed upload failed, using local path: {file_path}")
-            return f"/{file_path}"
+            return self._convert_local_path_to_url(str(file_path))
 
         except Exception as e:
             logger.error(f"Upload to media bed error: {e}")
             # 失败时返回本地路径作为后备
             try:
                 if Path(file_path).exists():
-                    logger.info(f"Falling back to local path: {file_path}")
-                    return f"/{file_path}"
+                    local_url = self._convert_local_path_to_url(str(file_path))
+                    logger.info(f"Falling back to local path: {local_url}")
+                    return local_url
             except:
                 pass
             return None
+
+    def _convert_local_path_to_url(self, local_path: str) -> str:
+        """
+        将本地文件路径转换为可访问的 URL 路径
+        例如: E:\\工作代码\\73_web_human\\uploads\\xxx.mp3
+        转换为: /uploads/xxx.mp3
+        """
+        if not local_path:
+            return ""
+
+        # 标准化路径分隔符
+        normalized_path = local_path.replace("\\", "/")
+
+        # 查找 /uploads/ 开头的部分
+        if "/uploads/" in normalized_path:
+            idx = normalized_path.find("/uploads/")
+            return normalized_path[idx:]
+
+        # 查找 uploads/ 开头的部分（不带前导斜杠）
+        if "uploads/" in normalized_path:
+            idx = normalized_path.find("uploads/")
+            return "/" + normalized_path[idx:]
+
+        # 查找 story_generation 目录
+        if "story_generation" in normalized_path:
+            idx = normalized_path.find("story_generation")
+            return "/uploads/" + normalized_path[idx:]
+
+        # 只保留文件名，构建默认路径
+        import os
+        filename = os.path.basename(normalized_path)
+        if filename:
+            return f"/uploads/story_generation/{filename}"
+
+        return normalized_path
 
 
 # 单例

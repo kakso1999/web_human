@@ -991,10 +991,11 @@ print(f"[{{speaker_id}}] 结果已保存到: {{output_file}}", flush=True)
 
             # 媒体床失败，返回本地相对路径
             # 将绝对路径转为相对 URL
-            file_path_str = str(file_path_obj)
+            file_path_str = str(file_path_obj).replace("\\", "/")
             if "uploads" in file_path_str:
-                relative_path = "/" + file_path_str.split("uploads", 1)[1].replace("\\", "/")
-                return f"/uploads{relative_path}"
+                # split 后可能有前导斜杠，需要去除
+                relative_part = file_path_str.split("uploads", 1)[1].lstrip("/")
+                return f"/uploads/{relative_part}"
 
             return None
 

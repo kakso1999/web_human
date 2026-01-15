@@ -21,6 +21,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Story Player - Echobot' }
   },
   {
+    path: '/create-profile',
+    name: 'CreateProfile',
+    component: () => import('@/views/CreateProfile.vue'),
+    meta: { title: 'Create Profile - Echobot', requiresAuth: true }
+  },
+  {
     path: '/studio',
     name: 'Studio',
     component: () => import('@/views/Studio.vue'),
@@ -37,6 +43,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Profiles',
     component: () => import('@/views/Profiles.vue'),
     meta: { title: 'My Profiles - Echobot', requiresAuth: true },
+    redirect: '/profiles/voice',
     children: [
       {
         path: 'voice',
