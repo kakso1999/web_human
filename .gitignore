@@ -48,8 +48,30 @@ voice_clone_server/outputs/
 nul
 *.tmp
 *.temp
+tmpclaude-*
+openapi_temp.json
 
-# Test files
+# Test files and outputs
 test_*.py
 test_*.wav
+test_*.mp4
+test_*.mp3
+test_*.png
+*_output*.txt
+*_test.log
 outside_video/
+test_separation/
+video_tests/
+
+# Backup directories
+*_backup_*/
+src_backup_*/
+
+# Large model files
+pretrained_models/
+torch_wheels/
+
+# Misc temp
+*.pyc
+debug_*.log
+subtitles_*.json
