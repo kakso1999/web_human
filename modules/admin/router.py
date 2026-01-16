@@ -456,9 +456,99 @@ async def delete_category(
 
 # ========== 故事管理 - 辅助函数 ==========
 
+
+async def transcribe_with_local_whisper(audio_path: str) -> dict:
+    """
+    使用本地 faster-whisper 进行语音识别
+
+    Returns:
+        dict: {"text": "...", "segments": [...]}
+    """
+    import concurrent.futures
+
+    def _run_whisper():
+        from faster_whisper import WhisperModel
+        import os
+
+        # 优先使用本地模型路径
+        model_path = os.environ.get(
+            "WHISPER_MODEL_PATH",
+            r"E:\huggingface_cache\hub\models--Systran--faster-whisper-base"
+        )
+
+        # 检查本地路径是否存在
+        if os.path.exists(model_path):
+            print(f"[Local Whisper] Using local model: {model_path}")
+            model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=True)
+        else:
+            print(f"[Local Whisper] Local model not found, downloading 'base' model...")
+            model = WhisperModel("base", device="cpu", compute_type="int8")
+
+        # 转写
+        print(f"[Local Whisper] Transcribing: {audio_path}")
+        segments_gen, info = model.transcribe(
+            audio_path,
+            beam_size=5,
+            word_timestamps=True,
+            language=None,  # 自动检测
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500)
+        )
+
+        # 收集结果
+        all_text = []
+        all_segments = []
+
+        for seg in segments_gen:
+            all_text.append(seg.text.strip())
+            all_segments.append({
+                "start": seg.start,
+                "end": seg.end,
+                "text": seg.text.strip()
+            })
+
+        return {
+            "text": " ".join(all_text),
+            "segments": all_segments,
+            "language": info.language
+        }
+
+    # 在线程池中运行（避免阻塞事件循环）
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        result = await loop.run_in_executor(executor, _run_whisper)
+
+    return result
+
+
+def generate_title_from_text(text: str) -> str:
+    """从文本中提取标题（本地模式，无需 AI）"""
+    if not text:
+        return "Untitled Story"
+
+    # 取前 100 个字符作为标题基础
+    title_base = text[:100].strip()
+
+    # 在句子边界截断
+    for punct in ['.', '!', '?', '。', '！', '？']:
+        if punct in title_base:
+            title_base = title_base.split(punct)[0] + punct
+            break
+
+    # 如果太长，进一步截断
+    if len(title_base) > 60:
+        title_base = title_base[:57] + "..."
+
+    return title_base if title_base else "Untitled Story"
+
+
 async def process_video_ai(story_id: str, video_path: str, api_key: str):
     """
     后台处理视频：提取音频、生成字幕、生成标题
+
+    支持两种模式：
+    - local: 使用本地 faster-whisper 模型
+    - cloud: 使用 APICore API
 
     Args:
         story_id: 故事ID
@@ -466,7 +556,15 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
         api_key: APICore API Key
     """
     story_service = get_story_service()
-    apicore = get_apicore_service(api_key)
+
+    # 检查服务模式
+    service_mode = getattr(settings, 'AI_SERVICE_MODE', 'cloud').lower()
+    print(f"[AI Processing] Service mode: {service_mode}")
+
+    # 云端模式才需要 apicore
+    apicore = None
+    if service_mode != 'local':
+        apicore = get_apicore_service(api_key)
 
     try:
         # 1. 提取音频
@@ -484,44 +582,68 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
 
         audio_url = f"/uploads/audio/{audio_filename}"
 
-        # 2. 语音转文字
-        print(f"[AI Processing] Transcribing audio...")
-        transcription = await apicore.transcribe_audio(audio_path, response_format="verbose_json")
+        # 2. 语音转文字（根据模式选择本地或云端）
+        print(f"[AI Processing] Transcribing audio (mode: {service_mode})...")
 
-        # 解析字幕数据
         subtitles = []
-        subtitle_text = transcription.get("text", "")
+        subtitle_text = ""
 
-        # verbose_json 格式包含 segments
-        segments = transcription.get("segments", [])
-        for seg in segments:
-            subtitles.append({
-                "start": seg.get("start", 0),
-                "end": seg.get("end", 0),
-                "text": seg.get("text", "").strip()
-            })
+        if service_mode == 'local':
+            # 本地模式：使用 faster-whisper
+            try:
+                transcription = await transcribe_with_local_whisper(audio_path)
+                subtitle_text = transcription.get("text", "")
+                segments = transcription.get("segments", [])
+                for seg in segments:
+                    subtitles.append({
+                        "start": seg.get("start", 0),
+                        "end": seg.get("end", 0),
+                        "text": seg.get("text", "").strip()
+                    })
+                print(f"[AI Processing] Local transcription complete. {len(subtitles)} segments.")
+            except Exception as e:
+                print(f"[AI Processing] Local transcription failed: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            # 云端模式：使用 APICore API
+            transcription = await apicore.transcribe_audio(audio_path, response_format="verbose_json")
+            subtitle_text = transcription.get("text", "")
+            segments = transcription.get("segments", [])
+            for seg in segments:
+                subtitles.append({
+                    "start": seg.get("start", 0),
+                    "end": seg.get("end", 0),
+                    "text": seg.get("text", "").strip()
+                })
+            print(f"[AI Processing] Cloud transcription complete. {len(subtitles)} segments.")
 
-        print(f"[AI Processing] Transcription complete. {len(subtitles)} segments.")
-
-        # 3. 生成英文标题和英文描述
+        # 3. 生成标题和描述（根据模式选择）
         title = ""
         description = ""
         if subtitle_text:
-            print(f"[AI Processing] Generating English title...")
-            try:
-                # 生成英文标题作为主标题
-                title = await apicore.generate_title(subtitle_text)
-                print(f"[AI Processing] Generated English title: {title}")
-            except Exception as e:
-                print(f"[AI Processing] Title generation failed: {e}")
+            if service_mode == 'local':
+                # 本地模式：从文本中提取标题
+                print(f"[AI Processing] Generating title from text (local)...")
+                title = generate_title_from_text(subtitle_text)
+                # 本地模式暂不生成描述，使用字幕前200字符
+                description = subtitle_text[:200] + "..." if len(subtitle_text) > 200 else subtitle_text
+                print(f"[AI Processing] Generated title: {title}")
+            else:
+                # 云端模式：使用 AI 生成
+                print(f"[AI Processing] Generating English title...")
+                try:
+                    title = await apicore.generate_title(subtitle_text)
+                    print(f"[AI Processing] Generated English title: {title}")
+                except Exception as e:
+                    print(f"[AI Processing] Title generation failed: {e}")
 
-            print(f"[AI Processing] Generating English description...")
-            try:
-                # 生成英文描述
-                description = await apicore.generate_description(subtitle_text)
-                print(f"[AI Processing] Generated English description: {description}")
-            except Exception as e:
-                print(f"[AI Processing] Description generation failed: {e}")
+                print(f"[AI Processing] Generating English description...")
+                try:
+                    description = await apicore.generate_description(subtitle_text)
+                    print(f"[AI Processing] Generated English description: {description}")
+                except Exception as e:
+                    print(f"[AI Processing] Description generation failed: {e}")
 
         # 4. 更新数据库（保持 is_processing = True，等说话人分析完成再设为 False）
         update_data = {

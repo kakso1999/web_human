@@ -75,7 +75,7 @@ const closePreview = () => {
   <div>
     <div class="flex justify-between items-center mb-6">
       <h2 class="text-xl font-bold text-gray-900">Avatar Profiles</h2>
-      <RouterLink to="/studio" class="btn-primary text-sm">
+      <RouterLink to="/create-profile" class="btn-primary text-sm">
         Add New Avatar
       </RouterLink>
     </div>
@@ -93,7 +93,7 @@ const closePreview = () => {
       </div>
       <h3 class="text-lg font-semibold text-gray-900 mb-2">No Avatar Profiles Yet</h3>
       <p class="text-gray-500 mb-4">Upload a photo to create your digital avatar</p>
-      <RouterLink to="/studio" class="btn-primary">
+      <RouterLink to="/create-profile" class="btn-primary">
         Create Avatar Profile
       </RouterLink>
     </div>

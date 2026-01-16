@@ -337,7 +337,7 @@ class StoryListItem(BaseModel):
     id: str = Field(..., description="故事唯一标识ID")
     title: str = Field(..., description="故事标题")
     title_en: Optional[str] = Field(None, description="英文标题")
-    category_id: str = Field(..., description="分类ID")
+    category_id: Optional[str] = Field(None, description="分类ID")
     thumbnail_url: Optional[str] = Field(None, description="缩略图URL")
     duration: int = Field(default=0, description="视频时长（秒）")
     is_published: bool = Field(default=False, description="是否已发布")

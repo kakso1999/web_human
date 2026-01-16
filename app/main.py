@@ -7,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
 
+# DNS 补丁：解决本地 DNS 服务器无法解析阿里云域名的问题
+try:
+    from core.utils.dns_patch import patch_dns
+except ImportError:
+    pass
+
 from core.config.settings import get_settings
 from core.config.database import Database
 from core.middleware.security_headers import SecurityHeadersMiddleware

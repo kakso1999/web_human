@@ -64,7 +64,7 @@ const saveEdit = async () => {
   <div>
     <div class="flex justify-between items-center mb-6">
       <h2 class="text-xl font-bold text-gray-900">Voice Profiles</h2>
-      <RouterLink to="/studio" class="btn-primary text-sm">
+      <RouterLink to="/create-profile" class="btn-primary text-sm">
         Add New Voice
       </RouterLink>
     </div>
@@ -85,7 +85,7 @@ const saveEdit = async () => {
       </div>
       <h3 class="text-lg font-semibold text-gray-900 mb-2">No Voice Profiles Yet</h3>
       <p class="text-gray-500 mb-4">Create your first voice profile to start telling stories</p>
-      <RouterLink to="/studio" class="btn-primary">
+      <RouterLink to="/create-profile" class="btn-primary">
         Create Voice Profile
       </RouterLink>
     </div>

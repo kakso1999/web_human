@@ -1,18 +1,19 @@
+[DNS] Patched with custom resolver for: ['dashscope.aliyuncs.com', 'gtm-cn-rt54j1mlg03.dashscope.aliyuncs.com']
 {
   "openapi": "3.1.0",
   "info": {
     "title": "Echobot",
-    "description": "AIé©±åŠ¨çš„æ•°å­—äººåŠ¨ç”»å¹³å° API",
+    "description": "AIÇı¶¯µÄÊı×ÖÈË¶¯»­Æ½Ì¨ API",
     "version": "1.0.0"
   },
   "paths": {
     "/api/v1/auth/register": {
       "post": {
         "tags": [
-          "è®¤è¯"
+          "ÈÏÖ¤"
         ],
         "summary": "Register",
-        "description": "ç”¨æˆ·æ³¨å†Œ\n\n- **email**: é‚®ç®±åœ°å€\n- **password**: å¯†ç ï¼ˆè‡³å°‘8ä½ï¼ŒåŒ…å«å¤§å°å†™å­—æ¯å’Œæ•°å­—ï¼‰\n- **nickname**: æ˜µç§°ï¼ˆ2-50ä¸ªå­—ç¬¦ï¼‰",
+        "description": "ÓÃ»§×¢²á\n\n- **email**: ÓÊÏäµØÖ·\n- **password**: ÃÜÂë£¨ÖÁÉÙ8Î»£¬°üº¬´óĞ¡Ğ´×ÖÄ¸ºÍÊı×Ö£©\n- **nickname**: êÇ³Æ£¨2-50¸ö×Ö·û£©",
         "operationId": "register_api_v1_auth_register_post",
         "requestBody": {
           "content": {
@@ -49,10 +50,10 @@
     "/api/v1/auth/login": {
       "post": {
         "tags": [
-          "è®¤è¯"
+          "ÈÏÖ¤"
         ],
         "summary": "Login",
-        "description": "ç”¨æˆ·ç™»å½•\n\n- **email**: é‚®ç®±åœ°å€\n- **password**: å¯†ç ",
+        "description": "ÓÃ»§µÇÂ¼\n\n- **email**: ÓÊÏäµØÖ·\n- **password**: ÃÜÂë",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -89,10 +90,10 @@
     "/api/v1/auth/refresh": {
       "post": {
         "tags": [
-          "è®¤è¯"
+          "ÈÏÖ¤"
         ],
         "summary": "Refresh Token",
-        "description": "åˆ·æ–° Token\n\n- **refresh_token**: åˆ·æ–°ä»¤ç‰Œ",
+        "description": "Ë¢ĞÂ Token\n\n- **refresh_token**: Ë¢ĞÂÁîÅÆ",
         "operationId": "refresh_token_api_v1_auth_refresh_post",
         "requestBody": {
           "content": {
@@ -129,10 +130,10 @@
     "/api/v1/auth/logout": {
       "post": {
         "tags": [
-          "è®¤è¯"
+          "ÈÏÖ¤"
         ],
         "summary": "Logout",
-        "description": "ç”¨æˆ·ç™»å‡º\n\næ¸…é™¤ Cookie ä¸­çš„ refresh_token",
+        "description": "ÓÃ»§µÇ³ö\n\nÇå³ı Cookie ÖĞµÄ refresh_token",
         "operationId": "logout_api_v1_auth_logout_post",
         "responses": {
           "200": {
@@ -154,10 +155,10 @@
     "/api/v1/auth/google": {
       "post": {
         "tags": [
-          "è®¤è¯"
+          "ÈÏÖ¤"
         ],
         "summary": "Google Auth",
-        "description": "Google è´¦å·ç™»å½•\n\n- **code**: Google æˆæƒç ",
+        "description": "Google ÕËºÅµÇÂ¼\n\n- **code**: Google ÊÚÈ¨Âë",
         "operationId": "google_auth_api_v1_auth_google_post",
         "requestBody": {
           "content": {
@@ -194,10 +195,10 @@
     "/api/v1/auth/google/url": {
       "get": {
         "tags": [
-          "è®¤è¯"
+          "ÈÏÖ¤"
         ],
         "summary": "Get Google Auth Url",
-        "description": "è·å– Google ç™»å½• URL\n\nå‰ç«¯é‡å®šå‘åˆ°æ­¤ URL è¿›è¡Œ Google æˆæƒ",
+        "description": "»ñÈ¡ Google µÇÂ¼ URL\n\nÇ°¶ËÖØ¶¨Ïòµ½´Ë URL ½øĞĞ Google ÊÚÈ¨",
         "operationId": "get_google_auth_url_api_v1_auth_google_url_get",
         "responses": {
           "200": {
@@ -211,13 +212,56 @@
         }
       }
     },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "tags": [
+          "ÈÏÖ¤"
+        ],
+        "summary": "Google Callback",
+        "description": "Google OAuth »Øµ÷\n\nGoogle ÈÏÖ¤³É¹¦ºóÖØ¶¨Ïòµ½´ËµØÖ·£¬Ğ¯´øÊÚÈ¨Âë¡£\n´¦ÀíÊÚÈ¨Âë²¢ÖØ¶¨Ïòµ½Ç°¶Ë¡£",
+        "operationId": "google_callback_api_v1_auth_google_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Google ÊÚÈ¨Âë",
+              "title": "Code"
+            },
+            "description": "Google ÊÚÈ¨Âë"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/user/profile": {
       "get": {
         "tags": [
-          "ç”¨æˆ·"
+          "ÓÃ»§"
         ],
-        "summary": "è·å–ç”¨æˆ·èµ„æ–™",
-        "description": "è·å–å½“å‰ç™»å½•ç”¨æˆ·çš„ä¸ªäººèµ„æ–™\n\nè¿”å›ç”¨æˆ·çš„åŸºæœ¬ä¿¡æ¯ã€è®¢é˜…çŠ¶æ€ç­‰ã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"6948bda91fd873cf81f5addd\",\n        \"email\": \"user@example.com\",\n        \"nickname\": \"å°æ˜\",\n        \"avatar_url\": \"https://example.com/avatar.jpg\",\n        \"role\": \"user\",\n        \"subscription\": {\"plan\": \"free\", \"expires_at\": null},\n        \"is_active\": true,\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓÃ»§×ÊÁÏ",
+        "description": "»ñÈ¡µ±Ç°µÇÂ¼ÓÃ»§µÄ¸öÈË×ÊÁÏ\n\n·µ»ØÓÃ»§µÄ»ù±¾ĞÅÏ¢¡¢¶©ÔÄ×´Ì¬µÈ¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"6948bda91fd873cf81f5addd\",\n        \"email\": \"user@example.com\",\n        \"nickname\": \"Ğ¡Ã÷\",\n        \"avatar_url\": \"https://example.com/avatar.jpg\",\n        \"role\": \"user\",\n        \"subscription\": {\"plan\": \"free\", \"expires_at\": null},\n        \"is_active\": true,\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
         "operationId": "get_profile_api_v1_user_profile_get",
         "responses": {
           "200": {
@@ -237,10 +281,10 @@
       },
       "put": {
         "tags": [
-          "ç”¨æˆ·"
+          "ÓÃ»§"
         ],
-        "summary": "æ›´æ–°ç”¨æˆ·èµ„æ–™",
-        "description": "æ›´æ–°å½“å‰ç”¨æˆ·çš„ä¸ªäººèµ„æ–™\n\nå¯æ›´æ–°çš„å­—æ®µï¼š\n- **nickname**: ç”¨æˆ·æ˜µç§°\n\n**è¯·æ±‚ç¤ºä¾‹:**\n```json\n{\n    \"nickname\": \"æ–°æ˜µç§°\"\n}\n```",
+        "summary": "¸üĞÂÓÃ»§×ÊÁÏ",
+        "description": "¸üĞÂµ±Ç°ÓÃ»§µÄ¸öÈË×ÊÁÏ\n\n¿É¸üĞÂµÄ×Ö¶Î£º\n- **nickname**: ÓÃ»§êÇ³Æ\n\n**ÇëÇóÊ¾Àı:**\n```json\n{\n    \"nickname\": \"ĞÂêÇ³Æ\"\n}\n```",
         "operationId": "update_profile_api_v1_user_profile_put",
         "requestBody": {
           "content": {
@@ -282,10 +326,10 @@
     "/api/v1/user/avatar": {
       "post": {
         "tags": [
-          "ç”¨æˆ·"
+          "ÓÃ»§"
         ],
-        "summary": "ä¸Šä¼ å¤´åƒ",
-        "description": "ä¸Šä¼ ç”¨æˆ·å¤´åƒ\n\n**æ”¯æŒçš„å›¾ç‰‡æ ¼å¼:** JPG, PNG, GIF, WebP\n\n**æ–‡ä»¶å¤§å°é™åˆ¶:** æœ€å¤§ 5MB\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"6948bda91fd873cf81f5addd\",\n        \"avatar_url\": \"/uploads/avatars/user123/avatar_20250101.jpg\",\n        ...\n    }\n}\n```",
+        "summary": "ÉÏ´«Í·Ïñ",
+        "description": "ÉÏ´«ÓÃ»§Í·Ïñ\n\n**Ö§³ÖµÄÍ¼Æ¬¸ñÊ½:** JPG, PNG, GIF, WebP\n\n**ÎÄ¼ş´óĞ¡ÏŞÖÆ:** ×î´ó 5MB\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"6948bda91fd873cf81f5addd\",\n        \"avatar_url\": \"/uploads/avatars/user123/avatar_20250101.jpg\",\n        ...\n    }\n}\n```",
         "operationId": "upload_avatar_api_v1_user_avatar_post",
         "requestBody": {
           "content": {
@@ -327,10 +371,10 @@
     "/api/v1/user/change-password": {
       "post": {
         "tags": [
-          "ç”¨æˆ·"
+          "ÓÃ»§"
         ],
-        "summary": "ä¿®æ”¹å¯†ç ",
-        "description": "ä¿®æ”¹å½“å‰ç”¨æˆ·çš„ç™»å½•å¯†ç \n\néœ€è¦æä¾›å½“å‰å¯†ç è¿›è¡ŒéªŒè¯ï¼Œæ–°å¯†ç å¿…é¡»æ»¡è¶³ä»¥ä¸‹è¦æ±‚ï¼š\n- é•¿åº¦è‡³å°‘8ä½\n- åŒ…å«è‡³å°‘ä¸€ä¸ªå¤§å†™å­—æ¯\n- åŒ…å«è‡³å°‘ä¸€ä¸ªå°å†™å­—æ¯\n- åŒ…å«è‡³å°‘ä¸€ä¸ªæ•°å­—\n\n**è¯·æ±‚ç¤ºä¾‹:**\n```json\n{\n    \"old_password\": \"OldPassword123\",\n    \"new_password\": \"NewPassword456\"\n}\n```\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"å¯†ç ä¿®æ”¹æˆåŠŸ\",\n    \"data\": null\n}\n```",
+        "summary": "ĞŞ¸ÄÃÜÂë",
+        "description": "ĞŞ¸Äµ±Ç°ÓÃ»§µÄµÇÂ¼ÃÜÂë\n\nĞèÒªÌá¹©µ±Ç°ÃÜÂë½øĞĞÑéÖ¤£¬ĞÂÃÜÂë±ØĞëÂú×ãÒÔÏÂÒªÇó£º\n- ³¤¶ÈÖÁÉÙ8Î»\n- °üº¬ÖÁÉÙÒ»¸ö´óĞ´×ÖÄ¸\n- °üº¬ÖÁÉÙÒ»¸öĞ¡Ğ´×ÖÄ¸\n- °üº¬ÖÁÉÙÒ»¸öÊı×Ö\n\n**ÇëÇóÊ¾Àı:**\n```json\n{\n    \"old_password\": \"OldPassword123\",\n    \"new_password\": \"NewPassword456\"\n}\n```\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"ÃÜÂëĞŞ¸Ä³É¹¦\",\n    \"data\": null\n}\n```",
         "operationId": "change_password_api_v1_user_change_password_post",
         "requestBody": {
           "content": {
@@ -372,10 +416,10 @@
     "/api/v1/stories/categories": {
       "get": {
         "tags": [
-          "æ•…äº‹"
+          "¹ÊÊÂ"
         ],
-        "summary": "è·å–æ•…äº‹åˆ†ç±»åˆ—è¡¨",
-        "description": "è·å–æ‰€æœ‰æ•…äº‹åˆ†ç±»\n\nè¿”å›å¹³å°ä¸Šæ‰€æœ‰å¯ç”¨çš„æ•…äº‹åˆ†ç±»ï¼ŒæŒ‰æ’åºå­—æ®µæ’åˆ—ã€‚\nç”¨äºå‰ç«¯åˆ†ç±»ç­›é€‰å’Œå¯¼èˆªã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"694534f1c32ffbd6151c18a1\",\n            \"name\": \"ç«¥è¯æ•…äº‹\",\n            \"name_en\": \"Fairy Tales\",\n            \"sort_order\": 0,\n            \"story_count\": 15\n        }\n    ]\n}\n```",
+        "summary": "»ñÈ¡¹ÊÊÂ·ÖÀàÁĞ±í",
+        "description": "»ñÈ¡ËùÓĞ¹ÊÊÂ·ÖÀà\n\n·µ»ØÆ½Ì¨ÉÏËùÓĞ¿ÉÓÃµÄ¹ÊÊÂ·ÖÀà£¬°´ÅÅĞò×Ö¶ÎÅÅÁĞ¡£\nÓÃÓÚÇ°¶Ë·ÖÀàÉ¸Ñ¡ºÍµ¼º½¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"694534f1c32ffbd6151c18a1\",\n            \"name\": \"Í¯»°¹ÊÊÂ\",\n            \"name_en\": \"Fairy Tales\",\n            \"sort_order\": 0,\n            \"story_count\": 15\n        }\n    ]\n}\n```",
         "operationId": "list_categories_api_v1_stories_categories_get",
         "responses": {
           "200": {
@@ -392,10 +436,10 @@
     "/api/v1/stories": {
       "get": {
         "tags": [
-          "æ•…äº‹"
+          "¹ÊÊÂ"
         ],
-        "summary": "è·å–æ•…äº‹åˆ—è¡¨",
-        "description": "è·å–å·²å‘å¸ƒçš„æ•…äº‹åˆ—è¡¨\n\næ”¯æŒåˆ†é¡µã€åˆ†ç±»ç­›é€‰å’Œå…³é”®è¯æœç´¢ã€‚\næ™®é€šç”¨æˆ·åªèƒ½æŸ¥çœ‹å·²å‘å¸ƒçŠ¶æ€çš„æ•…äº‹ã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **page**: é¡µç ï¼Œä»1å¼€å§‹\n- **page_size**: æ¯é¡µæ•°é‡ï¼Œ1-100\n- **category_id**: åˆ†ç±»IDï¼ˆå¯é€‰ï¼‰ï¼Œç­›é€‰ç‰¹å®šåˆ†ç±»ä¸‹çš„æ•…äº‹\n- **search**: æœç´¢å…³é”®è¯ï¼ˆå¯é€‰ï¼‰ï¼ŒåŒ¹é…æ•…äº‹æ ‡é¢˜\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"694534f1c32ffbd6151c18a2\",\n                \"title\": \"ä¸‰åªå°çŒª\",\n                \"title_en\": \"The Three Little Pigs\",\n                \"category_id\": \"694534f1c32ffbd6151c18a1\",\n                \"thumbnail_url\": \"/uploads/thumbnails/story123.jpg\",\n                \"duration\": 180,\n                \"is_published\": true,\n                \"view_count\": 1234,\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 50,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
+        "summary": "»ñÈ¡¹ÊÊÂÁĞ±í",
+        "description": "»ñÈ¡ÒÑ·¢²¼µÄ¹ÊÊÂÁĞ±í\n\nÖ§³Ö·ÖÒ³¡¢·ÖÀàÉ¸Ñ¡ºÍ¹Ø¼ü´ÊËÑË÷¡£\nÆÕÍ¨ÓÃ»§Ö»ÄÜ²é¿´ÒÑ·¢²¼×´Ì¬µÄ¹ÊÊÂ¡£\n\n**ÇëÇó²ÎÊı:**\n- **page**: Ò³Âë£¬´Ó1¿ªÊ¼\n- **page_size**: Ã¿Ò³ÊıÁ¿£¬1-100\n- **category_id**: ·ÖÀàID£¨¿ÉÑ¡£©£¬É¸Ñ¡ÌØ¶¨·ÖÀàÏÂµÄ¹ÊÊÂ\n- **search**: ËÑË÷¹Ø¼ü´Ê£¨¿ÉÑ¡£©£¬Æ¥Åä¹ÊÊÂ±êÌâ\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"694534f1c32ffbd6151c18a2\",\n                \"title\": \"ÈıÖ»Ğ¡Öí\",\n                \"title_en\": \"The Three Little Pigs\",\n                \"category_id\": \"694534f1c32ffbd6151c18a1\",\n                \"thumbnail_url\": \"/uploads/thumbnails/story123.jpg\",\n                \"duration\": 180,\n                \"is_published\": true,\n                \"view_count\": 1234,\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 50,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
         "operationId": "list_stories_api_v1_stories_get",
         "parameters": [
           {
@@ -405,11 +449,11 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "description": "é¡µç ï¼Œä»1å¼€å§‹",
+              "description": "Ò³Âë£¬´Ó1¿ªÊ¼",
               "default": 1,
               "title": "Page"
             },
-            "description": "é¡µç ï¼Œä»1å¼€å§‹"
+            "description": "Ò³Âë£¬´Ó1¿ªÊ¼"
           },
           {
             "name": "page_size",
@@ -419,11 +463,11 @@
               "type": "integer",
               "maximum": 100,
               "minimum": 1,
-              "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100",
+              "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100",
               "default": 20,
               "title": "Page Size"
             },
-            "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100"
+            "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100"
           },
           {
             "name": "category_id",
@@ -438,10 +482,10 @@
                   "type": "null"
                 }
               ],
-              "description": "åˆ†ç±»IDï¼Œç”¨äºç­›é€‰ç‰¹å®šåˆ†ç±»",
+              "description": "·ÖÀàID£¬ÓÃÓÚÉ¸Ñ¡ÌØ¶¨·ÖÀà",
               "title": "Category Id"
             },
-            "description": "åˆ†ç±»IDï¼Œç”¨äºç­›é€‰ç‰¹å®šåˆ†ç±»"
+            "description": "·ÖÀàID£¬ÓÃÓÚÉ¸Ñ¡ÌØ¶¨·ÖÀà"
           },
           {
             "name": "search",
@@ -456,10 +500,10 @@
                   "type": "null"
                 }
               ],
-              "description": "æœç´¢å…³é”®è¯ï¼ŒåŒ¹é…æ ‡é¢˜",
+              "description": "ËÑË÷¹Ø¼ü´Ê£¬Æ¥Åä±êÌâ",
               "title": "Search"
             },
-            "description": "æœç´¢å…³é”®è¯ï¼ŒåŒ¹é…æ ‡é¢˜"
+            "description": "ËÑË÷¹Ø¼ü´Ê£¬Æ¥Åä±êÌâ"
           }
         ],
         "responses": {
@@ -487,10 +531,10 @@
     "/api/v1/stories/random": {
       "get": {
         "tags": [
-          "æ•…äº‹"
+          "¹ÊÊÂ"
         ],
-        "summary": "è·å–éšæœºæ•…äº‹",
-        "description": "è·å–éšæœºæ•…äº‹åˆ—è¡¨\n\néšæœºè¿”å›æŒ‡å®šæ•°é‡çš„å·²å‘å¸ƒæ•…äº‹ï¼Œç”¨äºé¦–é¡µè½®æ’­å›¾å’Œæ¨èå±•ç¤ºã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **limit**: è¿”å›æ•°é‡ï¼Œ1-20ï¼Œé»˜è®¤10\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"694534f1c32ffbd6151c18a2\",\n            \"title\": \"ä¸‰åªå°çŒª\",\n            \"thumbnail_url\": \"/uploads/thumbnails/story123.jpg\",\n            \"duration\": 180\n        }\n    ]\n}\n```",
+        "summary": "»ñÈ¡Ëæ»ú¹ÊÊÂ",
+        "description": "»ñÈ¡Ëæ»ú¹ÊÊÂÁĞ±í\n\nËæ»ú·µ»ØÖ¸¶¨ÊıÁ¿µÄÒÑ·¢²¼¹ÊÊÂ£¬ÓÃÓÚÊ×Ò³ÂÖ²¥Í¼ºÍÍÆ¼öÕ¹Ê¾¡£\n\n**ÇëÇó²ÎÊı:**\n- **limit**: ·µ»ØÊıÁ¿£¬1-20£¬Ä¬ÈÏ10\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"694534f1c32ffbd6151c18a2\",\n            \"title\": \"ÈıÖ»Ğ¡Öí\",\n            \"thumbnail_url\": \"/uploads/thumbnails/story123.jpg\",\n            \"duration\": 180\n        }\n    ]\n}\n```",
         "operationId": "get_random_stories_api_v1_stories_random_get",
         "parameters": [
           {
@@ -501,11 +545,11 @@
               "type": "integer",
               "maximum": 20,
               "minimum": 1,
-              "description": "è¿”å›æ•°é‡ï¼Œæœ€å¤§20",
+              "description": "·µ»ØÊıÁ¿£¬×î´ó20",
               "default": 10,
               "title": "Limit"
             },
-            "description": "è¿”å›æ•°é‡ï¼Œæœ€å¤§20"
+            "description": "·µ»ØÊıÁ¿£¬×î´ó20"
           }
         ],
         "responses": {
@@ -533,10 +577,10 @@
     "/api/v1/stories/{story_id}": {
       "get": {
         "tags": [
-          "æ•…äº‹"
+          "¹ÊÊÂ"
         ],
-        "summary": "è·å–æ•…äº‹è¯¦æƒ…",
-        "description": "è·å–å•ä¸ªæ•…äº‹çš„å®Œæ•´è¯¦æƒ…\n\nè¿”å›æ•…äº‹çš„æ‰€æœ‰ä¿¡æ¯ï¼ŒåŒ…æ‹¬è§†é¢‘URLã€å­—å¹•æ•°æ®ç­‰ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **story_id**: æ•…äº‹å”¯ä¸€æ ‡è¯†ID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"694534f1c32ffbd6151c18a2\",\n        \"title\": \"ä¸‰åªå°çŒª\",\n        \"title_en\": \"The Three Little Pigs\",\n        \"category_id\": \"694534f1c32ffbd6151c18a1\",\n        \"category_name\": \"ç«¥è¯æ•…äº‹\",\n        \"description\": \"ä¸‰åªå°çŒªå»ºæˆ¿å­çš„ç»å…¸ç«¥è¯æ•…äº‹\",\n        \"thumbnail_url\": \"/uploads/thumbnails/story123.jpg\",\n        \"video_url\": \"/uploads/videos/story123.mp4\",\n        \"audio_url\": \"/uploads/audio/story123.mp3\",\n        \"duration\": 180,\n        \"is_published\": true,\n        \"view_count\": 1234,\n        \"subtitles\": [\n            {\"start\": 0.0, \"end\": 3.5, \"text\": \"ä»å‰æœ‰ä¸‰åªå°çŒª...\"}\n        ],\n        \"created_at\": \"2025-01-01T12:00:00\",\n        \"updated_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
+        "summary": "»ñÈ¡¹ÊÊÂÏêÇé",
+        "description": "»ñÈ¡µ¥¸ö¹ÊÊÂµÄÍêÕûÏêÇé\n\n·µ»Ø¹ÊÊÂµÄËùÓĞĞÅÏ¢£¬°üÀ¨ÊÓÆµURL¡¢×ÖÄ»Êı¾İµÈ¡£\n\n**Â·¾¶²ÎÊı:**\n- **story_id**: ¹ÊÊÂÎ¨Ò»±êÊ¶ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"694534f1c32ffbd6151c18a2\",\n        \"title\": \"ÈıÖ»Ğ¡Öí\",\n        \"title_en\": \"The Three Little Pigs\",\n        \"category_id\": \"694534f1c32ffbd6151c18a1\",\n        \"category_name\": \"Í¯»°¹ÊÊÂ\",\n        \"description\": \"ÈıÖ»Ğ¡Öí½¨·¿×ÓµÄ¾­µäÍ¯»°¹ÊÊÂ\",\n        \"thumbnail_url\": \"/uploads/thumbnails/story123.jpg\",\n        \"video_url\": \"/uploads/videos/story123.mp4\",\n        \"audio_url\": \"/uploads/audio/story123.mp3\",\n        \"duration\": 180,\n        \"is_published\": true,\n        \"view_count\": 1234,\n        \"subtitles\": [\n            {\"start\": 0.0, \"end\": 3.5, \"text\": \"´ÓÇ°ÓĞÈıÖ»Ğ¡Öí...\"}\n        ],\n        \"created_at\": \"2025-01-01T12:00:00\",\n        \"updated_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
         "operationId": "get_story_api_v1_stories__story_id__get",
         "parameters": [
           {
@@ -574,10 +618,10 @@
     "/api/v1/stories/{story_id}/view": {
       "post": {
         "tags": [
-          "æ•…äº‹"
+          "¹ÊÊÂ"
         ],
-        "summary": "è®°å½•æ’­æ”¾æ¬¡æ•°",
-        "description": "è®°å½•æ•…äº‹æ’­æ”¾æ¬¡æ•°\n\næ¯æ¬¡ç”¨æˆ·è§‚çœ‹æ•…äº‹æ—¶è°ƒç”¨æ­¤æ¥å£ï¼Œç”¨äºç»Ÿè®¡æ’­æ”¾é‡ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **story_id**: æ•…äº‹å”¯ä¸€æ ‡è¯†ID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"æ’­æ”¾è®°å½•æˆåŠŸ\",\n    \"data\": null\n}\n```",
+        "summary": "¼ÇÂ¼²¥·Å´ÎÊı",
+        "description": "¼ÇÂ¼¹ÊÊÂ²¥·Å´ÎÊı\n\nÃ¿´ÎÓÃ»§¹Û¿´¹ÊÊÂÊ±µ÷ÓÃ´Ë½Ó¿Ú£¬ÓÃÓÚÍ³¼Æ²¥·ÅÁ¿¡£\n\n**Â·¾¶²ÎÊı:**\n- **story_id**: ¹ÊÊÂÎ¨Ò»±êÊ¶ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"²¥·Å¼ÇÂ¼³É¹¦\",\n    \"data\": null\n}\n```",
         "operationId": "record_view_api_v1_stories__story_id__view_post",
         "parameters": [
           {
@@ -615,10 +659,10 @@
     "/api/v1/admin/dashboard": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æ•°æ®æ¦‚è§ˆ",
-        "description": "è·å–ç®¡ç†åå°æ•°æ®æ¦‚è§ˆ\n\nè¿”å›å¹³å°æ ¸å¿ƒç»Ÿè®¡æ•°æ®ï¼ŒåŒ…æ‹¬ç”¨æˆ·ã€æ•…äº‹ã€è®¢é˜…ç­‰ä¿¡æ¯ã€‚\nç”¨äºç®¡ç†åå°é¦–é¡µå±•ç¤ºã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"total_users\": 1500,\n        \"total_stories\": 120,\n        \"published_stories\": 100,\n        \"active_subscribers\": 50,\n        \"monthly_revenue\": 0,\n        \"recent_users\": [...],\n        \"recent_stories\": [...]\n    }\n}\n```",
+        "summary": "»ñÈ¡Êı¾İ¸ÅÀÀ",
+        "description": "»ñÈ¡¹ÜÀíºóÌ¨Êı¾İ¸ÅÀÀ\n\n·µ»ØÆ½Ì¨ºËĞÄÍ³¼ÆÊı¾İ£¬°üÀ¨ÓÃ»§¡¢¹ÊÊÂ¡¢¶©ÔÄµÈĞÅÏ¢¡£\nÓÃÓÚ¹ÜÀíºóÌ¨Ê×Ò³Õ¹Ê¾¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"total_users\": 1500,\n        \"total_stories\": 120,\n        \"published_stories\": 100,\n        \"active_subscribers\": 50,\n        \"monthly_revenue\": 0,\n        \"recent_users\": [...],\n        \"recent_stories\": [...]\n    }\n}\n```",
         "operationId": "get_dashboard_api_v1_admin_dashboard_get",
         "responses": {
           "200": {
@@ -640,10 +684,10 @@
     "/api/v1/admin/users": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–ç”¨æˆ·åˆ—è¡¨",
-        "description": "è·å–ç”¨æˆ·åˆ—è¡¨\n\næ”¯æŒåˆ†é¡µã€è§’è‰²ç­›é€‰ã€çŠ¶æ€ç­›é€‰å’Œå…³é”®è¯æœç´¢ã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"6948bda91fd873cf81f5addd\",\n                \"email\": \"user@example.com\",\n                \"nickname\": \"å°æ˜\",\n                \"role\": \"user\",\n                \"subscription_plan\": \"free\",\n                \"is_active\": true,\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 100,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓÃ»§ÁĞ±í",
+        "description": "»ñÈ¡ÓÃ»§ÁĞ±í\n\nÖ§³Ö·ÖÒ³¡¢½ÇÉ«É¸Ñ¡¡¢×´Ì¬É¸Ñ¡ºÍ¹Ø¼ü´ÊËÑË÷¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"6948bda91fd873cf81f5addd\",\n                \"email\": \"user@example.com\",\n                \"nickname\": \"Ğ¡Ã÷\",\n                \"role\": \"user\",\n                \"subscription_plan\": \"free\",\n                \"is_active\": true,\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 100,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
         "operationId": "list_users_api_v1_admin_users_get",
         "security": [
           {
@@ -658,11 +702,11 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "description": "é¡µç ï¼Œä»1å¼€å§‹",
+              "description": "Ò³Âë£¬´Ó1¿ªÊ¼",
               "default": 1,
               "title": "Page"
             },
-            "description": "é¡µç ï¼Œä»1å¼€å§‹"
+            "description": "Ò³Âë£¬´Ó1¿ªÊ¼"
           },
           {
             "name": "page_size",
@@ -672,11 +716,11 @@
               "type": "integer",
               "maximum": 100,
               "minimum": 1,
-              "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100",
+              "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100",
               "default": 20,
               "title": "Page Size"
             },
-            "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100"
+            "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100"
           },
           {
             "name": "role",
@@ -691,10 +735,10 @@
                   "type": "null"
                 }
               ],
-              "description": "è§’è‰²ç­›é€‰ï¼šuser | subscriber | admin",
+              "description": "½ÇÉ«É¸Ñ¡£ºuser | subscriber | admin",
               "title": "Role"
             },
-            "description": "è§’è‰²ç­›é€‰ï¼šuser | subscriber | admin"
+            "description": "½ÇÉ«É¸Ñ¡£ºuser | subscriber | admin"
           },
           {
             "name": "is_active",
@@ -709,10 +753,10 @@
                   "type": "null"
                 }
               ],
-              "description": "æ˜¯å¦æ¿€æ´»ç­›é€‰",
+              "description": "ÊÇ·ñ¼¤»îÉ¸Ñ¡",
               "title": "Is Active"
             },
-            "description": "æ˜¯å¦æ¿€æ´»ç­›é€‰"
+            "description": "ÊÇ·ñ¼¤»îÉ¸Ñ¡"
           },
           {
             "name": "search",
@@ -727,10 +771,10 @@
                   "type": "null"
                 }
               ],
-              "description": "æœç´¢å…³é”®è¯ï¼ŒåŒ¹é…é‚®ç®±æˆ–æ˜µç§°",
+              "description": "ËÑË÷¹Ø¼ü´Ê£¬Æ¥ÅäÓÊÏä»òêÇ³Æ",
               "title": "Search"
             },
-            "description": "æœç´¢å…³é”®è¯ï¼ŒåŒ¹é…é‚®ç®±æˆ–æ˜µç§°"
+            "description": "ËÑË÷¹Ø¼ü´Ê£¬Æ¥ÅäÓÊÏä»òêÇ³Æ"
           }
         ],
         "responses": {
@@ -758,10 +802,10 @@
     "/api/v1/admin/users/{user_id}/status": {
       "put": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "å¯ç”¨/ç¦ç”¨ç”¨æˆ·",
-        "description": "å¯ç”¨æˆ–ç¦ç”¨ç”¨æˆ·è´¦å·\n\n**è·¯å¾„å‚æ•°:**\n- **user_id**: ç”¨æˆ·ID\n\n**æŸ¥è¯¢å‚æ•°:**\n- **is_active**: true=å¯ç”¨, false=ç¦ç”¨",
+        "summary": "ÆôÓÃ/½ûÓÃÓÃ»§",
+        "description": "ÆôÓÃ»ò½ûÓÃÓÃ»§ÕËºÅ\n\n**Â·¾¶²ÎÊı:**\n- **user_id**: ÓÃ»§ID\n\n**²éÑ¯²ÎÊı:**\n- **is_active**: true=ÆôÓÃ, false=½ûÓÃ",
         "operationId": "update_user_status_api_v1_admin_users__user_id__status_put",
         "security": [
           {
@@ -813,10 +857,10 @@
     "/api/v1/admin/users/{user_id}/role": {
       "put": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "ä¿®æ”¹ç”¨æˆ·è§’è‰²",
-        "description": "ä¿®æ”¹ç”¨æˆ·è§’è‰²\n\n**è·¯å¾„å‚æ•°:**\n- **user_id**: ç”¨æˆ·ID\n\n**æŸ¥è¯¢å‚æ•°:**\n- **role**: æ–°è§’è‰²ï¼Œå¯é€‰å€¼ï¼šuser | subscriber | admin",
+        "summary": "ĞŞ¸ÄÓÃ»§½ÇÉ«",
+        "description": "ĞŞ¸ÄÓÃ»§½ÇÉ«\n\n**Â·¾¶²ÎÊı:**\n- **user_id**: ÓÃ»§ID\n\n**²éÑ¯²ÎÊı:**\n- **role**: ĞÂ½ÇÉ«£¬¿ÉÑ¡Öµ£ºuser | subscriber | admin",
         "operationId": "update_user_role_api_v1_admin_users__user_id__role_put",
         "security": [
           {
@@ -868,10 +912,10 @@
     "/api/v1/admin/users/{user_id}": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–ç”¨æˆ·è¯¦ç»†ä¿¡æ¯",
-        "description": "è·å–ç”¨æˆ·è¯¦ç»†ä¿¡æ¯\n\nè¿”å›ç”¨æˆ·çš„å®Œæ•´ä¿¡æ¯ï¼ŒåŒ…æ‹¬åŸºæœ¬èµ„æ–™ã€æ¡£æ¡ˆç»Ÿè®¡å’Œæœ€è¿‘æ´»åŠ¨ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **user_id**: ç”¨æˆ·ID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"6948bda91fd873cf81f5addd\",\n        \"email\": \"user@example.com\",\n        \"nickname\": \"å°æ˜\",\n        \"role\": \"user\",\n        \"subscription\": {\"plan\": \"free\"},\n        \"is_active\": true,\n        \"stats\": {\n            \"voice_profiles\": 2,\n            \"avatar_profiles\": 1,\n            \"story_jobs\": 5\n        }\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓÃ»§ÏêÏ¸ĞÅÏ¢",
+        "description": "»ñÈ¡ÓÃ»§ÏêÏ¸ĞÅÏ¢\n\n·µ»ØÓÃ»§µÄÍêÕûĞÅÏ¢£¬°üÀ¨»ù±¾×ÊÁÏ¡¢µµ°¸Í³¼ÆºÍ×î½ü»î¶¯¡£\n\n**Â·¾¶²ÎÊı:**\n- **user_id**: ÓÃ»§ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"6948bda91fd873cf81f5addd\",\n        \"email\": \"user@example.com\",\n        \"nickname\": \"Ğ¡Ã÷\",\n        \"role\": \"user\",\n        \"subscription\": {\"plan\": \"free\"},\n        \"is_active\": true,\n        \"stats\": {\n            \"voice_profiles\": 2,\n            \"avatar_profiles\": 1,\n            \"story_jobs\": 5\n        }\n    }\n}\n```",
         "operationId": "get_user_detail_api_v1_admin_users__user_id__get",
         "security": [
           {
@@ -914,10 +958,10 @@
     "/api/v1/admin/users/{user_id}/voice-profiles": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–ç”¨æˆ·å£°éŸ³æ¡£æ¡ˆ",
-        "description": "è·å–æŒ‡å®šç”¨æˆ·çš„æ‰€æœ‰å£°éŸ³æ¡£æ¡ˆ",
+        "summary": "»ñÈ¡ÓÃ»§ÉùÒôµµ°¸",
+        "description": "»ñÈ¡Ö¸¶¨ÓÃ»§µÄËùÓĞÉùÒôµµ°¸",
         "operationId": "get_user_voice_profiles_api_v1_admin_users__user_id__voice_profiles_get",
         "security": [
           {
@@ -940,11 +984,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "æ˜¯å¦åŒ…å«å·²åˆ é™¤çš„æ¡£æ¡ˆ",
+              "description": "ÊÇ·ñ°üº¬ÒÑÉ¾³ıµÄµµ°¸",
               "default": false,
               "title": "Include Deleted"
             },
-            "description": "æ˜¯å¦åŒ…å«å·²åˆ é™¤çš„æ¡£æ¡ˆ"
+            "description": "ÊÇ·ñ°üº¬ÒÑÉ¾³ıµÄµµ°¸"
           }
         ],
         "responses": {
@@ -972,10 +1016,10 @@
     "/api/v1/admin/users/{user_id}/voice-profiles/{profile_id}": {
       "delete": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ é™¤ç”¨æˆ·å£°éŸ³æ¡£æ¡ˆ",
-        "description": "ç®¡ç†å‘˜åˆ é™¤æŒ‡å®šç”¨æˆ·çš„å£°éŸ³æ¡£æ¡ˆ",
+        "summary": "É¾³ıÓÃ»§ÉùÒôµµ°¸",
+        "description": "¹ÜÀíÔ±É¾³ıÖ¸¶¨ÓÃ»§µÄÉùÒôµµ°¸",
         "operationId": "delete_user_voice_profile_api_v1_admin_users__user_id__voice_profiles__profile_id__delete",
         "security": [
           {
@@ -1027,10 +1071,10 @@
     "/api/v1/admin/users/{user_id}/avatar-profiles": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–ç”¨æˆ·å¤´åƒæ¡£æ¡ˆ",
-        "description": "è·å–æŒ‡å®šç”¨æˆ·çš„æ‰€æœ‰å¤´åƒæ¡£æ¡ˆ",
+        "summary": "»ñÈ¡ÓÃ»§Í·Ïñµµ°¸",
+        "description": "»ñÈ¡Ö¸¶¨ÓÃ»§µÄËùÓĞÍ·Ïñµµ°¸",
         "operationId": "get_user_avatar_profiles_api_v1_admin_users__user_id__avatar_profiles_get",
         "security": [
           {
@@ -1053,11 +1097,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "æ˜¯å¦åŒ…å«å·²åˆ é™¤çš„æ¡£æ¡ˆ",
+              "description": "ÊÇ·ñ°üº¬ÒÑÉ¾³ıµÄµµ°¸",
               "default": false,
               "title": "Include Deleted"
             },
-            "description": "æ˜¯å¦åŒ…å«å·²åˆ é™¤çš„æ¡£æ¡ˆ"
+            "description": "ÊÇ·ñ°üº¬ÒÑÉ¾³ıµÄµµ°¸"
           }
         ],
         "responses": {
@@ -1085,10 +1129,10 @@
     "/api/v1/admin/users/{user_id}/avatar-profiles/{profile_id}": {
       "delete": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ é™¤ç”¨æˆ·å¤´åƒæ¡£æ¡ˆ",
-        "description": "åˆ é™¤ç”¨æˆ·çš„å¤´åƒæ¡£æ¡ˆ",
+        "summary": "É¾³ıÓÃ»§Í·Ïñµµ°¸",
+        "description": "É¾³ıÓÃ»§µÄÍ·Ïñµµ°¸",
         "operationId": "delete_user_avatar_profile_api_v1_admin_users__user_id__avatar_profiles__profile_id__delete",
         "security": [
           {
@@ -1140,10 +1184,10 @@
     "/api/v1/admin/users/{user_id}/story-jobs": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–ç”¨æˆ·æ•…äº‹ç”Ÿæˆä»»åŠ¡",
-        "description": "è·å–ç”¨æˆ·çš„æ•…äº‹ç”Ÿæˆä»»åŠ¡è®°å½•",
+        "summary": "»ñÈ¡ÓÃ»§¹ÊÊÂÉú³ÉÈÎÎñ",
+        "description": "»ñÈ¡ÓÃ»§µÄ¹ÊÊÂÉú³ÉÈÎÎñ¼ÇÂ¼",
         "operationId": "get_user_story_jobs_api_v1_admin_users__user_id__story_jobs_get",
         "security": [
           {
@@ -1209,10 +1253,10 @@
     "/api/v1/admin/categories": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ›å»ºæ•…äº‹åˆ†ç±»",
-        "description": "åˆ›å»ºåˆ†ç±»",
+        "summary": "´´½¨¹ÊÊÂ·ÖÀà",
+        "description": "´´½¨·ÖÀà",
         "operationId": "create_category_api_v1_admin_categories_post",
         "requestBody": {
           "content": {
@@ -1254,10 +1298,10 @@
     "/api/v1/admin/categories/{category_id}": {
       "put": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ›´æ–°æ•…äº‹åˆ†ç±»",
-        "description": "æ›´æ–°åˆ†ç±»",
+        "summary": "¸üĞÂ¹ÊÊÂ·ÖÀà",
+        "description": "¸üĞÂ·ÖÀà",
         "operationId": "update_category_api_v1_admin_categories__category_id__put",
         "security": [
           {
@@ -1308,10 +1352,10 @@
       },
       "delete": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ é™¤æ•…äº‹åˆ†ç±»",
-        "description": "åˆ é™¤åˆ†ç±»",
+        "summary": "É¾³ı¹ÊÊÂ·ÖÀà",
+        "description": "É¾³ı·ÖÀà",
         "operationId": "delete_category_api_v1_admin_categories__category_id__delete",
         "security": [
           {
@@ -1354,10 +1398,10 @@
     "/api/v1/admin/stories/batch": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ‰¹é‡ä¸Šä¼ è§†é¢‘åˆ›å»ºæ•…äº‹",
-        "description": "æ‰¹é‡ä¸Šä¼ è§†é¢‘åˆ›å»ºæ•…äº‹\n\n- æ”¯æŒåŒæ—¶ä¸Šä¼ å¤šä¸ªè§†é¢‘æ–‡ä»¶\n- æ‰€æœ‰è§†é¢‘å°†è¢«åˆ†é…åˆ°åŒä¸€åˆ†ç±»\n- AIå¤„ç†æœ€å¤š5ä¸ªå¹¶å‘æ‰§è¡Œ",
+        "summary": "ÅúÁ¿ÉÏ´«ÊÓÆµ´´½¨¹ÊÊÂ",
+        "description": "ÅúÁ¿ÉÏ´«ÊÓÆµ´´½¨¹ÊÊÂ\n\n- Ö§³ÖÍ¬Ê±ÉÏ´«¶à¸öÊÓÆµÎÄ¼ş\n- ËùÓĞÊÓÆµ½«±»·ÖÅäµ½Í¬Ò»·ÖÀà\n- AI´¦Àí×î¶à5¸ö²¢·¢Ö´ĞĞ",
         "operationId": "batch_create_stories_api_v1_admin_stories_batch_post",
         "requestBody": {
           "content": {
@@ -1397,10 +1441,10 @@
       },
       "delete": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ‰¹é‡åˆ é™¤æ•…äº‹",
-        "description": "æ‰¹é‡åˆ é™¤æ•…äº‹\n\nArgs:\n    story_ids: è¦åˆ é™¤çš„æ•…äº‹IDåˆ—è¡¨",
+        "summary": "ÅúÁ¿É¾³ı¹ÊÊÂ",
+        "description": "ÅúÁ¿É¾³ı¹ÊÊÂ\n\nArgs:\n    story_ids: ÒªÉ¾³ıµÄ¹ÊÊÂIDÁĞ±í",
         "operationId": "batch_delete_stories_api_v1_admin_stories_batch_delete",
         "requestBody": {
           "content": {
@@ -1446,10 +1490,10 @@
     "/api/v1/admin/stories/batch/{batch_id}": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æ‰¹é‡ä¸Šä¼ ä»»åŠ¡çŠ¶æ€",
-        "description": "è·å–æ‰¹é‡ä¸Šä¼ ä»»åŠ¡çŠ¶æ€",
+        "summary": "»ñÈ¡ÅúÁ¿ÉÏ´«ÈÎÎñ×´Ì¬",
+        "description": "»ñÈ¡ÅúÁ¿ÉÏ´«ÈÎÎñ×´Ì¬",
         "operationId": "get_batch_status_api_v1_admin_stories_batch__batch_id__get",
         "security": [
           {
@@ -1492,10 +1536,10 @@
     "/api/v1/admin/stories/batch-publish": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ‰¹é‡ä¸Šæ¶æ•…äº‹",
-        "description": "æ‰¹é‡ä¸Šæ¶æ•…äº‹\n\nArgs:\n    story_ids: è¦ä¸Šæ¶çš„æ•…äº‹IDåˆ—è¡¨",
+        "summary": "ÅúÁ¿ÉÏ¼Ü¹ÊÊÂ",
+        "description": "ÅúÁ¿ÉÏ¼Ü¹ÊÊÂ\n\nArgs:\n    story_ids: ÒªÉÏ¼ÜµÄ¹ÊÊÂIDÁĞ±í\n\n×¢Òâ£º´¦ÀíÖĞµÄ¹ÊÊÂ»á±»Ìø¹ı",
         "operationId": "batch_publish_stories_api_v1_admin_stories_batch_publish_post",
         "requestBody": {
           "content": {
@@ -1541,10 +1585,10 @@
     "/api/v1/admin/stories/batch-unpublish": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ‰¹é‡ä¸‹æ¶æ•…äº‹",
-        "description": "æ‰¹é‡ä¸‹æ¶æ•…äº‹\n\nArgs:\n    story_ids: è¦ä¸‹æ¶çš„æ•…äº‹IDåˆ—è¡¨",
+        "summary": "ÅúÁ¿ÏÂ¼Ü¹ÊÊÂ",
+        "description": "ÅúÁ¿ÏÂ¼Ü¹ÊÊÂ\n\nArgs:\n    story_ids: ÒªÏÂ¼ÜµÄ¹ÊÊÂIDÁĞ±í",
         "operationId": "batch_unpublish_stories_api_v1_admin_stories_batch_unpublish_post",
         "requestBody": {
           "content": {
@@ -1590,10 +1634,10 @@
     "/api/v1/admin/stories": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æ•…äº‹åˆ—è¡¨ï¼ˆç®¡ç†ç«¯ï¼‰",
-        "description": "è·å–æ•…äº‹åˆ—è¡¨ï¼ˆåŒ…å«æœªå‘å¸ƒçš„ï¼‰",
+        "summary": "»ñÈ¡¹ÊÊÂÁĞ±í£¨¹ÜÀí¶Ë£©",
+        "description": "»ñÈ¡¹ÊÊÂÁĞ±í£¨°üº¬Î´·¢²¼µÄ£©",
         "operationId": "list_stories_admin_api_v1_admin_stories_get",
         "security": [
           {
@@ -1696,10 +1740,10 @@
       },
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "ä¸Šä¼ è§†é¢‘åˆ›å»ºæ•…äº‹",
-        "description": "åˆ›å»ºæ•…äº‹ - æ”¯æŒç›´æ¥ä¸Šä¼ è§†é¢‘æ–‡ä»¶\n\nä¸Šä¼ è§†é¢‘åä¼šè‡ªåŠ¨ï¼š\n1. ä»è§†é¢‘ç¬¬10ç§’æå–ç¼©ç•¥å›¾\n2. è·å–è§†é¢‘æ—¶é•¿\n3. æå–éŸ³é¢‘å¹¶ç”Ÿæˆå­—å¹•\n4. ä½¿ç”¨ AI ç”Ÿæˆæ ‡é¢˜å’Œè‹±æ–‡æ ‡é¢˜",
+        "summary": "ÉÏ´«ÊÓÆµ´´½¨¹ÊÊÂ",
+        "description": "´´½¨¹ÊÊÂ - Ö§³ÖÖ±½ÓÉÏ´«ÊÓÆµÎÄ¼ş\n\nÉÏ´«ÊÓÆµºó»á×Ô¶¯£º\n1. ´ÓÊÓÆµµÚ10ÃëÌáÈ¡ËõÂÔÍ¼\n2. »ñÈ¡ÊÓÆµÊ±³¤\n3. ÌáÈ¡ÒôÆµ²¢Éú³É×ÖÄ»\n4. Ê¹ÓÃ AI Éú³É±êÌâºÍÓ¢ÎÄ±êÌâ",
         "operationId": "create_story_api_v1_admin_stories_post",
         "security": [
           {
@@ -1741,10 +1785,10 @@
     "/api/v1/admin/stories/{story_id}": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æ•…äº‹è¯¦æƒ…",
-        "description": "è·å–æ•…äº‹è¯¦æƒ…ï¼ˆåŒ…å«å­—å¹•ï¼‰",
+        "summary": "»ñÈ¡¹ÊÊÂÏêÇé",
+        "description": "»ñÈ¡¹ÊÊÂÏêÇé£¨°üº¬×ÖÄ»ºÍËµ»°ÈËĞÅÏ¢£©",
         "operationId": "get_story_detail_api_v1_admin_stories__story_id__get",
         "security": [
           {
@@ -1785,10 +1829,10 @@
       },
       "put": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ›´æ–°æ•…äº‹ä¿¡æ¯",
-        "description": "æ›´æ–°æ•…äº‹ï¼ˆæ”¯æŒæ›´æ–°ç¼©ç•¥å›¾å’Œè§†é¢‘ï¼‰",
+        "summary": "¸üĞÂ¹ÊÊÂĞÅÏ¢",
+        "description": "¸üĞÂ¹ÊÊÂ£¨Ö§³Ö¸üĞÂËõÂÔÍ¼ºÍÊÓÆµ£©",
         "operationId": "update_story_api_v1_admin_stories__story_id__put",
         "security": [
           {
@@ -1838,10 +1882,10 @@
       },
       "delete": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ é™¤æ•…äº‹",
-        "description": "åˆ é™¤æ•…äº‹",
+        "summary": "É¾³ı¹ÊÊÂ",
+        "description": "É¾³ı¹ÊÊÂ",
         "operationId": "delete_story_api_v1_admin_stories__story_id__delete",
         "security": [
           {
@@ -1884,10 +1928,10 @@
     "/api/v1/admin/stories/{story_id}/publish": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "å‘å¸ƒæ•…äº‹",
-        "description": "å‘å¸ƒæ•…äº‹",
+        "summary": "·¢²¼¹ÊÊÂ",
+        "description": "·¢²¼¹ÊÊÂ",
         "operationId": "publish_story_api_v1_admin_stories__story_id__publish_post",
         "security": [
           {
@@ -1930,10 +1974,10 @@
     "/api/v1/admin/stories/{story_id}/unpublish": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "ä¸‹æ¶æ•…äº‹",
-        "description": "ä¸‹æ¶æ•…äº‹",
+        "summary": "ÏÂ¼Ü¹ÊÊÂ",
+        "description": "ÏÂ¼Ü¹ÊÊÂ",
         "operationId": "unpublish_story_api_v1_admin_stories__story_id__unpublish_post",
         "security": [
           {
@@ -1976,10 +2020,10 @@
     "/api/v1/admin/upload/thumbnail": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "ä¸Šä¼ æ•…äº‹ç¼©ç•¥å›¾",
-        "description": "ä¸Šä¼ æ•…äº‹ç¼©ç•¥å›¾",
+        "summary": "ÉÏ´«¹ÊÊÂËõÂÔÍ¼",
+        "description": "ÉÏ´«¹ÊÊÂËõÂÔÍ¼",
         "operationId": "upload_thumbnail_api_v1_admin_upload_thumbnail_post",
         "requestBody": {
           "content": {
@@ -2021,10 +2065,10 @@
     "/api/v1/admin/upload/video": {
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "ä¸Šä¼ æ•…äº‹è§†é¢‘",
-        "description": "ä¸Šä¼ æ•…äº‹è§†é¢‘",
+        "summary": "ÉÏ´«¹ÊÊÂÊÓÆµ",
+        "description": "ÉÏ´«¹ÊÊÂÊÓÆµ",
         "operationId": "upload_video_api_v1_admin_upload_video_post",
         "requestBody": {
           "content": {
@@ -2066,10 +2110,10 @@
     "/api/v1/admin/audiobook/stories": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦æ•…äº‹åˆ—è¡¨ï¼ˆç®¡ç†ç«¯ï¼‰",
-        "description": "è·å–æœ‰å£°ä¹¦æ•…äº‹åˆ—è¡¨ï¼ˆç®¡ç†ç«¯ï¼‰",
+        "summary": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÁĞ±í£¨¹ÜÀí¶Ë£©",
+        "description": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÁĞ±í£¨¹ÜÀí¶Ë£©",
         "operationId": "list_audiobook_stories_api_v1_admin_audiobook_stories_get",
         "security": [
           {
@@ -2172,10 +2216,10 @@
       },
       "post": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ›å»ºæœ‰å£°ä¹¦æ•…äº‹",
-        "description": "åˆ›å»ºæœ‰å£°ä¹¦æ•…äº‹",
+        "summary": "´´½¨ÓĞÉùÊé¹ÊÊÂ",
+        "description": "´´½¨ÓĞÉùÊé¹ÊÊÂ",
         "operationId": "create_audiobook_story_api_v1_admin_audiobook_stories_post",
         "security": [
           {
@@ -2217,10 +2261,10 @@
     "/api/v1/admin/audiobook/stories/{story_id}": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦æ•…äº‹è¯¦æƒ…",
-        "description": "è·å–æœ‰å£°ä¹¦æ•…äº‹è¯¦æƒ…",
+        "summary": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÏêÇé",
+        "description": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÏêÇé",
         "operationId": "get_audiobook_story_api_v1_admin_audiobook_stories__story_id__get",
         "security": [
           {
@@ -2261,10 +2305,10 @@
       },
       "put": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "æ›´æ–°æœ‰å£°ä¹¦æ•…äº‹",
-        "description": "æ›´æ–°æœ‰å£°ä¹¦æ•…äº‹",
+        "summary": "¸üĞÂÓĞÉùÊé¹ÊÊÂ",
+        "description": "¸üĞÂÓĞÉùÊé¹ÊÊÂ",
         "operationId": "update_audiobook_story_api_v1_admin_audiobook_stories__story_id__put",
         "security": [
           {
@@ -2314,10 +2358,10 @@
       },
       "delete": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "åˆ é™¤æœ‰å£°ä¹¦æ•…äº‹",
-        "description": "åˆ é™¤æœ‰å£°ä¹¦æ•…äº‹",
+        "summary": "É¾³ıÓĞÉùÊé¹ÊÊÂ",
+        "description": "É¾³ıÓĞÉùÊé¹ÊÊÂ",
         "operationId": "delete_audiobook_story_api_v1_admin_audiobook_stories__story_id__delete",
         "security": [
           {
@@ -2360,10 +2404,10 @@
     "/api/v1/admin/audiobook/jobs": {
       "get": {
         "tags": [
-          "ç®¡ç†åå°"
+          "¹ÜÀíºóÌ¨"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦ä»»åŠ¡åˆ—è¡¨ï¼ˆç®¡ç†ç«¯ï¼‰",
-        "description": "è·å–æœ‰å£°ä¹¦ç”Ÿæˆä»»åŠ¡åˆ—è¡¨ï¼ˆç®¡ç†ç«¯ï¼‰",
+        "summary": "»ñÈ¡ÓĞÉùÊéÈÎÎñÁĞ±í£¨¹ÜÀí¶Ë£©",
+        "description": "»ñÈ¡ÓĞÉùÊéÉú³ÉÈÎÎñÁĞ±í£¨¹ÜÀí¶Ë£©",
         "operationId": "list_audiobook_jobs_api_v1_admin_audiobook_jobs_get",
         "security": [
           {
@@ -2452,10 +2496,10 @@
     "/api/v1/voice-clone/preset-stories": {
       "get": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "è·å–é¢„è®¾æ•…äº‹åˆ—è¡¨",
-        "description": "è·å–é¢„è®¾æ•…äº‹åˆ—è¡¨\n\nè¿”å›ç”¨äºè¯­éŸ³å…‹éš†æµ‹è¯•çš„é¢„è®¾è‹±æ–‡æ•…äº‹ã€‚\næ¯ä¸ªæ•…äº‹çº¦15ç§’æœ—è¯»æ—¶é•¿ï¼ŒåŒ…å«æ ‡é¢˜å’Œé¢„è§ˆæ–‡æœ¬ã€‚\nç”¨æˆ·éœ€è¦æœ—è¯»è¿™äº›æ–‡æœ¬æ¥è®­ç»ƒå£°éŸ³å…‹éš†æ¨¡å‹ã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"stories\": [\n            {\n                \"id\": \"story_little_star\",\n                \"title\": \"Twinkle Little Star\",\n                \"preview_text\": \"Twinkle, twinkle, little star...\",\n                \"estimated_duration\": 15\n            }\n        ]\n    }\n}\n```",
+        "summary": "»ñÈ¡Ô¤Éè¹ÊÊÂÁĞ±í",
+        "description": "»ñÈ¡Ô¤Éè¹ÊÊÂÁĞ±í\n\n·µ»ØÓÃÓÚÓïÒô¿ËÂ¡²âÊÔµÄÔ¤ÉèÓ¢ÎÄ¹ÊÊÂ¡£\nÃ¿¸ö¹ÊÊÂÔ¼15ÃëÀÊ¶ÁÊ±³¤£¬°üº¬±êÌâºÍÔ¤ÀÀÎÄ±¾¡£\nÓÃ»§ĞèÒªÀÊ¶ÁÕâĞ©ÎÄ±¾À´ÑµÁ·ÉùÒô¿ËÂ¡Ä£ĞÍ¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"stories\": [\n            {\n                \"id\": \"story_little_star\",\n                \"title\": \"Twinkle Little Star\",\n                \"preview_text\": \"Twinkle, twinkle, little star...\",\n                \"estimated_duration\": 15\n            }\n        ]\n    }\n}\n```",
         "operationId": "get_preset_stories_api_v1_voice_clone_preset_stories_get",
         "responses": {
           "200": {
@@ -2472,10 +2516,10 @@
     "/api/v1/voice-clone/preview": {
       "post": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "åˆ›å»ºè¯­éŸ³å…‹éš†é¢„è§ˆä»»åŠ¡",
-        "description": "åˆ›å»ºè¯­éŸ³å…‹éš†é¢„è§ˆä»»åŠ¡\n\nä¸Šä¼ å®¶é•¿çš„å‚è€ƒéŸ³é¢‘ï¼Œç³»ç»Ÿä¼šå…‹éš†éŸ³è‰²å¹¶ç”¨è¯¥éŸ³è‰²æœ—è¯»é€‰å®šçš„é¢„è®¾æ•…äº‹ã€‚\nè¿™æ˜¯ä¸€ä¸ªå¼‚æ­¥ä»»åŠ¡ï¼Œåˆ›å»ºåéœ€è¦è½®è¯¢ GET /preview/{task_id} è·å–ç»“æœã€‚\n\n**éŸ³é¢‘è¦æ±‚:**\n- æ—¶é•¿ï¼š10-15ç§’\n- æ ¼å¼ï¼šWAV æˆ– MP3\n- å†…å®¹ï¼šæ¸…æ™°çš„è¯­éŸ³ï¼Œæ— èƒŒæ™¯å™ªéŸ³\n- å¤§å°ï¼šæœ€å¤§10MB\n\n**è¯·æ±‚å‚æ•°:**\n- **audio**: å‚è€ƒéŸ³é¢‘æ–‡ä»¶ï¼ˆmultipart/form-dataï¼‰\n- **story_id**: é¢„è®¾æ•…äº‹ID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"processing\",\n        \"message\": \"è¯­éŸ³å…‹éš†ä»»åŠ¡å·²åˆ›å»ºï¼Œè¯·è½®è¯¢è·å–çŠ¶æ€\"\n    }\n}\n```",
+        "summary": "´´½¨ÓïÒô¿ËÂ¡Ô¤ÀÀÈÎÎñ",
+        "description": "´´½¨ÓïÒô¿ËÂ¡Ô¤ÀÀÈÎÎñ\n\nÉÏ´«¼Ò³¤µÄ²Î¿¼ÒôÆµ£¬ÏµÍ³»á¿ËÂ¡ÒôÉ«²¢ÓÃ¸ÃÒôÉ«ÀÊ¶ÁÑ¡¶¨µÄÔ¤Éè¹ÊÊÂ¡£\nÕâÊÇÒ»¸öÒì²½ÈÎÎñ£¬´´½¨ºóĞèÒªÂÖÑ¯ GET /preview/{task_id} »ñÈ¡½á¹û¡£\n\n**ÒôÆµÒªÇó:**\n- Ê±³¤£º10-15Ãë\n- ¸ñÊ½£ºWAV »ò MP3\n- ÄÚÈİ£ºÇåÎúµÄÓïÒô£¬ÎŞ±³¾°ÔëÒô\n- ´óĞ¡£º×î´ó10MB\n\n**ÇëÇó²ÎÊı:**\n- **audio**: ²Î¿¼ÒôÆµÎÄ¼ş£¨multipart/form-data£©\n- **story_id**: Ô¤Éè¹ÊÊÂID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"processing\",\n        \"message\": \"ÓïÒô¿ËÂ¡ÈÎÎñÒÑ´´½¨£¬ÇëÂÖÑ¯»ñÈ¡×´Ì¬\"\n    }\n}\n```",
         "operationId": "create_voice_clone_preview_api_v1_voice_clone_preview_post",
         "requestBody": {
           "content": {
@@ -2517,10 +2561,10 @@
     "/api/v1/voice-clone/preview/{task_id}": {
       "get": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "è·å–è¯­éŸ³å…‹éš†ä»»åŠ¡çŠ¶æ€",
-        "description": "è·å–è¯­éŸ³å…‹éš†ä»»åŠ¡çŠ¶æ€\n\nè½®è¯¢æ­¤æ¥å£è·å–ä»»åŠ¡çš„å¤„ç†è¿›åº¦å’Œç»“æœã€‚\nå»ºè®®è½®è¯¢é—´éš”ï¼š2-3ç§’ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **task_id**: ä»»åŠ¡IDï¼ˆä» POST /preview è¿”å›ï¼‰\n\n**ä»»åŠ¡çŠ¶æ€è¯´æ˜:**\n- **processing**: å¤„ç†ä¸­ï¼Œç»§ç»­è½®è¯¢\n- **completed**: å®Œæˆï¼Œaudio_url åŒ…å«ç”Ÿæˆçš„éŸ³é¢‘\n- **failed**: å¤±è´¥ï¼Œerror åŒ…å«é”™è¯¯ä¿¡æ¯\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"completed\",\n        \"progress\": 100,\n        \"audio_url\": \"/uploads/voice/user123/preview.mp3\",\n        \"error\": null\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓïÒô¿ËÂ¡ÈÎÎñ×´Ì¬",
+        "description": "»ñÈ¡ÓïÒô¿ËÂ¡ÈÎÎñ×´Ì¬\n\nÂÖÑ¯´Ë½Ó¿Ú»ñÈ¡ÈÎÎñµÄ´¦Àí½ø¶ÈºÍ½á¹û¡£\n½¨ÒéÂÖÑ¯¼ä¸ô£º2-3Ãë¡£\n\n**Â·¾¶²ÎÊı:**\n- **task_id**: ÈÎÎñID£¨´Ó POST /preview ·µ»Ø£©\n\n**ÈÎÎñ×´Ì¬ËµÃ÷:**\n- **processing**: ´¦ÀíÖĞ£¬¼ÌĞøÂÖÑ¯\n- **completed**: Íê³É£¬audio_url °üº¬Éú³ÉµÄÒôÆµ\n- **failed**: Ê§°Ü£¬error °üº¬´íÎóĞÅÏ¢\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"completed\",\n        \"progress\": 100,\n        \"audio_url\": \"/uploads/voice/user123/preview.mp3\",\n        \"error\": null\n    }\n}\n```",
         "operationId": "get_voice_clone_status_api_v1_voice_clone_preview__task_id__get",
         "security": [
           {
@@ -2563,10 +2607,10 @@
     "/api/v1/voice-clone/profiles": {
       "get": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "è·å–å£°éŸ³æ¡£æ¡ˆåˆ—è¡¨",
-        "description": "è·å–ç”¨æˆ·çš„æ‰€æœ‰å£°éŸ³æ¡£æ¡ˆ\n\nè¿”å›å½“å‰ç”¨æˆ·ä¿å­˜çš„æ‰€æœ‰å£°éŸ³æ¡£æ¡ˆåˆ—è¡¨ã€‚\nè¿™äº›å£°éŸ³å¯ç”¨äºæ•…äº‹ç”Ÿæˆã€æœ‰å£°ä¹¦ç­‰åŠŸèƒ½ã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profiles\": [\n            {\n                \"id\": \"694534f1c32ffbd6151c18a3\",\n                \"name\": \"çˆ¸çˆ¸çš„å£°éŸ³\",\n                \"voice_id\": \"cosyvoice-clone-xxxx\",\n                \"reference_audio_url\": \"/uploads/voice/user123/ref.wav\",\n                \"preview_audio_url\": \"/uploads/voice/user123/preview.mp3\",\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 2\n    }\n}\n```",
+        "summary": "»ñÈ¡ÉùÒôµµ°¸ÁĞ±í",
+        "description": "»ñÈ¡ÓÃ»§µÄËùÓĞÉùÒôµµ°¸\n\n·µ»Øµ±Ç°ÓÃ»§±£´æµÄËùÓĞÉùÒôµµ°¸ÁĞ±í¡£\nÕâĞ©ÉùÒô¿ÉÓÃÓÚ¹ÊÊÂÉú³É¡¢ÓĞÉùÊéµÈ¹¦ÄÜ¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profiles\": [\n            {\n                \"id\": \"694534f1c32ffbd6151c18a3\",\n                \"name\": \"°Ö°ÖµÄÉùÒô\",\n                \"voice_id\": \"cosyvoice-clone-xxxx\",\n                \"reference_audio_url\": \"/uploads/voice/user123/ref.wav\",\n                \"preview_audio_url\": \"/uploads/voice/user123/preview.mp3\",\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 2\n    }\n}\n```",
         "operationId": "get_voice_profiles_api_v1_voice_clone_profiles_get",
         "responses": {
           "200": {
@@ -2586,10 +2630,10 @@
       },
       "post": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "ä¿å­˜å£°éŸ³æ¡£æ¡ˆ",
-        "description": "ä¿å­˜å£°éŸ³æ¡£æ¡ˆ\n\nè¯­éŸ³å…‹éš†é¢„è§ˆå®Œæˆä¸”æ»¡æ„åï¼Œå°†å…‹éš†çš„å£°éŸ³ä¿å­˜åˆ°å£°éŸ³æ¡£æ¡ˆåº“ã€‚\nä¿å­˜åå¯åœ¨æ•…äº‹ç”Ÿæˆã€æœ‰å£°ä¹¦ç­‰åŠŸèƒ½ä¸­é‡å¤ä½¿ç”¨è¯¥å£°éŸ³ã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **task_id**: å·²å®Œæˆçš„è¯­éŸ³å…‹éš†ä»»åŠ¡ID\n- **name**: å£°éŸ³åç§°ï¼Œå¦‚ï¼šçˆ¸çˆ¸çš„å£°éŸ³ã€å¦ˆå¦ˆçš„å£°éŸ³\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profile\": {\n            \"id\": \"694534f1c32ffbd6151c18a3\",\n            \"name\": \"çˆ¸çˆ¸çš„å£°éŸ³\",\n            \"voice_id\": \"cosyvoice-clone-xxxx\",\n            \"reference_audio_url\": \"/uploads/voice/user123/ref.wav\",\n            \"preview_audio_url\": \"/uploads/voice/user123/preview.mp3\",\n            \"created_at\": \"2025-01-01T12:00:00\"\n        }\n    }\n}\n```",
+        "summary": "±£´æÉùÒôµµ°¸",
+        "description": "±£´æÉùÒôµµ°¸\n\nÓïÒô¿ËÂ¡Ô¤ÀÀÍê³ÉÇÒÂúÒâºó£¬½«¿ËÂ¡µÄÉùÒô±£´æµ½ÉùÒôµµ°¸¿â¡£\n±£´æºó¿ÉÔÚ¹ÊÊÂÉú³É¡¢ÓĞÉùÊéµÈ¹¦ÄÜÖĞÖØ¸´Ê¹ÓÃ¸ÃÉùÒô¡£\n\n**ÇëÇó²ÎÊı:**\n- **task_id**: ÒÑÍê³ÉµÄÓïÒô¿ËÂ¡ÈÎÎñID\n- **name**: ÉùÒôÃû³Æ£¬Èç£º°Ö°ÖµÄÉùÒô¡¢ÂèÂèµÄÉùÒô\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profile\": {\n            \"id\": \"694534f1c32ffbd6151c18a3\",\n            \"name\": \"°Ö°ÖµÄÉùÒô\",\n            \"voice_id\": \"cosyvoice-clone-xxxx\",\n            \"reference_audio_url\": \"/uploads/voice/user123/ref.wav\",\n            \"preview_audio_url\": \"/uploads/voice/user123/preview.mp3\",\n            \"created_at\": \"2025-01-01T12:00:00\"\n        }\n    }\n}\n```",
         "operationId": "save_voice_profile_api_v1_voice_clone_profiles_post",
         "requestBody": {
           "content": {
@@ -2631,10 +2675,10 @@
     "/api/v1/voice-clone/profiles/{profile_id}": {
       "get": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "è·å–å£°éŸ³æ¡£æ¡ˆè¯¦æƒ…",
-        "description": "è·å–å•ä¸ªå£°éŸ³æ¡£æ¡ˆè¯¦æƒ…\n\n**è·¯å¾„å‚æ•°:**\n- **profile_id**: å£°éŸ³æ¡£æ¡ˆID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"694534f1c32ffbd6151c18a3\",\n        \"name\": \"çˆ¸çˆ¸çš„å£°éŸ³\",\n        \"voice_id\": \"cosyvoice-clone-xxxx\",\n        \"reference_audio_url\": \"/uploads/voice/user123/ref.wav\",\n        \"preview_audio_url\": \"/uploads/voice/user123/preview.mp3\",\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
+        "summary": "»ñÈ¡ÉùÒôµµ°¸ÏêÇé",
+        "description": "»ñÈ¡µ¥¸öÉùÒôµµ°¸ÏêÇé\n\n**Â·¾¶²ÎÊı:**\n- **profile_id**: ÉùÒôµµ°¸ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"694534f1c32ffbd6151c18a3\",\n        \"name\": \"°Ö°ÖµÄÉùÒô\",\n        \"voice_id\": \"cosyvoice-clone-xxxx\",\n        \"reference_audio_url\": \"/uploads/voice/user123/ref.wav\",\n        \"preview_audio_url\": \"/uploads/voice/user123/preview.mp3\",\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
         "operationId": "get_voice_profile_api_v1_voice_clone_profiles__profile_id__get",
         "security": [
           {
@@ -2675,10 +2719,10 @@
       },
       "put": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "æ›´æ–°å£°éŸ³æ¡£æ¡ˆ",
-        "description": "æ›´æ–°å£°éŸ³æ¡£æ¡ˆåç§°\n\n**è·¯å¾„å‚æ•°:**\n- **profile_id**: å£°éŸ³æ¡£æ¡ˆID\n\n**è¯·æ±‚å‚æ•°:**\n- **name**: æ–°çš„å£°éŸ³åç§°\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"æ›´æ–°æˆåŠŸ\",\n    \"data\": null\n}\n```",
+        "summary": "¸üĞÂÉùÒôµµ°¸",
+        "description": "¸üĞÂÉùÒôµµ°¸Ãû³Æ\n\n**Â·¾¶²ÎÊı:**\n- **profile_id**: ÉùÒôµµ°¸ID\n\n**ÇëÇó²ÎÊı:**\n- **name**: ĞÂµÄÉùÒôÃû³Æ\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"¸üĞÂ³É¹¦\",\n    \"data\": null\n}\n```",
         "operationId": "update_voice_profile_api_v1_voice_clone_profiles__profile_id__put",
         "security": [
           {
@@ -2729,10 +2773,10 @@
       },
       "delete": {
         "tags": [
-          "è¯­éŸ³å…‹éš†"
+          "ÓïÒô¿ËÂ¡"
         ],
-        "summary": "åˆ é™¤å£°éŸ³æ¡£æ¡ˆ",
-        "description": "åˆ é™¤å£°éŸ³æ¡£æ¡ˆ\n\nåˆ é™¤åå°†æ— æ³•æ¢å¤ï¼Œä¸”ä½¿ç”¨è¯¥å£°éŸ³çš„å†å²è®°å½•ä¸å—å½±å“ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **profile_id**: å£°éŸ³æ¡£æ¡ˆID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"åˆ é™¤æˆåŠŸ\",\n    \"data\": null\n}\n```",
+        "summary": "É¾³ıÉùÒôµµ°¸",
+        "description": "É¾³ıÉùÒôµµ°¸\n\nÉ¾³ıºó½«ÎŞ·¨»Ö¸´£¬ÇÒÊ¹ÓÃ¸ÃÉùÒôµÄÀúÊ·¼ÇÂ¼²»ÊÜÓ°Ïì¡£\n\n**Â·¾¶²ÎÊı:**\n- **profile_id**: ÉùÒôµµ°¸ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"É¾³ı³É¹¦\",\n    \"data\": null\n}\n```",
         "operationId": "delete_voice_profile_api_v1_voice_clone_profiles__profile_id__delete",
         "security": [
           {
@@ -2775,10 +2819,10 @@
     "/api/v1/digital-human/preview": {
       "post": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "åˆ›å»ºæ•°å­—äººé¢„è§ˆä»»åŠ¡",
-        "description": "åˆ›å»ºæ•°å­—äººé¢„è§ˆä»»åŠ¡\n\nä¸Šä¼ å®¶é•¿çš„æ­£é¢ç…§ç‰‡ï¼Œç³»ç»Ÿä¼šä½¿ç”¨é˜¿é‡Œäº‘ EMO æŠ€æœ¯ç”ŸæˆåŠ¨æ€æ•°å­—äººé¢„è§ˆè§†é¢‘ã€‚\nè¿™æ˜¯ä¸€ä¸ªå¼‚æ­¥ä»»åŠ¡ï¼Œåˆ›å»ºåéœ€è¦è½®è¯¢ GET /preview/{task_id} è·å–ç»“æœã€‚\n\n**å›¾ç‰‡è¦æ±‚:**\n- æ ¼å¼ï¼šJPG æˆ– PNG\n- å†…å®¹ï¼šæ¸…æ™°çš„æ­£é¢äººåƒç…§ç‰‡\n- å¤§å°ï¼šæœ€å¤§10MB\n\n**éŸ³é¢‘æ¥æºï¼ˆä¸‰é€‰ä¸€ï¼‰:**\n1. **ä¸ä¼ éŸ³é¢‘å‚æ•°** - ä½¿ç”¨ç³»ç»Ÿé»˜è®¤éŸ³è‰²ç”Ÿæˆé¢„è§ˆ\n2. **ä¸Šä¼  audio æ–‡ä»¶** - ç›´æ¥ä½¿ç”¨ä¸Šä¼ çš„éŸ³é¢‘é©±åŠ¨æ•°å­—äºº\n3. **ä¼  voice_profile_id + preview_text** - ä½¿ç”¨å·²ä¿å­˜çš„å…‹éš†å£°éŸ³åˆæˆéŸ³é¢‘\n\n**è¯·æ±‚å‚æ•°:**\n- **image**: å¤´åƒç…§ç‰‡ï¼ˆmultipart/form-dataï¼Œå¿…å¡«ï¼‰\n- **audio**: éŸ³é¢‘æ–‡ä»¶ï¼ˆå¯é€‰ï¼ŒWAV/MP3æ ¼å¼ï¼Œæœ€å¤§20MBï¼‰\n- **voice_profile_id**: å£°éŸ³æ¡£æ¡ˆIDï¼ˆå¯é€‰ï¼‰\n- **preview_text**: é¢„è§ˆæ–‡æœ¬ï¼ˆä½¿ç”¨å£°éŸ³æ¡£æ¡ˆæ—¶å¿…å¡«ï¼‰\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"processing\",\n        \"audio_source\": \"default\",\n        \"message\": \"Digital human task created, poll for status\"\n    }\n}\n```",
+        "summary": "´´½¨Êı×ÖÈËÔ¤ÀÀÈÎÎñ",
+        "description": "´´½¨Êı×ÖÈËÔ¤ÀÀÈÎÎñ\n\nÉÏ´«¼Ò³¤µÄÕıÃæÕÕÆ¬£¬ÏµÍ³»áÊ¹ÓÃ°¢ÀïÔÆ EMO ¼¼ÊõÉú³É¶¯Ì¬Êı×ÖÈËÔ¤ÀÀÊÓÆµ¡£\nÕâÊÇÒ»¸öÒì²½ÈÎÎñ£¬´´½¨ºóĞèÒªÂÖÑ¯ GET /preview/{task_id} »ñÈ¡½á¹û¡£\n\n**Í¼Æ¬ÒªÇó:**\n- ¸ñÊ½£ºJPG »ò PNG\n- ÄÚÈİ£ºÇåÎúµÄÕıÃæÈËÏñÕÕÆ¬\n- ´óĞ¡£º×î´ó10MB\n\n**ÒôÆµÀ´Ô´£¨ÈıÑ¡Ò»£©:**\n1. **²»´«ÒôÆµ²ÎÊı** - Ê¹ÓÃÏµÍ³Ä¬ÈÏÒôÉ«Éú³ÉÔ¤ÀÀ\n2. **ÉÏ´« audio ÎÄ¼ş** - Ö±½ÓÊ¹ÓÃÉÏ´«µÄÒôÆµÇı¶¯Êı×ÖÈË\n3. **´« voice_profile_id + preview_text** - Ê¹ÓÃÒÑ±£´æµÄ¿ËÂ¡ÉùÒôºÏ³ÉÒôÆµ\n\n**ÇëÇó²ÎÊı:**\n- **image**: Í·ÏñÕÕÆ¬£¨multipart/form-data£¬±ØÌî£©\n- **audio**: ÒôÆµÎÄ¼ş£¨¿ÉÑ¡£¬WAV/MP3¸ñÊ½£¬×î´ó20MB£©\n- **voice_profile_id**: ÉùÒôµµ°¸ID£¨¿ÉÑ¡£©\n- **preview_text**: Ô¤ÀÀÎÄ±¾£¨Ê¹ÓÃÉùÒôµµ°¸Ê±±ØÌî£©\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"processing\",\n        \"audio_source\": \"default\",\n        \"message\": \"Digital human task created, poll for status\"\n    }\n}\n```",
         "operationId": "create_digital_human_preview_api_v1_digital_human_preview_post",
         "requestBody": {
           "content": {
@@ -2820,10 +2864,10 @@
     "/api/v1/digital-human/preview/{task_id}": {
       "get": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "è·å–æ•°å­—äººä»»åŠ¡çŠ¶æ€",
-        "description": "è·å–æ•°å­—äººä»»åŠ¡çŠ¶æ€\n\nè½®è¯¢æ­¤æ¥å£è·å–ä»»åŠ¡çš„å¤„ç†è¿›åº¦å’Œç»“æœã€‚\nå»ºè®®è½®è¯¢é—´éš”ï¼š3-5ç§’ï¼ˆæ•°å­—äººç”Ÿæˆè¾ƒæ…¢ï¼‰ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **task_id**: ä»»åŠ¡IDï¼ˆä» POST /preview è¿”å›ï¼‰\n\n**ä»»åŠ¡çŠ¶æ€è¯´æ˜:**\n- **detecting**: å›¾åƒæ£€æµ‹ä¸­ï¼Œæ£€æµ‹äººè„¸å’Œå…³é”®ç‚¹\n- **generating**: è§†é¢‘ç”Ÿæˆä¸­ï¼ŒEMO æ¨¡å‹å¤„ç†\n- **completed**: å®Œæˆï¼Œvideo_url åŒ…å«ç”Ÿæˆçš„è§†é¢‘\n- **failed**: å¤±è´¥ï¼Œerror åŒ…å«é”™è¯¯ä¿¡æ¯\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"completed\",\n        \"progress\": 100,\n        \"video_url\": \"/uploads/avatar/user123/preview.mp4\",\n        \"error\": null\n    }\n}\n```",
+        "summary": "»ñÈ¡Êı×ÖÈËÈÎÎñ×´Ì¬",
+        "description": "»ñÈ¡Êı×ÖÈËÈÎÎñ×´Ì¬\n\nÂÖÑ¯´Ë½Ó¿Ú»ñÈ¡ÈÎÎñµÄ´¦Àí½ø¶ÈºÍ½á¹û¡£\n½¨ÒéÂÖÑ¯¼ä¸ô£º3-5Ãë£¨Êı×ÖÈËÉú³É½ÏÂı£©¡£\n\n**Â·¾¶²ÎÊı:**\n- **task_id**: ÈÎÎñID£¨´Ó POST /preview ·µ»Ø£©\n\n**ÈÎÎñ×´Ì¬ËµÃ÷:**\n- **detecting**: Í¼Ïñ¼ì²âÖĞ£¬¼ì²âÈËÁ³ºÍ¹Ø¼üµã\n- **generating**: ÊÓÆµÉú³ÉÖĞ£¬EMO Ä£ĞÍ´¦Àí\n- **completed**: Íê³É£¬video_url °üº¬Éú³ÉµÄÊÓÆµ\n- **failed**: Ê§°Ü£¬error °üº¬´íÎóĞÅÏ¢\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"task_id\": \"user123_1703980800000\",\n        \"status\": \"completed\",\n        \"progress\": 100,\n        \"video_url\": \"/uploads/avatar/user123/preview.mp4\",\n        \"error\": null\n    }\n}\n```",
         "operationId": "get_digital_human_status_api_v1_digital_human_preview__task_id__get",
         "security": [
           {
@@ -2866,10 +2910,10 @@
     "/api/v1/digital-human/profiles": {
       "get": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "è·å–å¤´åƒæ¡£æ¡ˆåˆ—è¡¨",
-        "description": "è·å–ç”¨æˆ·çš„æ‰€æœ‰å¤´åƒæ¡£æ¡ˆ\n\nè¿”å›å½“å‰ç”¨æˆ·ä¿å­˜çš„æ‰€æœ‰å¤´åƒæ¡£æ¡ˆåˆ—è¡¨ã€‚\nè¿™äº›å¤´åƒå¯ç”¨äºæ•…äº‹ç”ŸæˆåŠŸèƒ½ã€‚\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profiles\": [\n            {\n                \"id\": \"694534f1c32ffbd6151c18a4\",\n                \"name\": \"çˆ¸çˆ¸çš„å¤´åƒ\",\n                \"image_url\": \"/uploads/avatar/user123/photo.jpg\",\n                \"preview_video_url\": \"/uploads/avatar/user123/preview.mp4\",\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 2\n    }\n}\n```",
+        "summary": "»ñÈ¡Í·Ïñµµ°¸ÁĞ±í",
+        "description": "»ñÈ¡ÓÃ»§µÄËùÓĞÍ·Ïñµµ°¸\n\n·µ»Øµ±Ç°ÓÃ»§±£´æµÄËùÓĞÍ·Ïñµµ°¸ÁĞ±í¡£\nÕâĞ©Í·Ïñ¿ÉÓÃÓÚ¹ÊÊÂÉú³É¹¦ÄÜ¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profiles\": [\n            {\n                \"id\": \"694534f1c32ffbd6151c18a4\",\n                \"name\": \"°Ö°ÖµÄÍ·Ïñ\",\n                \"image_url\": \"/uploads/avatar/user123/photo.jpg\",\n                \"preview_video_url\": \"/uploads/avatar/user123/preview.mp4\",\n                \"created_at\": \"2025-01-01T12:00:00\"\n            }\n        ],\n        \"total\": 2\n    }\n}\n```",
         "operationId": "get_avatar_profiles_api_v1_digital_human_profiles_get",
         "responses": {
           "200": {
@@ -2889,10 +2933,10 @@
       },
       "post": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "ä¿å­˜å¤´åƒæ¡£æ¡ˆ",
-        "description": "ä¿å­˜å¤´åƒæ¡£æ¡ˆ\n\næ•°å­—äººé¢„è§ˆå®Œæˆä¸”æ»¡æ„åï¼Œå°†å¤´åƒä¿å­˜åˆ°å¤´åƒæ¡£æ¡ˆåº“ã€‚\nä¿å­˜åå¯åœ¨æ•…äº‹ç”ŸæˆåŠŸèƒ½ä¸­é‡å¤ä½¿ç”¨è¯¥å¤´åƒã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **task_id**: å·²å®Œæˆçš„æ•°å­—äººä»»åŠ¡ID\n- **name**: å¤´åƒåç§°ï¼Œå¦‚ï¼šçˆ¸çˆ¸çš„å¤´åƒã€å¦ˆå¦ˆçš„å¤´åƒ\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profile\": {\n            \"id\": \"694534f1c32ffbd6151c18a4\",\n            \"name\": \"çˆ¸çˆ¸çš„å¤´åƒ\",\n            \"image_url\": \"/uploads/avatar/user123/photo.jpg\",\n            \"preview_video_url\": \"/uploads/avatar/user123/preview.mp4\",\n            \"created_at\": \"2025-01-01T12:00:00\"\n        }\n    }\n}\n```",
+        "summary": "±£´æÍ·Ïñµµ°¸",
+        "description": "±£´æÍ·Ïñµµ°¸\n\nÊı×ÖÈËÔ¤ÀÀÍê³ÉÇÒÂúÒâºó£¬½«Í·Ïñ±£´æµ½Í·Ïñµµ°¸¿â¡£\n±£´æºó¿ÉÔÚ¹ÊÊÂÉú³É¹¦ÄÜÖĞÖØ¸´Ê¹ÓÃ¸ÃÍ·Ïñ¡£\n\n**ÇëÇó²ÎÊı:**\n- **task_id**: ÒÑÍê³ÉµÄÊı×ÖÈËÈÎÎñID\n- **name**: Í·ÏñÃû³Æ£¬Èç£º°Ö°ÖµÄÍ·Ïñ¡¢ÂèÂèµÄÍ·Ïñ\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"profile\": {\n            \"id\": \"694534f1c32ffbd6151c18a4\",\n            \"name\": \"°Ö°ÖµÄÍ·Ïñ\",\n            \"image_url\": \"/uploads/avatar/user123/photo.jpg\",\n            \"preview_video_url\": \"/uploads/avatar/user123/preview.mp4\",\n            \"created_at\": \"2025-01-01T12:00:00\"\n        }\n    }\n}\n```",
         "operationId": "save_avatar_profile_api_v1_digital_human_profiles_post",
         "requestBody": {
           "content": {
@@ -2934,10 +2978,10 @@
     "/api/v1/digital-human/profiles/{profile_id}": {
       "get": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "è·å–å¤´åƒæ¡£æ¡ˆè¯¦æƒ…",
-        "description": "è·å–å•ä¸ªå¤´åƒæ¡£æ¡ˆè¯¦æƒ…\n\n**è·¯å¾„å‚æ•°:**\n- **profile_id**: å¤´åƒæ¡£æ¡ˆID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"694534f1c32ffbd6151c18a4\",\n        \"name\": \"çˆ¸çˆ¸çš„å¤´åƒ\",\n        \"image_url\": \"/uploads/avatar/user123/photo.jpg\",\n        \"preview_video_url\": \"/uploads/avatar/user123/preview.mp4\",\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
+        "summary": "»ñÈ¡Í·Ïñµµ°¸ÏêÇé",
+        "description": "»ñÈ¡µ¥¸öÍ·Ïñµµ°¸ÏêÇé\n\n**Â·¾¶²ÎÊı:**\n- **profile_id**: Í·Ïñµµ°¸ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"694534f1c32ffbd6151c18a4\",\n        \"name\": \"°Ö°ÖµÄÍ·Ïñ\",\n        \"image_url\": \"/uploads/avatar/user123/photo.jpg\",\n        \"preview_video_url\": \"/uploads/avatar/user123/preview.mp4\",\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
         "operationId": "get_avatar_profile_api_v1_digital_human_profiles__profile_id__get",
         "security": [
           {
@@ -2978,10 +3022,10 @@
       },
       "put": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "æ›´æ–°å¤´åƒæ¡£æ¡ˆ",
-        "description": "æ›´æ–°å¤´åƒæ¡£æ¡ˆåç§°\n\n**è·¯å¾„å‚æ•°:**\n- **profile_id**: å¤´åƒæ¡£æ¡ˆID\n\n**è¯·æ±‚å‚æ•°:**\n- **name**: æ–°çš„å¤´åƒåç§°\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"æ›´æ–°æˆåŠŸ\",\n    \"data\": null\n}\n```",
+        "summary": "¸üĞÂÍ·Ïñµµ°¸",
+        "description": "¸üĞÂÍ·Ïñµµ°¸Ãû³Æ\n\n**Â·¾¶²ÎÊı:**\n- **profile_id**: Í·Ïñµµ°¸ID\n\n**ÇëÇó²ÎÊı:**\n- **name**: ĞÂµÄÍ·ÏñÃû³Æ\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"¸üĞÂ³É¹¦\",\n    \"data\": null\n}\n```",
         "operationId": "update_avatar_profile_api_v1_digital_human_profiles__profile_id__put",
         "security": [
           {
@@ -3032,10 +3076,10 @@
       },
       "delete": {
         "tags": [
-          "æ•°å­—äºº"
+          "Êı×ÖÈË"
         ],
-        "summary": "åˆ é™¤å¤´åƒæ¡£æ¡ˆ",
-        "description": "åˆ é™¤å¤´åƒæ¡£æ¡ˆ\n\nåˆ é™¤åå°†æ— æ³•æ¢å¤ï¼Œä¸”ä½¿ç”¨è¯¥å¤´åƒçš„å†å²è®°å½•ä¸å—å½±å“ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **profile_id**: å¤´åƒæ¡£æ¡ˆID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"åˆ é™¤æˆåŠŸ\",\n    \"data\": null\n}\n```",
+        "summary": "É¾³ıÍ·Ïñµµ°¸",
+        "description": "É¾³ıÍ·Ïñµµ°¸\n\nÉ¾³ıºó½«ÎŞ·¨»Ö¸´£¬ÇÒÊ¹ÓÃ¸ÃÍ·ÏñµÄÀúÊ·¼ÇÂ¼²»ÊÜÓ°Ïì¡£\n\n**Â·¾¶²ÎÊı:**\n- **profile_id**: Í·Ïñµµ°¸ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"É¾³ı³É¹¦\",\n    \"data\": null\n}\n```",
         "operationId": "delete_avatar_profile_api_v1_digital_human_profiles__profile_id__delete",
         "security": [
           {
@@ -3075,13 +3119,237 @@
         }
       }
     },
+    "/api/v1/story-generation/analyze/{story_id}": {
+      "post": {
+        "tags": [
+          "story-generation"
+        ],
+        "summary": "·ÖÎö¹ÊÊÂËµ»°ÈË",
+        "description": "´¥·¢¹ÊÊÂÒôÆµµÄËµ»°ÈË·ÖÎö\n\n·ÖÎöÁ÷³Ì£º\n1. ´ÓÊÓÆµÌáÈ¡ÒôÆµ\n2. Ê¹ÓÃ Demucs ·ÖÀëÈËÉù/±³¾°Òô\n3. Ê¹ÓÃ Pyannote ½øĞĞËµ»°ÈË·Ö¸î\n4. ÌáÈ¡¸÷Ëµ»°ÈË¶ÀÁ¢Òô¹ì\n5. ¸üĞÂ¹ÊÊÂµÄËµ»°ÈËĞÅÏ¢\n\n²ÎÊı£º\n- story_id: ¹ÊÊÂ ID\n- num_speakers: Ô¤ÉèËµ»°ÈËÊıÁ¿ (¿ÉÑ¡£¬²»ÌîÔò×Ô¶¯¼ì²â)\n\n·µ»Ø£º\n- ·ÖÎö½á¹û»òÒÑÔÚºóÌ¨¿ªÊ¼·ÖÎöµÄÏûÏ¢",
+        "operationId": "analyze_story_speakers_api_v1_story_generation_analyze__story_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "story_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Story Id"
+            }
+          },
+          {
+            "name": "num_speakers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Num Speakers"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/story-generation/speakers/{story_id}": {
+      "get": {
+        "tags": [
+          "story-generation"
+        ],
+        "summary": "»ñÈ¡¹ÊÊÂËµ»°ÈËĞÅÏ¢",
+        "description": "»ñÈ¡¹ÊÊÂµÄËµ»°ÈËĞÅÏ¢\n\n·µ»Ø£º\n- speaker_count: Ëµ»°ÈËÊıÁ¿\n- speakers: Ëµ»°ÈËÁĞ±í (º¬Òô¹ì URL¡¢Ê±³¤µÈ)\n- background_audio_url: ±³¾°Òô URL\n- is_analyzed: ÊÇ·ñÒÑÍê³É·ÖÎö",
+        "operationId": "get_story_speakers_api_v1_story_generation_speakers__story_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "story_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Story Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/story-generation/subtitles/{story_id}": {
+      "post": {
+        "tags": [
+          "story-generation"
+        ],
+        "summary": "Éú³ÉËµ»°ÈË×ÖÄ»",
+        "description": "Îª¹ÊÊÂµÄËùÓĞËµ»°ÈËÉú³É´Ê¼¶×ÖÄ»\n\nÇ°Ìá£º¹ÊÊÂ±ØĞëÒÑÍê³ÉËµ»°ÈË·ÖÎö\n\nÁ÷³Ì£º\n1. »ñÈ¡Ëµ»°ÈË·Ö¸î½á¹û\n2. ¶ÔÃ¿¸öËµ»°ÈËÊ¹ÓÃ Whisper Éú³É´Ê¼¶×ÖÄ»\n3. ºÏ²¢Éú³ÉÍêÕû×ÖÄ»\n\n·µ»Ø£º\n- ¸÷Ëµ»°ÈË×ÖÄ»\n- ºÏ²¢ºóµÄ×ÖÄ» (°´Ê±¼äÅÅĞò)",
+        "operationId": "generate_speaker_subtitles_api_v1_story_generation_subtitles__story_id__post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "story_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Story Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "story-generation"
+        ],
+        "summary": "»ñÈ¡¹ÊÊÂ×ÖÄ»",
+        "description": "»ñÈ¡¹ÊÊÂµÄ´Ê¼¶×ÖÄ»\n\n²ÎÊı£º\n- story_id: ¹ÊÊÂ ID\n- speaker_id: Ëµ»°ÈË ID (¿ÉÑ¡£¬²»Ìî·µ»ØËùÓĞ)\n\n·µ»Ø£º\n- Ö¸¶¨Ëµ»°ÈËµÄ×ÖÄ»£¬»òÈ«²¿×ÖÄ»",
+        "operationId": "get_story_subtitles_api_v1_story_generation_subtitles__story_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "story_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Story Id"
+            }
+          },
+          {
+            "name": "speaker_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Speaker Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/story-generation/jobs": {
       "post": {
         "tags": [
           "story-generation"
         ],
-        "summary": "åˆ›å»ºæ•…äº‹ç”Ÿæˆä»»åŠ¡",
-        "description": "åˆ›å»ºæ•…äº‹ç”Ÿæˆä»»åŠ¡\n\næµç¨‹ï¼š\n1. æå–è§†é¢‘éŸ³é¢‘\n2. åˆ†ç¦»äººå£°/èƒŒæ™¯éŸ³\n3. è¯­éŸ³è¯†åˆ«ç”Ÿæˆå­—å¹•\n4. ç”Ÿæˆå…‹éš†è¯­éŸ³\n5. ç”Ÿæˆæ•°å­—äººè§†é¢‘\n6. åˆæˆæœ€ç»ˆè§†é¢‘\n\nå‚æ•°ï¼š\n- full_video: é»˜è®¤ False åªç”Ÿæˆå‰2ä¸ªç‰‡æ®µé¢„è§ˆï¼Œè®¾ä¸º True ç”Ÿæˆå®Œæ•´è§†é¢‘",
+        "summary": "´´½¨¹ÊÊÂÉú³ÉÈÎÎñ",
+        "description": "´´½¨¹ÊÊÂÉú³ÉÈÎÎñ\n\nÖ§³ÖÁ½ÖÖÄ£Ê½£º\n1. µ¥Ëµ»°ÈËÄ£Ê½£ºÊ¹ÓÃ voice_profile_id ºÍ avatar_profile_id\n2. ¶àËµ»°ÈËÄ£Ê½£ºÊ¹ÓÃ speaker_configs Êı×é£¬ÎªÃ¿¸öËµ»°ÈËÅäÖÃÉùÒôºÍÍ·Ïñ\n\nÁ÷³Ì£º\n1. ÌáÈ¡ÊÓÆµÒôÆµ\n2. ·ÖÀëÈËÉù/±³¾°Òô\n3. ÓïÒôÊ¶±ğÉú³É×ÖÄ»\n4. ÎªÃ¿¸öËµ»°ÈËÉú³É¿ËÂ¡ÓïÒô\n5. ÎªÃ¿¸öËµ»°ÈËÉú³ÉÊı×ÖÈËÊÓÆµ\n6. ºÏ³É×îÖÕÊÓÆµ£¨¶àÊı×ÖÈË»­ÖĞ»­£©\n\n²ÎÊı£º\n- full_video: Ä¬ÈÏ False Ö»Éú³ÉÇ°2¸öÆ¬¶ÎÔ¤ÀÀ£¬ÉèÎª True Éú³ÉÍêÕûÊÓÆµ\n- speaker_configs: ¶àËµ»°ÈËÅäÖÃ£¨ÓÅÏÈÊ¹ÓÃ£©",
         "operationId": "create_job_api_v1_story_generation_jobs_post",
         "security": [
           {
@@ -3123,8 +3391,8 @@
         "tags": [
           "story-generation"
         ],
-        "summary": "è·å–ä»»åŠ¡åˆ—è¡¨",
-        "description": "è·å–ç”¨æˆ·çš„æ•…äº‹ç”Ÿæˆä»»åŠ¡åˆ—è¡¨",
+        "summary": "»ñÈ¡ÈÎÎñÁĞ±í",
+        "description": "»ñÈ¡ÓÃ»§µÄ¹ÊÊÂÉú³ÉÈÎÎñÁĞ±í",
         "operationId": "list_jobs_api_v1_story_generation_jobs_get",
         "security": [
           {
@@ -3180,8 +3448,8 @@
         "tags": [
           "story-generation"
         ],
-        "summary": "è·å–ä»»åŠ¡è¯¦æƒ…",
-        "description": "è·å–ä»»åŠ¡è¯¦æƒ…å’Œè¿›åº¦",
+        "summary": "»ñÈ¡ÈÎÎñÏêÇé",
+        "description": "»ñÈ¡ÈÎÎñÏêÇéºÍ½ø¶È",
         "operationId": "get_job_api_v1_story_generation_jobs__job_id__get",
         "security": [
           {
@@ -3226,8 +3494,8 @@
         "tags": [
           "story-generation"
         ],
-        "summary": "è·å–å­—å¹•åˆ—è¡¨",
-        "description": "è·å–ä»»åŠ¡çš„å­—å¹•åˆ—è¡¨ï¼Œç”¨äºè§’è‰²é€‰æ‹©",
+        "summary": "»ñÈ¡×ÖÄ»ÁĞ±í",
+        "description": "»ñÈ¡ÈÎÎñµÄ×ÖÄ»ÁĞ±í£¬ÓÃÓÚ½ÇÉ«Ñ¡Ôñ",
         "operationId": "get_subtitles_api_v1_story_generation_jobs__job_id__subtitles_get",
         "security": [
           {
@@ -3270,8 +3538,8 @@
         "tags": [
           "story-generation"
         ],
-        "summary": "æ›´æ–°å­—å¹•é€‰æ‹©",
-        "description": "æ›´æ–°å­—å¹•é€‰æ‹©ï¼ˆé€‰æ‹©è¦æ‰®æ¼”çš„è§’è‰²å°è¯ï¼‰",
+        "summary": "¸üĞÂ×ÖÄ»Ñ¡Ôñ",
+        "description": "¸üĞÂ×ÖÄ»Ñ¡Ôñ£¨Ñ¡ÔñÒª°çÑİµÄ½ÇÉ«Ì¨´Ê£©",
         "operationId": "update_subtitle_selection_api_v1_story_generation_jobs__job_id__subtitles_put",
         "security": [
           {
@@ -3324,10 +3592,10 @@
     "/api/v1/audiobook/stories": {
       "get": {
         "tags": [
-          "æœ‰å£°ä¹¦"
+          "ÓĞÉùÊé"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦æ•…äº‹åˆ—è¡¨",
-        "description": "è·å–æœ‰å£°ä¹¦æ•…äº‹åˆ—è¡¨\n\nè¿”å›å¹³å°ä¸Šæ‰€æœ‰å¯ç”¨çš„æœ‰å£°ä¹¦æ•…äº‹æ¨¡æ¿ã€‚\næ”¯æŒæŒ‰è¯­è¨€ã€åˆ†ç±»ã€å¹´é¾„æ®µè¿›è¡Œç­›é€‰ã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **page**: é¡µç ï¼Œä»1å¼€å§‹\n- **page_size**: æ¯é¡µæ•°é‡ï¼Œ1-100\n- **language**: è¯­è¨€ç­›é€‰ï¼ˆå¯é€‰ï¼‰\n- **category**: åˆ†ç±»ç­›é€‰ï¼ˆå¯é€‰ï¼‰\n- **age_group**: å¹´é¾„æ®µç­›é€‰ï¼ˆå¯é€‰ï¼‰\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"695342ec383483bf26139d89\",\n                \"title\": \"ä¸‰åªå°çŒª\",\n                \"title_en\": \"The Three Little Pigs\",\n                \"content\": \"Once upon a time...\",\n                \"language\": \"en\",\n                \"category\": \"fairy_tale\",\n                \"age_group\": \"5-8\",\n                \"estimated_duration\": 180,\n                \"thumbnail_url\": \"/uploads/audiobook/cover.jpg\",\n                \"is_published\": true\n            }\n        ],\n        \"total\": 10,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÁĞ±í",
+        "description": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÁĞ±í\n\n·µ»ØÆ½Ì¨ÉÏËùÓĞ¿ÉÓÃµÄÓĞÉùÊé¹ÊÊÂÄ£°å¡£\nÖ§³Ö°´ÓïÑÔ¡¢·ÖÀà¡¢ÄêÁä¶Î½øĞĞÉ¸Ñ¡¡£\n\n**ÇëÇó²ÎÊı:**\n- **page**: Ò³Âë£¬´Ó1¿ªÊ¼\n- **page_size**: Ã¿Ò³ÊıÁ¿£¬1-100\n- **language**: ÓïÑÔÉ¸Ñ¡£¨¿ÉÑ¡£©\n- **category**: ·ÖÀàÉ¸Ñ¡£¨¿ÉÑ¡£©\n- **age_group**: ÄêÁä¶ÎÉ¸Ñ¡£¨¿ÉÑ¡£©\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"695342ec383483bf26139d89\",\n                \"title\": \"ÈıÖ»Ğ¡Öí\",\n                \"title_en\": \"The Three Little Pigs\",\n                \"content\": \"Once upon a time...\",\n                \"language\": \"en\",\n                \"category\": \"fairy_tale\",\n                \"age_group\": \"5-8\",\n                \"estimated_duration\": 180,\n                \"thumbnail_url\": \"/uploads/audiobook/cover.jpg\",\n                \"is_published\": true\n            }\n        ],\n        \"total\": 10,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
         "operationId": "list_stories_api_v1_audiobook_stories_get",
         "security": [
           {
@@ -3342,11 +3610,11 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "description": "é¡µç ï¼Œä»1å¼€å§‹",
+              "description": "Ò³Âë£¬´Ó1¿ªÊ¼",
               "default": 1,
               "title": "Page"
             },
-            "description": "é¡µç ï¼Œä»1å¼€å§‹"
+            "description": "Ò³Âë£¬´Ó1¿ªÊ¼"
           },
           {
             "name": "page_size",
@@ -3356,11 +3624,11 @@
               "type": "integer",
               "maximum": 100,
               "minimum": 1,
-              "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100",
+              "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100",
               "default": 20,
               "title": "Page Size"
             },
-            "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100"
+            "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100"
           },
           {
             "name": "language",
@@ -3375,10 +3643,10 @@
                   "type": "null"
                 }
               ],
-              "description": "è¯­è¨€ç­›é€‰ï¼šen(è‹±è¯­) | zh(ä¸­æ–‡)",
+              "description": "ÓïÑÔÉ¸Ñ¡£ºen(Ó¢Óï) | zh(ÖĞÎÄ)",
               "title": "Language"
             },
-            "description": "è¯­è¨€ç­›é€‰ï¼šen(è‹±è¯­) | zh(ä¸­æ–‡)"
+            "description": "ÓïÑÔÉ¸Ñ¡£ºen(Ó¢Óï) | zh(ÖĞÎÄ)"
           },
           {
             "name": "category",
@@ -3393,10 +3661,10 @@
                   "type": "null"
                 }
               ],
-              "description": "åˆ†ç±»ç­›é€‰ï¼šfairy_tale | fable | adventure | bedtime",
+              "description": "·ÖÀàÉ¸Ñ¡£ºfairy_tale | fable | adventure | bedtime",
               "title": "Category"
             },
-            "description": "åˆ†ç±»ç­›é€‰ï¼šfairy_tale | fable | adventure | bedtime"
+            "description": "·ÖÀàÉ¸Ñ¡£ºfairy_tale | fable | adventure | bedtime"
           },
           {
             "name": "age_group",
@@ -3411,10 +3679,10 @@
                   "type": "null"
                 }
               ],
-              "description": "å¹´é¾„æ®µç­›é€‰ï¼š3-5 | 5-8 | 8-12",
+              "description": "ÄêÁä¶ÎÉ¸Ñ¡£º3-5 | 5-8 | 8-12",
               "title": "Age Group"
             },
-            "description": "å¹´é¾„æ®µç­›é€‰ï¼š3-5 | 5-8 | 8-12"
+            "description": "ÄêÁä¶ÎÉ¸Ñ¡£º3-5 | 5-8 | 8-12"
           }
         ],
         "responses": {
@@ -3442,10 +3710,10 @@
     "/api/v1/audiobook/stories/{story_id}": {
       "get": {
         "tags": [
-          "æœ‰å£°ä¹¦"
+          "ÓĞÉùÊé"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦æ•…äº‹è¯¦æƒ…",
-        "description": "è·å–æœ‰å£°ä¹¦æ•…äº‹è¯¦æƒ…\n\nè¿”å›æ•…äº‹çš„å®Œæ•´å†…å®¹ï¼ŒåŒ…æ‹¬ç”¨äº TTS åˆæˆçš„æ–‡æœ¬ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **story_id**: æ•…äº‹å”¯ä¸€æ ‡è¯†ID\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"695342ec383483bf26139d89\",\n        \"title\": \"ä¸‰åªå°çŒª\",\n        \"title_en\": \"The Three Little Pigs\",\n        \"content\": \"Once upon a time, there were three little pigs who lived with their mother...\",\n        \"language\": \"en\",\n        \"category\": \"fairy_tale\",\n        \"age_group\": \"5-8\",\n        \"estimated_duration\": 180,\n        \"thumbnail_url\": \"/uploads/audiobook/cover.jpg\",\n        \"background_music_url\": \"/uploads/audiobook/bgm.mp3\",\n        \"is_published\": true,\n        \"created_at\": \"2025-01-01T12:00:00\",\n        \"updated_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÏêÇé",
+        "description": "»ñÈ¡ÓĞÉùÊé¹ÊÊÂÏêÇé\n\n·µ»Ø¹ÊÊÂµÄÍêÕûÄÚÈİ£¬°üÀ¨ÓÃÓÚ TTS ºÏ³ÉµÄÎÄ±¾¡£\n\n**Â·¾¶²ÎÊı:**\n- **story_id**: ¹ÊÊÂÎ¨Ò»±êÊ¶ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"695342ec383483bf26139d89\",\n        \"title\": \"ÈıÖ»Ğ¡Öí\",\n        \"title_en\": \"The Three Little Pigs\",\n        \"content\": \"Once upon a time, there were three little pigs who lived with their mother...\",\n        \"language\": \"en\",\n        \"category\": \"fairy_tale\",\n        \"age_group\": \"5-8\",\n        \"estimated_duration\": 180,\n        \"thumbnail_url\": \"/uploads/audiobook/cover.jpg\",\n        \"background_music_url\": \"/uploads/audiobook/bgm.mp3\",\n        \"is_published\": true,\n        \"created_at\": \"2025-01-01T12:00:00\",\n        \"updated_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
         "operationId": "get_story_api_v1_audiobook_stories__story_id__get",
         "security": [
           {
@@ -3488,10 +3756,10 @@
     "/api/v1/audiobook/jobs": {
       "post": {
         "tags": [
-          "æœ‰å£°ä¹¦"
+          "ÓĞÉùÊé"
         ],
-        "summary": "åˆ›å»ºæœ‰å£°ä¹¦ç”Ÿæˆä»»åŠ¡",
-        "description": "åˆ›å»ºæœ‰å£°ä¹¦ç”Ÿæˆä»»åŠ¡\n\né€‰æ‹©ä¸€ä¸ªæ•…äº‹å’Œä¸€ä¸ªå£°éŸ³æ¡£æ¡ˆï¼Œç³»ç»Ÿä¼šä½¿ç”¨è¯¥å£°éŸ³æœ—è¯»æ•…äº‹å†…å®¹ï¼Œç”Ÿæˆä¸ªæ€§åŒ–æœ‰å£°ä¹¦ã€‚\nè¿™æ˜¯ä¸€ä¸ªå¼‚æ­¥ä»»åŠ¡ï¼Œåˆ›å»ºåéœ€è¦è½®è¯¢ GET /jobs/{job_id} è·å–ç»“æœã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **story_id**: æœ‰å£°ä¹¦æ•…äº‹IDï¼ˆä»æ•…äº‹åˆ—è¡¨è·å–ï¼‰\n- **voice_profile_id**: å£°éŸ³æ¡£æ¡ˆIDï¼ˆä»è¯­éŸ³å…‹éš†æ¨¡å—è·å–ï¼‰\n\n**å¤„ç†æµç¨‹:**\n1. éªŒè¯æ•…äº‹å’Œå£°éŸ³æ¡£æ¡ˆå­˜åœ¨\n2. ä½¿ç”¨ CosyVoice TTS åˆæˆè¯­éŸ³\n3. ï¼ˆå¯é€‰ï¼‰ä¸èƒŒæ™¯éŸ³ä¹æ··åˆ\n4. ä¸Šä¼ æœ€ç»ˆéŸ³é¢‘æ–‡ä»¶\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"695345efc32ffbd6151c18a9\",\n        \"user_id\": \"6948bda91fd873cf81f5addd\",\n        \"story_id\": \"695342ec383483bf26139d89\",\n        \"voice_profile_id\": \"694534f1c32ffbd6151c18a3\",\n        \"status\": \"pending\",\n        \"progress\": 0,\n        \"current_step\": \"init\",\n        \"story_title\": \"ä¸‰åªå°çŒª\",\n        \"voice_name\": \"çˆ¸çˆ¸çš„å£°éŸ³\",\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
+        "summary": "´´½¨ÓĞÉùÊéÉú³ÉÈÎÎñ",
+        "description": "´´½¨ÓĞÉùÊéÉú³ÉÈÎÎñ\n\nÑ¡ÔñÒ»¸ö¹ÊÊÂºÍÒ»¸öÉùÒôµµ°¸£¬ÏµÍ³»áÊ¹ÓÃ¸ÃÉùÒôÀÊ¶Á¹ÊÊÂÄÚÈİ£¬Éú³É¸öĞÔ»¯ÓĞÉùÊé¡£\nÕâÊÇÒ»¸öÒì²½ÈÎÎñ£¬´´½¨ºóĞèÒªÂÖÑ¯ GET /jobs/{job_id} »ñÈ¡½á¹û¡£\n\n**ÇëÇó²ÎÊı:**\n- **story_id**: ÓĞÉùÊé¹ÊÊÂID£¨´Ó¹ÊÊÂÁĞ±í»ñÈ¡£©\n- **voice_profile_id**: ÉùÒôµµ°¸ID£¨´ÓÓïÒô¿ËÂ¡Ä£¿é»ñÈ¡£©\n\n**´¦ÀíÁ÷³Ì:**\n1. ÑéÖ¤¹ÊÊÂºÍÉùÒôµµ°¸´æÔÚ\n2. Ê¹ÓÃ CosyVoice TTS ºÏ³ÉÓïÒô\n3. £¨¿ÉÑ¡£©Óë±³¾°ÒôÀÖ»ìºÏ\n4. ÉÏ´«×îÖÕÒôÆµÎÄ¼ş\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"695345efc32ffbd6151c18a9\",\n        \"user_id\": \"6948bda91fd873cf81f5addd\",\n        \"story_id\": \"695342ec383483bf26139d89\",\n        \"voice_profile_id\": \"694534f1c32ffbd6151c18a3\",\n        \"status\": \"pending\",\n        \"progress\": 0,\n        \"current_step\": \"init\",\n        \"story_title\": \"ÈıÖ»Ğ¡Öí\",\n        \"voice_name\": \"°Ö°ÖµÄÉùÒô\",\n        \"created_at\": \"2025-01-01T12:00:00\"\n    }\n}\n```",
         "operationId": "create_job_api_v1_audiobook_jobs_post",
         "security": [
           {
@@ -3531,10 +3799,10 @@
       },
       "get": {
         "tags": [
-          "æœ‰å£°ä¹¦"
+          "ÓĞÉùÊé"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦ä»»åŠ¡åˆ—è¡¨",
-        "description": "è·å–ç”¨æˆ·çš„æœ‰å£°ä¹¦ç”Ÿæˆä»»åŠ¡åˆ—è¡¨\n\nè¿”å›å½“å‰ç”¨æˆ·åˆ›å»ºçš„æ‰€æœ‰æœ‰å£°ä¹¦ä»»åŠ¡ï¼ŒæŒ‰åˆ›å»ºæ—¶é—´å€’åºæ’åˆ—ã€‚\nå¯ç”¨äºå±•ç¤º\"æˆ‘çš„æœ‰å£°ä¹¦\"é¡µé¢ã€‚\n\n**è¯·æ±‚å‚æ•°:**\n- **page**: é¡µç ï¼Œä»1å¼€å§‹\n- **page_size**: æ¯é¡µæ•°é‡ï¼Œ1-100\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"695345efc32ffbd6151c18a9\",\n                \"status\": \"completed\",\n                \"progress\": 100,\n                \"audio_url\": \"/uploads/audiobook/user123/output.mp3\",\n                \"duration\": 185,\n                \"story_title\": \"ä¸‰åªå°çŒª\",\n                \"voice_name\": \"çˆ¸çˆ¸çš„å£°éŸ³\",\n                \"created_at\": \"2025-01-01T12:00:00\",\n                \"completed_at\": \"2025-01-01T12:03:00\"\n            }\n        ],\n        \"total\": 5,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓĞÉùÊéÈÎÎñÁĞ±í",
+        "description": "»ñÈ¡ÓÃ»§µÄÓĞÉùÊéÉú³ÉÈÎÎñÁĞ±í\n\n·µ»Øµ±Ç°ÓÃ»§´´½¨µÄËùÓĞÓĞÉùÊéÈÎÎñ£¬°´´´½¨Ê±¼äµ¹ĞòÅÅÁĞ¡£\n¿ÉÓÃÓÚÕ¹Ê¾\"ÎÒµÄÓĞÉùÊé\"Ò³Ãæ¡£\n\n**ÇëÇó²ÎÊı:**\n- **page**: Ò³Âë£¬´Ó1¿ªÊ¼\n- **page_size**: Ã¿Ò³ÊıÁ¿£¬1-100\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [\n            {\n                \"id\": \"695345efc32ffbd6151c18a9\",\n                \"status\": \"completed\",\n                \"progress\": 100,\n                \"audio_url\": \"/uploads/audiobook/user123/output.mp3\",\n                \"duration\": 185,\n                \"story_title\": \"ÈıÖ»Ğ¡Öí\",\n                \"voice_name\": \"°Ö°ÖµÄÉùÒô\",\n                \"created_at\": \"2025-01-01T12:00:00\",\n                \"completed_at\": \"2025-01-01T12:03:00\"\n            }\n        ],\n        \"total\": 5,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
         "operationId": "list_jobs_api_v1_audiobook_jobs_get",
         "security": [
           {
@@ -3549,11 +3817,11 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "description": "é¡µç ï¼Œä»1å¼€å§‹",
+              "description": "Ò³Âë£¬´Ó1¿ªÊ¼",
               "default": 1,
               "title": "Page"
             },
-            "description": "é¡µç ï¼Œä»1å¼€å§‹"
+            "description": "Ò³Âë£¬´Ó1¿ªÊ¼"
           },
           {
             "name": "page_size",
@@ -3563,11 +3831,11 @@
               "type": "integer",
               "maximum": 100,
               "minimum": 1,
-              "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100",
+              "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100",
               "default": 20,
               "title": "Page Size"
             },
-            "description": "æ¯é¡µæ•°é‡ï¼Œæœ€å¤§100"
+            "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100"
           }
         ],
         "responses": {
@@ -3595,11 +3863,55 @@
     "/api/v1/audiobook/jobs/{job_id}": {
       "get": {
         "tags": [
-          "æœ‰å£°ä¹¦"
+          "ÓĞÉùÊé"
         ],
-        "summary": "è·å–æœ‰å£°ä¹¦ä»»åŠ¡çŠ¶æ€",
-        "description": "è·å–æœ‰å£°ä¹¦ä»»åŠ¡çŠ¶æ€\n\nè½®è¯¢æ­¤æ¥å£è·å–ä»»åŠ¡çš„å¤„ç†è¿›åº¦å’Œç»“æœã€‚\nå»ºè®®è½®è¯¢é—´éš”ï¼š2-3ç§’ã€‚\n\n**è·¯å¾„å‚æ•°:**\n- **job_id**: ä»»åŠ¡IDï¼ˆä» POST /jobs è¿”å›ï¼‰\n\n**ä»»åŠ¡çŠ¶æ€è¯´æ˜:**\n- **pending**: ç­‰å¾…å¤„ç†\n- **processing**: å¤„ç†ä¸­\n- **completed**: å®Œæˆï¼Œaudio_url åŒ…å«ç”Ÿæˆçš„éŸ³é¢‘\n- **failed**: å¤±è´¥ï¼Œerror åŒ…å«é”™è¯¯ä¿¡æ¯\n\n**å¤„ç†æ­¥éª¤è¯´æ˜:**\n- **init**: åˆå§‹åŒ–ä»»åŠ¡\n- **tts**: è¯­éŸ³åˆæˆä¸­\n- **mixing**: éŸ³é¢‘æ··åˆä¸­ï¼ˆæ·»åŠ èƒŒæ™¯éŸ³ä¹ï¼‰\n- **completed**: å¤„ç†å®Œæˆ\n\n**è¿”å›ç¤ºä¾‹:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"695345efc32ffbd6151c18a9\",\n        \"user_id\": \"6948bda91fd873cf81f5addd\",\n        \"story_id\": \"695342ec383483bf26139d89\",\n        \"voice_profile_id\": \"694534f1c32ffbd6151c18a3\",\n        \"status\": \"completed\",\n        \"progress\": 100,\n        \"current_step\": \"completed\",\n        \"audio_url\": \"/uploads/audiobook/user123/output.mp3\",\n        \"duration\": 185,\n        \"story_title\": \"ä¸‰åªå°çŒª\",\n        \"voice_name\": \"çˆ¸çˆ¸çš„å£°éŸ³\",\n        \"created_at\": \"2025-01-01T12:00:00\",\n        \"completed_at\": \"2025-01-01T12:03:00\",\n        \"error\": null\n    }\n}\n```",
+        "summary": "»ñÈ¡ÓĞÉùÊéÈÎÎñ×´Ì¬",
+        "description": "»ñÈ¡ÓĞÉùÊéÈÎÎñ×´Ì¬\n\nÂÖÑ¯´Ë½Ó¿Ú»ñÈ¡ÈÎÎñµÄ´¦Àí½ø¶ÈºÍ½á¹û¡£\n½¨ÒéÂÖÑ¯¼ä¸ô£º2-3Ãë¡£\n\n**Â·¾¶²ÎÊı:**\n- **job_id**: ÈÎÎñID£¨´Ó POST /jobs ·µ»Ø£©\n\n**ÈÎÎñ×´Ì¬ËµÃ÷:**\n- **pending**: µÈ´ı´¦Àí\n- **processing**: ´¦ÀíÖĞ\n- **completed**: Íê³É£¬audio_url °üº¬Éú³ÉµÄÒôÆµ\n- **failed**: Ê§°Ü£¬error °üº¬´íÎóĞÅÏ¢\n\n**´¦Àí²½ÖèËµÃ÷:**\n- **init**: ³õÊ¼»¯ÈÎÎñ\n- **tts**: ÓïÒôºÏ³ÉÖĞ\n- **mixing**: ÒôÆµ»ìºÏÖĞ£¨Ìí¼Ó±³¾°ÒôÀÖ£©\n- **completed**: ´¦ÀíÍê³É\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"695345efc32ffbd6151c18a9\",\n        \"user_id\": \"6948bda91fd873cf81f5addd\",\n        \"story_id\": \"695342ec383483bf26139d89\",\n        \"voice_profile_id\": \"694534f1c32ffbd6151c18a3\",\n        \"status\": \"completed\",\n        \"progress\": 100,\n        \"current_step\": \"completed\",\n        \"audio_url\": \"/uploads/audiobook/user123/output.mp3\",\n        \"duration\": 185,\n        \"story_title\": \"ÈıÖ»Ğ¡Öí\",\n        \"voice_name\": \"°Ö°ÖµÄÉùÒô\",\n        \"created_at\": \"2025-01-01T12:00:00\",\n        \"completed_at\": \"2025-01-01T12:03:00\",\n        \"error\": null\n    }\n}\n```",
         "operationId": "get_job_api_v1_audiobook_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "É¾³ıÓĞÉùÊéÈÎÎñ",
+        "description": "É¾³ıÓĞÉùÊéÈÎÎñ\n\nÉ¾³ıÖ¸¶¨µÄÓĞÉùÊéÈÎÎñ¼ÇÂ¼¡£\n\n**Â·¾¶²ÎÊı:**\n- **job_id**: ÈÎÎñID",
+        "operationId": "delete_job_api_v1_audiobook_jobs__job_id__delete",
         "security": [
           {
             "HTTPBearer": []
@@ -3638,10 +3950,363 @@
         }
       }
     },
+    "/api/v1/audiobook/jobs/{job_id}/favorite": {
+      "post": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "ÇĞ»»ÊÕ²Ø×´Ì¬",
+        "description": "ÇĞ»»ÓĞÉùÊéÈÎÎñµÄÊÕ²Ø×´Ì¬\n\n**Â·¾¶²ÎÊı:**\n- **job_id**: ÈÎÎñID\n\n**·µ»Ø:**\n- **is_favorite**: ĞÂµÄÊÕ²Ø×´Ì¬",
+        "operationId": "toggle_favorite_api_v1_audiobook_jobs__job_id__favorite_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audiobook/ebooks": {
+      "post": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "ÉÏ´«ÓÃ»§µç×ÓÊé",
+        "description": "ÉÏ´«ÓÃ»§µç×ÓÊé\n\nÓÃ»§¿ÉÒÔÉÏ´«×Ô¼ºµÄÎÄ±¾ÄÚÈİ×÷Îªµç×ÓÊé£¬È»ºóÊ¹ÓÃÉùÒôµµ°¸Éú³ÉÓĞÉùÊé¡£\n\n**ÇëÇó²ÎÊı:**\n- **title**: µç×ÓÊé±êÌâ\n- **content**: ÎÄ±¾ÄÚÈİ\n- **language**: ÓïÑÔ´úÂë en(Ó¢Óï) | zh(ÖĞÎÄ)£¬Ä¬ÈÏÖĞÎÄ\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"id\": \"696342ec383483bf26139d89\",\n        \"title\": \"ÎÒµÄ¹ÊÊÂ\",\n        \"content\": \"´ÓÇ°ÓĞ×ùÉ½...\",\n        \"language\": \"zh\",\n        \"metadata\": {\n            \"word_count\": 100,\n            \"char_count\": 500,\n            \"estimated_duration\": 167\n        }\n    }\n}\n```",
+        "operationId": "create_ebook_api_v1_audiobook_ebooks_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserEbookRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "»ñÈ¡ÓÃ»§µç×ÓÊéÁĞ±í",
+        "description": "»ñÈ¡ÓÃ»§µÄµç×ÓÊéÁĞ±í\n\n·µ»Øµ±Ç°ÓÃ»§ÉÏ´«µÄËùÓĞµç×ÓÊé¡£\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"items\": [...],\n        \"total\": 5,\n        \"page\": 1,\n        \"page_size\": 20\n    }\n}\n```",
+        "operationId": "list_ebooks_api_v1_audiobook_ebooks_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Ò³Âë£¬´Ó1¿ªÊ¼",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Ò³Âë£¬´Ó1¿ªÊ¼"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100",
+              "default": 20,
+              "title": "Page Size"
+            },
+            "description": "Ã¿Ò³ÊıÁ¿£¬×î´ó100"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audiobook/ebooks/{ebook_id}": {
+      "get": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "»ñÈ¡µç×ÓÊéÏêÇé",
+        "description": "»ñÈ¡µç×ÓÊéÏêÇé",
+        "operationId": "get_ebook_api_v1_audiobook_ebooks__ebook_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ebook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ebook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "¸üĞÂµç×ÓÊé",
+        "description": "¸üĞÂµç×ÓÊéĞÅÏ¢",
+        "operationId": "update_ebook_api_v1_audiobook_ebooks__ebook_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ebook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ebook Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserEbookRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "É¾³ıµç×ÓÊé",
+        "description": "É¾³ıµç×ÓÊé",
+        "operationId": "delete_ebook_api_v1_audiobook_ebooks__ebook_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ebook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ebook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/audiobook/ebooks/{ebook_id}/jobs": {
+      "post": {
+        "tags": [
+          "ÓĞÉùÊé"
+        ],
+        "summary": "´Óµç×ÓÊé´´½¨ÓĞÉùÊéÈÎÎñ",
+        "description": "´ÓÓÃ»§µç×ÓÊé´´½¨ÓĞÉùÊéÉú³ÉÈÎÎñ\n\nÑ¡ÔñÓÃ»§×Ô¼ºÉÏ´«µÄµç×ÓÊéºÍÉùÒôµµ°¸£¬Éú³ÉÓĞÉùÊé¡£\n\n**ÇëÇó²ÎÊı:**\n- **ebook_id**: µç×ÓÊéID£¨URLÂ·¾¶²ÎÊı£©\n- **voice_profile_id**: ÉùÒôµµ°¸ID\n\n**·µ»ØÊ¾Àı:**\n```json\n{\n    \"code\": 0,\n    \"message\": \"success\",\n    \"data\": {\n        \"job_id\": \"695345efc32ffbd6151c18a9\",\n        \"status\": \"pending\"\n    }\n}\n```",
+        "operationId": "create_job_from_ebook_api_v1_audiobook_ebooks__ebook_id__jobs_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "ebook_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ebook Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEbookJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/": {
       "get": {
         "summary": "Root",
-        "description": "æ ¹è·¯å¾„",
+        "description": "¸ùÂ·¾¶",
         "operationId": "root__get",
         "responses": {
           "200": {
@@ -3658,7 +4323,7 @@
     "/health": {
       "get": {
         "summary": "Health Check",
-        "description": "å¥åº·æ£€æŸ¥",
+        "description": "½¡¿µ¼ì²é",
         "operationId": "health_check_health_get",
         "responses": {
           "200": {
@@ -3779,7 +4444,7 @@
             "type": "string",
             "format": "binary",
             "title": "Image",
-            "description": "å¤´åƒç…§ç‰‡ï¼Œæ¸…æ™°æ­£é¢äººåƒï¼ŒJPG/PNGæ ¼å¼"
+            "description": "Í·ÏñÕÕÆ¬£¬ÇåÎúÕıÃæÈËÏñ£¬JPG/PNG¸ñÊ½"
           },
           "audio": {
             "anyOf": [
@@ -3792,7 +4457,7 @@
               }
             ],
             "title": "Audio",
-            "description": "éŸ³é¢‘æ–‡ä»¶ï¼ˆå¯é€‰ï¼‰ï¼Œç”¨äºæ•°å­—äººè¯´è¯"
+            "description": "ÒôÆµÎÄ¼ş£¨¿ÉÑ¡£©£¬ÓÃÓÚÊı×ÖÈËËµ»°"
           },
           "voice_profile_id": {
             "anyOf": [
@@ -3804,7 +4469,7 @@
               }
             ],
             "title": "Voice Profile Id",
-            "description": "å·²ä¿å­˜çš„å£°éŸ³æ¡£æ¡ˆIDï¼ˆå¯é€‰ï¼‰"
+            "description": "ÒÑ±£´æµÄÉùÒôµµ°¸ID£¨¿ÉÑ¡£©"
           },
           "preview_text": {
             "anyOf": [
@@ -3816,7 +4481,7 @@
               }
             ],
             "title": "Preview Text",
-            "description": "é¢„è§ˆæ–‡æœ¬ï¼Œä½¿ç”¨å£°éŸ³æ¡£æ¡ˆæ—¶éœ€è¦æä¾›"
+            "description": "Ô¤ÀÀÎÄ±¾£¬Ê¹ÓÃÉùÒôµµ°¸Ê±ĞèÒªÌá¹©"
           }
         },
         "type": "object",
@@ -3889,12 +4554,12 @@
             "type": "string",
             "format": "binary",
             "title": "Audio",
-            "description": "å‚è€ƒéŸ³é¢‘æ–‡ä»¶ï¼Œ10-15ç§’æ¸…æ™°è¯­éŸ³ï¼ŒWAV/MP3æ ¼å¼"
+            "description": "²Î¿¼ÒôÆµÎÄ¼ş£¬10-15ÃëÇåÎúÓïÒô£¬WAV/MP3¸ñÊ½"
           },
           "story_id": {
             "type": "string",
             "title": "Story Id",
-            "description": "é¢„è®¾æ•…äº‹IDï¼Œä» /preset-stories è·å–"
+            "description": "Ô¤Éè¹ÊÊÂID£¬´Ó /preset-stories »ñÈ¡"
           }
         },
         "type": "object",
@@ -4100,7 +4765,7 @@
             "type": "string",
             "format": "binary",
             "title": "File",
-            "description": "å¤´åƒå›¾ç‰‡æ–‡ä»¶ï¼Œæ”¯æŒ JPG/PNG/GIF/WebP æ ¼å¼"
+            "description": "Í·ÏñÍ¼Æ¬ÎÄ¼ş£¬Ö§³Ö JPG/PNG/GIF/WebP ¸ñÊ½"
           }
         },
         "type": "object",
@@ -4144,22 +4809,22 @@
             "maxLength": 50,
             "minLength": 1,
             "title": "Name",
-            "description": "åˆ†ç±»ä¸­æ–‡åç§°",
-            "example": "ç«¥è¯æ•…äº‹"
+            "description": "·ÖÀàÖĞÎÄÃû³Æ",
+            "example": "Í¯»°¹ÊÊÂ"
           },
           "name_en": {
             "type": "string",
             "maxLength": 50,
             "minLength": 1,
             "title": "Name En",
-            "description": "åˆ†ç±»è‹±æ–‡åç§°",
+            "description": "·ÖÀàÓ¢ÎÄÃû³Æ",
             "example": "Fairy Tales"
           },
           "sort_order": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Sort Order",
-            "description": "æ’åºåºå·ï¼Œæ•°å­—è¶Šå°è¶Šé å‰",
+            "description": "ÅÅĞòĞòºÅ£¬Êı×ÖÔ½Ğ¡Ô½¿¿Ç°",
             "default": 0,
             "example": 0
           }
@@ -4170,9 +4835,9 @@
           "name_en"
         ],
         "title": "CategoryCreate",
-        "description": "åˆ›å»ºåˆ†ç±»è¯·æ±‚\n\nç”¨äºç®¡ç†å‘˜åˆ›å»ºæ–°çš„æ•…äº‹åˆ†ç±»ã€‚",
+        "description": "´´½¨·ÖÀàÇëÇó\n\nÓÃÓÚ¹ÜÀíÔ±´´½¨ĞÂµÄ¹ÊÊÂ·ÖÀà¡£",
         "example": {
-          "name": "ç«¥è¯æ•…äº‹",
+          "name": "Í¯»°¹ÊÊÂ",
           "name_en": "Fairy Tales",
           "sort_order": 0
         }
@@ -4183,7 +4848,7 @@
             "type": "string",
             "minLength": 1,
             "title": "Old Password",
-            "description": "å½“å‰å¯†ç ",
+            "description": "µ±Ç°ÃÜÂë",
             "example": "OldPassword123"
           },
           "new_password": {
@@ -4191,7 +4856,7 @@
             "maxLength": 128,
             "minLength": 8,
             "title": "New Password",
-            "description": "æ–°å¯†ç ï¼Œè‡³å°‘8ä½ï¼Œå¿…é¡»åŒ…å«å¤§å°å†™å­—æ¯å’Œæ•°å­—",
+            "description": "ĞÂÃÜÂë£¬ÖÁÉÙ8Î»£¬±ØĞë°üº¬´óĞ¡Ğ´×ÖÄ¸ºÍÊı×Ö",
             "example": "NewPassword456"
           }
         },
@@ -4201,7 +4866,7 @@
           "new_password"
         ],
         "title": "ChangePasswordRequest",
-        "description": "ä¿®æ”¹å¯†ç è¯·æ±‚\n\nç”¨æˆ·ä¿®æ”¹è‡ªå·±çš„ç™»å½•å¯†ç ã€‚\néœ€è¦æä¾›æ—§å¯†ç è¿›è¡ŒéªŒè¯ï¼Œæ–°å¯†ç éœ€è¦æ»¡è¶³å¼ºåº¦è¦æ±‚ã€‚",
+        "description": "ĞŞ¸ÄÃÜÂëÇëÇó\n\nÓÃ»§ĞŞ¸Ä×Ô¼ºµÄµÇÂ¼ÃÜÂë¡£\nĞèÒªÌá¹©¾ÉÃÜÂë½øĞĞÑéÖ¤£¬ĞÂÃÜÂëĞèÒªÂú×ãÇ¿¶ÈÒªÇó¡£",
         "example": {
           "new_password": "NewPassword456",
           "old_password": "OldPassword123"
@@ -4212,13 +4877,13 @@
           "story_id": {
             "type": "string",
             "title": "Story Id",
-            "description": "æœ‰å£°ä¹¦æ•…äº‹ID",
+            "description": "ÓĞÉùÊé¹ÊÊÂID",
             "example": "695342ec383483bf26139d89"
           },
           "voice_profile_id": {
             "type": "string",
             "title": "Voice Profile Id",
-            "description": "å£°éŸ³æ¡£æ¡ˆIDï¼Œä»è¯­éŸ³å…‹éš†æ¨¡å—è·å–",
+            "description": "ÉùÒôµµ°¸ID£¬´ÓÓïÒô¿ËÂ¡Ä£¿é»ñÈ¡",
             "example": "694534f1c32ffbd6151c18a3"
           }
         },
@@ -4228,57 +4893,154 @@
           "voice_profile_id"
         ],
         "title": "CreateAudiobookJobRequest",
-        "description": "åˆ›å»ºæœ‰å£°ä¹¦ç”Ÿæˆä»»åŠ¡è¯·æ±‚\n\nç”¨æˆ·é€‰æ‹©æ•…äº‹å’Œå£°éŸ³æ¡£æ¡ˆï¼Œåˆ›å»ºæœ‰å£°ä¹¦ç”Ÿæˆä»»åŠ¡ã€‚",
+        "description": "´´½¨ÓĞÉùÊéÉú³ÉÈÎÎñÇëÇó\n\nÓÃ»§Ñ¡Ôñ¹ÊÊÂºÍÉùÒôµµ°¸£¬´´½¨ÓĞÉùÊéÉú³ÉÈÎÎñ¡£",
         "example": {
           "story_id": "695342ec383483bf26139d89",
           "voice_profile_id": "694534f1c32ffbd6151c18a3"
         }
+      },
+      "CreateEbookJobRequest": {
+        "properties": {
+          "ebook_id": {
+            "type": "string",
+            "title": "Ebook Id",
+            "description": "ÓÃ»§µç×ÓÊéID",
+            "example": "696342ec383483bf26139d89"
+          },
+          "voice_profile_id": {
+            "type": "string",
+            "title": "Voice Profile Id",
+            "description": "ÉùÒôµµ°¸ID",
+            "example": "694534f1c32ffbd6151c18a3"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ebook_id",
+          "voice_profile_id"
+        ],
+        "title": "CreateEbookJobRequest",
+        "description": "´ÓÓÃ»§µç×ÓÊé´´½¨ÓĞÉùÊéÈÎÎñÇëÇó"
       },
       "CreateStoryJobRequest": {
         "properties": {
           "story_id": {
             "type": "string",
             "title": "Story Id",
-            "description": "æ•…äº‹ ID"
+            "description": "¹ÊÊÂ ID"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/GenerationMode",
+            "description": "Éú³ÉÄ£Ê½: single=µ¥ÈËÄ£Ê½, dual=Ë«ÈËÄ£Ê½",
+            "default": "single"
           },
           "voice_profile_id": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Voice Profile Id",
-            "description": "å£°éŸ³æ¡£æ¡ˆ ID"
+            "description": "ÉùÒôµµ°¸ ID£¨µ¥ÈËÄ£Ê½£©"
           },
           "avatar_profile_id": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Avatar Profile Id",
-            "description": "å¤´åƒæ¡£æ¡ˆ ID"
+            "description": "Í·Ïñµµ°¸ ID£¨µ¥ÈËÄ£Ê½£©"
+          },
+          "speaker_configs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SpeakerConfig"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker Configs",
+            "description": "Ëµ»°ÈËÅäÖÃÁĞ±í£¨Ë«ÈËÄ£Ê½£©£¬ÎªÃ¿¸öËµ»°ÈËÖ¸¶¨ÉùÒôºÍÍ·Ïñ"
           },
           "replace_all_voice": {
             "type": "boolean",
             "title": "Replace All Voice",
-            "description": "æ˜¯å¦æ›¿æ¢å…¨éƒ¨äººå£°",
+            "description": "ÊÇ·ñÌæ»»È«²¿ÈËÉù",
             "default": true
           },
           "full_video": {
             "type": "boolean",
             "title": "Full Video",
-            "description": "æ˜¯å¦ç”Ÿæˆå®Œæ•´è§†é¢‘ï¼Œé»˜è®¤åªç”Ÿæˆå‰2ä¸ªç‰‡æ®µ",
+            "description": "ÊÇ·ñÉú³ÉÍêÕûÊÓÆµ£¬Ä¬ÈÏÖ»Éú³ÉÇ°2¸öÆ¬¶Î",
             "default": false
           }
         },
         "type": "object",
         "required": [
-          "story_id",
-          "voice_profile_id",
-          "avatar_profile_id"
+          "story_id"
         ],
         "title": "CreateStoryJobRequest",
-        "description": "åˆ›å»ºæ•…äº‹ç”Ÿæˆä»»åŠ¡è¯·æ±‚"
+        "description": "´´½¨¹ÊÊÂÉú³ÉÈÎÎñÇëÇó\n\nÖ§³ÖÁ½ÖÖÄ£Ê½£º\n1. µ¥ÈËÄ£Ê½ (single)£ºÊ¹ÓÃ voice_profile_id ºÍ avatar_profile_id£¬Ò»¸öÉùÒôÒ»¸öÊı×ÖÈË\n2. Ë«ÈËÄ£Ê½ (dual)£ºÊ¹ÓÃ speaker_configs Êı×é£¬ÎªÃ¿¸öËµ»°ÈËÅäÖÃÉùÒôºÍÍ·Ïñ"
+      },
+      "CreateUserEbookRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "description": "µç×ÓÊé±êÌâ",
+            "example": "ÎÒµÄ¹ÊÊÂ"
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content",
+            "description": "µç×ÓÊéÎÄ±¾ÄÚÈİ",
+            "example": "´ÓÇ°ÓĞ×ùÉ½£¬É½ÉÏÓĞ×ùÃí..."
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "ÓïÑÔ´úÂë£ºen(Ó¢Óï) | zh(ÖĞÎÄ)",
+            "default": "zh",
+            "example": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "content"
+        ],
+        "title": "CreateUserEbookRequest",
+        "description": "´´½¨ÓÃ»§µç×ÓÊéÇëÇó£¨Ö±½ÓÉÏ´«ÎÄ±¾ÄÚÈİ£©"
+      },
+      "GenerationMode": {
+        "type": "string",
+        "enum": [
+          "single",
+          "dual"
+        ],
+        "title": "GenerationMode",
+        "description": "Éú³ÉÄ£Ê½"
       },
       "GoogleAuthRequest": {
         "properties": {
           "code": {
             "type": "string",
             "title": "Code",
-            "description": "Google OAuth æˆæƒç ",
+            "description": "Google OAuth ÊÚÈ¨Âë",
             "example": "4/0AX4XfWh..."
           }
         },
@@ -4287,7 +5049,7 @@
           "code"
         ],
         "title": "GoogleAuthRequest",
-        "description": "Google OAuth è®¤è¯è¯·æ±‚\n\nä½¿ç”¨ Google æˆæƒç è¿›è¡Œç™»å½•æˆ–æ³¨å†Œã€‚\næˆæƒç ä» Google OAuth å›è°ƒä¸­è·å–ã€‚"
+        "description": "Google OAuth ÈÏÖ¤ÇëÇó\n\nÊ¹ÓÃ Google ÊÚÈ¨Âë½øĞĞµÇÂ¼»ò×¢²á¡£\nÊÚÈ¨Âë´Ó Google OAuth »Øµ÷ÖĞ»ñÈ¡¡£"
       },
       "HTTPValidationError": {
         "properties": {
@@ -4308,7 +5070,7 @@
             "type": "string",
             "format": "email",
             "title": "Email",
-            "description": "æ³¨å†Œæ—¶ä½¿ç”¨çš„é‚®ç®±åœ°å€",
+            "description": "×¢²áÊ±Ê¹ÓÃµÄÓÊÏäµØÖ·",
             "example": "user@example.com"
           },
           "password": {
@@ -4316,7 +5078,7 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Password",
-            "description": "ç”¨æˆ·å¯†ç ",
+            "description": "ÓÃ»§ÃÜÂë",
             "example": "MyPassword123"
           }
         },
@@ -4326,7 +5088,7 @@
           "password"
         ],
         "title": "LoginRequest",
-        "description": "ç”¨æˆ·ç™»å½•è¯·æ±‚\n\nä½¿ç”¨é‚®ç®±å’Œå¯†ç è¿›è¡Œç™»å½•è®¤è¯ã€‚\nç™»å½•æˆåŠŸåè¿”å›è®¿é—®ä»¤ç‰Œå’Œåˆ·æ–°ä»¤ç‰Œã€‚",
+        "description": "ÓÃ»§µÇÂ¼ÇëÇó\n\nÊ¹ÓÃÓÊÏäºÍÃÜÂë½øĞĞµÇÂ¼ÈÏÖ¤¡£\nµÇÂ¼³É¹¦ºó·µ»Ø·ÃÎÊÁîÅÆºÍË¢ĞÂÁîÅÆ¡£",
         "example": {
           "email": "user@example.com",
           "password": "MyPassword123"
@@ -4337,7 +5099,7 @@
           "refresh_token": {
             "type": "string",
             "title": "Refresh Token",
-            "description": "ä¹‹å‰è·å–çš„åˆ·æ–°ä»¤ç‰Œ",
+            "description": "Ö®Ç°»ñÈ¡µÄË¢ĞÂÁîÅÆ",
             "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
           }
         },
@@ -4346,7 +5108,7 @@
           "refresh_token"
         ],
         "title": "RefreshTokenRequest",
-        "description": "åˆ·æ–°ä»¤ç‰Œè¯·æ±‚\n\nä½¿ç”¨åˆ·æ–°ä»¤ç‰Œè·å–æ–°çš„è®¿é—®ä»¤ç‰Œã€‚\nå½“è®¿é—®ä»¤ç‰Œè¿‡æœŸæ—¶è°ƒç”¨æ­¤æ¥å£ã€‚"
+        "description": "Ë¢ĞÂÁîÅÆÇëÇó\n\nÊ¹ÓÃË¢ĞÂÁîÅÆ»ñÈ¡ĞÂµÄ·ÃÎÊÁîÅÆ¡£\nµ±·ÃÎÊÁîÅÆ¹ıÆÚÊ±µ÷ÓÃ´Ë½Ó¿Ú¡£"
       },
       "RegisterRequest": {
         "properties": {
@@ -4354,7 +5116,7 @@
             "type": "string",
             "format": "email",
             "title": "Email",
-            "description": "ç”¨æˆ·é‚®ç®±åœ°å€ï¼Œç”¨äºç™»å½•å’Œæ¥æ”¶é€šçŸ¥",
+            "description": "ÓÃ»§ÓÊÏäµØÖ·£¬ÓÃÓÚµÇÂ¼ºÍ½ÓÊÕÍ¨Öª",
             "example": "user@example.com"
           },
           "password": {
@@ -4362,7 +5124,7 @@
             "maxLength": 128,
             "minLength": 8,
             "title": "Password",
-            "description": "ç™»å½•å¯†ç ï¼Œè‡³å°‘8ä½ï¼Œå¿…é¡»åŒ…å«å¤§å°å†™å­—æ¯å’Œæ•°å­—",
+            "description": "µÇÂ¼ÃÜÂë£¬ÖÁÉÙ8Î»£¬±ØĞë°üº¬´óĞ¡Ğ´×ÖÄ¸ºÍÊı×Ö",
             "example": "MyPassword123"
           },
           "nickname": {
@@ -4370,8 +5132,8 @@
             "maxLength": 50,
             "minLength": 2,
             "title": "Nickname",
-            "description": "ç”¨æˆ·æ˜µç§°ï¼Œ2-50ä¸ªå­—ç¬¦ï¼Œæ”¯æŒä¸­æ–‡ã€å­—æ¯ã€æ•°å­—å’Œä¸‹åˆ’çº¿",
-            "example": "å°æ˜"
+            "description": "ÓÃ»§êÇ³Æ£¬2-50¸ö×Ö·û£¬Ö§³ÖÖĞÎÄ¡¢×ÖÄ¸¡¢Êı×ÖºÍÏÂ»®Ïß",
+            "example": "Ğ¡Ã÷"
           }
         },
         "type": "object",
@@ -4381,10 +5143,10 @@
           "nickname"
         ],
         "title": "RegisterRequest",
-        "description": "ç”¨æˆ·æ³¨å†Œè¯·æ±‚\n\nç”¨äºæ–°ç”¨æˆ·æ³¨å†Œè´¦å·ï¼Œéœ€è¦æä¾›é‚®ç®±ã€å¯†ç å’Œæ˜µç§°ã€‚\nå¯†ç å¿…é¡»åŒ…å«å¤§å°å†™å­—æ¯å’Œæ•°å­—ï¼Œé•¿åº¦8-128ä½ã€‚",
+        "description": "ÓÃ»§×¢²áÇëÇó\n\nÓÃÓÚĞÂÓÃ»§×¢²áÕËºÅ£¬ĞèÒªÌá¹©ÓÊÏä¡¢ÃÜÂëºÍêÇ³Æ¡£\nÃÜÂë±ØĞë°üº¬´óĞ¡Ğ´×ÖÄ¸ºÍÊı×Ö£¬³¤¶È8-128Î»¡£",
         "example": {
           "email": "user@example.com",
-          "nickname": "å°æ˜",
+          "nickname": "Ğ¡Ã÷",
           "password": "MyPassword123"
         }
       },
@@ -4393,7 +5155,7 @@
           "task_id": {
             "type": "string",
             "title": "Task Id",
-            "description": "å·²å®Œæˆçš„æ•°å­—äººé¢„è§ˆä»»åŠ¡ID",
+            "description": "ÒÑÍê³ÉµÄÊı×ÖÈËÔ¤ÀÀÈÎÎñID",
             "example": "user123_1703980800000"
           },
           "name": {
@@ -4401,8 +5163,8 @@
             "maxLength": 50,
             "minLength": 1,
             "title": "Name",
-            "description": "å¤´åƒåç§°ï¼Œä¾¿äºè¯†åˆ«ï¼Œå¦‚ï¼šçˆ¸çˆ¸çš„å¤´åƒã€å¦ˆå¦ˆçš„å¤´åƒ",
-            "example": "çˆ¸çˆ¸çš„å¤´åƒ"
+            "description": "Í·ÏñÃû³Æ£¬±ãÓÚÊ¶±ğ£¬Èç£º°Ö°ÖµÄÍ·Ïñ¡¢ÂèÂèµÄÍ·Ïñ",
+            "example": "°Ö°ÖµÄÍ·Ïñ"
           }
         },
         "type": "object",
@@ -4411,9 +5173,9 @@
           "name"
         ],
         "title": "SaveAvatarProfileRequest",
-        "description": "ä¿å­˜å¤´åƒæ¡£æ¡ˆè¯·æ±‚\n\næ•°å­—äººé¢„è§ˆæˆåŠŸåï¼Œå°†å¤´åƒä¿å­˜ä¸ºæ¡£æ¡ˆã€‚\nä¿å­˜åå¯åœ¨æ•…äº‹ç”ŸæˆåŠŸèƒ½ä¸­é‡å¤ä½¿ç”¨ã€‚",
+        "description": "±£´æÍ·Ïñµµ°¸ÇëÇó\n\nÊı×ÖÈËÔ¤ÀÀ³É¹¦ºó£¬½«Í·Ïñ±£´æÎªµµ°¸¡£\n±£´æºó¿ÉÔÚ¹ÊÊÂÉú³É¹¦ÄÜÖĞÖØ¸´Ê¹ÓÃ¡£",
         "example": {
-          "name": "çˆ¸çˆ¸çš„å¤´åƒ",
+          "name": "°Ö°ÖµÄÍ·Ïñ",
           "task_id": "user123_1703980800000"
         }
       },
@@ -4422,7 +5184,7 @@
           "task_id": {
             "type": "string",
             "title": "Task Id",
-            "description": "å·²å®Œæˆçš„è¯­éŸ³å…‹éš†ä»»åŠ¡ID",
+            "description": "ÒÑÍê³ÉµÄÓïÒô¿ËÂ¡ÈÎÎñID",
             "example": "user123_1703980800000"
           },
           "name": {
@@ -4430,8 +5192,8 @@
             "maxLength": 50,
             "minLength": 1,
             "title": "Name",
-            "description": "å£°éŸ³åç§°ï¼Œä¾¿äºè¯†åˆ«ï¼Œå¦‚ï¼šçˆ¸çˆ¸çš„å£°éŸ³ã€å¦ˆå¦ˆçš„å£°éŸ³",
-            "example": "çˆ¸çˆ¸çš„å£°éŸ³"
+            "description": "ÉùÒôÃû³Æ£¬±ãÓÚÊ¶±ğ£¬Èç£º°Ö°ÖµÄÉùÒô¡¢ÂèÂèµÄÉùÒô",
+            "example": "°Ö°ÖµÄÉùÒô"
           }
         },
         "type": "object",
@@ -4440,11 +5202,56 @@
           "name"
         ],
         "title": "SaveVoiceProfileRequest",
-        "description": "ä¿å­˜å£°éŸ³æ¡£æ¡ˆè¯·æ±‚\n\nè¯­éŸ³å…‹éš†é¢„è§ˆæˆåŠŸåï¼Œå°†å…‹éš†çš„å£°éŸ³ä¿å­˜ä¸ºæ¡£æ¡ˆã€‚\nä¿å­˜åå¯åœ¨æ•…äº‹ç”Ÿæˆã€æœ‰å£°ä¹¦ç­‰åŠŸèƒ½ä¸­é‡å¤ä½¿ç”¨ã€‚",
+        "description": "±£´æÉùÒôµµ°¸ÇëÇó\n\nÓïÒô¿ËÂ¡Ô¤ÀÀ³É¹¦ºó£¬½«¿ËÂ¡µÄÉùÒô±£´æÎªµµ°¸¡£\n±£´æºó¿ÉÔÚ¹ÊÊÂÉú³É¡¢ÓĞÉùÊéµÈ¹¦ÄÜÖĞÖØ¸´Ê¹ÓÃ¡£",
         "example": {
-          "name": "çˆ¸çˆ¸çš„å£°éŸ³",
+          "name": "°Ö°ÖµÄÉùÒô",
           "task_id": "user123_1703980800000"
         }
+      },
+      "SpeakerConfig": {
+        "properties": {
+          "speaker_id": {
+            "type": "string",
+            "title": "Speaker Id",
+            "description": "Ëµ»°ÈËID£¬Èç SPEAKER_00"
+          },
+          "voice_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Profile Id",
+            "description": "ÉùÒôµµ°¸ID£¬Îª¿Õ±íÊ¾²»Ìæ»»¸ÃËµ»°ÈËµÄÉùÒô"
+          },
+          "avatar_profile_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Profile Id",
+            "description": "Í·Ïñµµ°¸ID£¬Îª¿Õ±íÊ¾²»Éú³É¸ÃËµ»°ÈËµÄÊı×ÖÈË"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "ÊÇ·ñÆôÓÃ´ËËµ»°ÈËµÄÌæ»»",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "speaker_id"
+        ],
+        "title": "SpeakerConfig",
+        "description": "Ëµ»°ÈËÅäÖÃ\n\nÎªÃ¿¸öËµ»°ÈËÖ¸¶¨ÒªÊ¹ÓÃµÄÉùÒôµµ°¸ºÍÍ·Ïñµµ°¸"
       },
       "UpdateAvatarProfileRequest": {
         "properties": {
@@ -4453,8 +5260,8 @@
             "maxLength": 50,
             "minLength": 1,
             "title": "Name",
-            "description": "æ–°çš„å¤´åƒåç§°",
-            "example": "å¦ˆå¦ˆçš„å¤´åƒ"
+            "description": "ĞÂµÄÍ·ÏñÃû³Æ",
+            "example": "ÂèÂèµÄÍ·Ïñ"
           }
         },
         "type": "object",
@@ -4462,9 +5269,9 @@
           "name"
         ],
         "title": "UpdateAvatarProfileRequest",
-        "description": "æ›´æ–°å¤´åƒæ¡£æ¡ˆè¯·æ±‚\n\nç”¨äºä¿®æ”¹å¤´åƒæ¡£æ¡ˆçš„åç§°ã€‚",
+        "description": "¸üĞÂÍ·Ïñµµ°¸ÇëÇó\n\nÓÃÓÚĞŞ¸ÄÍ·Ïñµµ°¸µÄÃû³Æ¡£",
         "example": {
-          "name": "å¦ˆå¦ˆçš„å¤´åƒ"
+          "name": "ÂèÂèµÄÍ·Ïñ"
         }
       },
       "UpdateProfileRequest": {
@@ -4481,15 +5288,15 @@
               }
             ],
             "title": "Nickname",
-            "description": "æ–°æ˜µç§°ï¼Œ2-50ä¸ªå­—ç¬¦ï¼Œæ”¯æŒä¸­æ–‡ã€å­—æ¯ã€æ•°å­—å’Œä¸‹åˆ’çº¿",
-            "example": "æ–°æ˜µç§°"
+            "description": "ĞÂêÇ³Æ£¬2-50¸ö×Ö·û£¬Ö§³ÖÖĞÎÄ¡¢×ÖÄ¸¡¢Êı×ÖºÍÏÂ»®Ïß",
+            "example": "ĞÂêÇ³Æ"
           }
         },
         "type": "object",
         "title": "UpdateProfileRequest",
-        "description": "æ›´æ–°ç”¨æˆ·èµ„æ–™è¯·æ±‚\n\nç”¨äºä¿®æ”¹ç”¨æˆ·çš„ä¸ªäººä¿¡æ¯ï¼Œå¦‚æ˜µç§°ç­‰ã€‚\næ‰€æœ‰å­—æ®µéƒ½æ˜¯å¯é€‰çš„ï¼Œåªæ›´æ–°æä¾›çš„å­—æ®µã€‚",
+        "description": "¸üĞÂÓÃ»§×ÊÁÏÇëÇó\n\nÓÃÓÚĞŞ¸ÄÓÃ»§µÄ¸öÈËĞÅÏ¢£¬ÈçêÇ³ÆµÈ¡£\nËùÓĞ×Ö¶Î¶¼ÊÇ¿ÉÑ¡µÄ£¬Ö»¸üĞÂÌá¹©µÄ×Ö¶Î¡£",
         "example": {
-          "nickname": "æ–°æ˜µç§°"
+          "nickname": "ĞÂêÇ³Æ"
         }
       },
       "UpdateSubtitleSelectionRequest": {
@@ -4500,7 +5307,7 @@
             },
             "type": "array",
             "title": "Selected Indices",
-            "description": "é€‰ä¸­çš„å­—å¹•åºå·åˆ—è¡¨"
+            "description": "Ñ¡ÖĞµÄ×ÖÄ»ĞòºÅÁĞ±í"
           }
         },
         "type": "object",
@@ -4508,7 +5315,53 @@
           "selected_indices"
         ],
         "title": "UpdateSubtitleSelectionRequest",
-        "description": "æ›´æ–°å­—å¹•é€‰æ‹©ï¼ˆé€‰æ‹©è¦æ‰®æ¼”çš„è§’è‰²ï¼‰"
+        "description": "¸üĞÂ×ÖÄ»Ñ¡Ôñ£¨Ñ¡ÔñÒª°çÑİµÄ½ÇÉ«£©"
+      },
+      "UpdateUserEbookRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "µç×ÓÊé±êÌâ"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content",
+            "description": "µç×ÓÊéÄÚÈİ"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "ÓïÑÔ´úÂë"
+          }
+        },
+        "type": "object",
+        "title": "UpdateUserEbookRequest",
+        "description": "¸üĞÂÓÃ»§µç×ÓÊéÇëÇó"
       },
       "UpdateVoiceProfileRequest": {
         "properties": {
@@ -4517,8 +5370,8 @@
             "maxLength": 50,
             "minLength": 1,
             "title": "Name",
-            "description": "æ–°çš„å£°éŸ³åç§°",
-            "example": "å¦ˆå¦ˆçš„å£°éŸ³"
+            "description": "ĞÂµÄÉùÒôÃû³Æ",
+            "example": "ÂèÂèµÄÉùÒô"
           }
         },
         "type": "object",
@@ -4526,9 +5379,9 @@
           "name"
         ],
         "title": "UpdateVoiceProfileRequest",
-        "description": "æ›´æ–°å£°éŸ³æ¡£æ¡ˆè¯·æ±‚\n\nç”¨äºä¿®æ”¹å£°éŸ³æ¡£æ¡ˆçš„åç§°ã€‚",
+        "description": "¸üĞÂÉùÒôµµ°¸ÇëÇó\n\nÓÃÓÚĞŞ¸ÄÉùÒôµµ°¸µÄÃû³Æ¡£",
         "example": {
-          "name": "å¦ˆå¦ˆçš„å£°éŸ³"
+          "name": "ÂèÂèµÄÉùÒô"
         }
       },
       "ValidationError": {

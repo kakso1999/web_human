@@ -374,11 +374,22 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
                 print(f"[LocalVoiceClone] Voice profile not found: {voice_profile_id}")
                 return None
 
+            # 尝试获取参考音频路径
             ref_audio = profile.get("reference_audio_local")
+
+            # 如果 reference_audio_local 不存在或文件不存在，尝试从 URL 转换
             if not ref_audio or not Path(ref_audio).exists():
-                print(f"[LocalVoiceClone] Reference audio not found")
+                ref_url = profile.get("reference_audio_url")
+                if ref_url:
+                    # 从 URL 路径转换为本地路径
+                    ref_audio = self._convert_url_to_local_path(ref_url)
+                    print(f"[LocalVoiceClone] Using URL-converted path: {ref_audio}")
+
+            if not ref_audio or not Path(ref_audio).exists():
+                print(f"[LocalVoiceClone] Reference audio not found: local={profile.get('reference_audio_local')}, url={profile.get('reference_audio_url')}")
                 return None
 
+            print(f"[LocalVoiceClone] Using reference audio: {ref_audio}")
             await asyncio.to_thread(self._load_models)
 
             speaker_embedding = await asyncio.to_thread(
@@ -393,11 +404,41 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
                 return None
 
             sf.write(output_path, audio, 16000)
+            print(f"[LocalVoiceClone] Audio saved to: {output_path}")
             return output_path
 
         except Exception as e:
             print(f"[LocalVoiceClone] Synthesize error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
+
+    def _convert_url_to_local_path(self, url_path: str) -> str:
+        """
+        将 URL 路径转换为本地文件路径
+
+        例如:
+        - /uploads/voice_clones/references/user_xxx.wav
+        - 转换为: E:\\工作代码\\73_web_human\\uploads\\voice_clones\\references\\user_xxx.wav
+        """
+        if not url_path:
+            return ""
+
+        # 移除开头的斜杠
+        if url_path.startswith("/"):
+            url_path = url_path[1:]
+
+        # 获取项目根目录
+        from core.config.settings import get_settings
+        settings = get_settings()
+
+        # 如果路径以 uploads 开头，使用 UPLOAD_DIR 的父目录
+        if url_path.startswith("uploads"):
+            base_dir = Path(settings.UPLOAD_DIR).parent
+            return str(base_dir / url_path)
+
+        # 否则直接拼接
+        return str(Path(settings.UPLOAD_DIR).parent / url_path)
 
     async def clone_audio_with_text(
         self,
