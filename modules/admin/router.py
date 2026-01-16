@@ -468,21 +468,17 @@ async def transcribe_with_local_whisper(audio_path: str) -> dict:
 
     def _run_whisper():
         from faster_whisper import WhisperModel
+        from core.config.settings import HF_CACHE_DIR
         import os
 
-        # 优先使用本地模型路径
-        model_path = os.environ.get(
-            "WHISPER_MODEL_PATH",
-            r"E:\huggingface_cache\hub\models--Systran--faster-whisper-base"
-        )
+        # 设置 HuggingFace 缓存目录为项目内
+        os.environ['HF_HOME'] = str(HF_CACHE_DIR)
+        os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
 
-        # 检查本地路径是否存在
-        if os.path.exists(model_path):
-            print(f"[Local Whisper] Using local model: {model_path}")
-            model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=True)
-        else:
-            print(f"[Local Whisper] Local model not found, downloading 'base' model...")
-            model = WhisperModel("base", device="cpu", compute_type="int8")
+        # 使用 faster-whisper 的模型名称，会自动下载到项目内的缓存目录
+        model_name = "base"
+        print(f"[Local Whisper] Loading model: {model_name}")
+        model = WhisperModel(model_name, device="cpu", compute_type="int8")
 
         # 转写
         print(f"[Local Whisper] Transcribing: {audio_path}")

@@ -1530,6 +1530,8 @@ class StoryGenerationService:
 
             def transcribe_sync():
                 import os
+                from core.config.settings import HF_CACHE_DIR
+
                 # 完全禁用所有 HuggingFace 网络请求
                 os.environ['HF_HUB_OFFLINE'] = '1'
                 os.environ['TRANSFORMERS_OFFLINE'] = '1'
@@ -1537,49 +1539,26 @@ class StoryGenerationService:
                 os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
                 os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
                 os.environ['DO_NOT_TRACK'] = '1'
-                os.environ['HF_HOME'] = r'E:\huggingface_cache'
-                os.environ['HF_HUB_CACHE'] = r'E:\huggingface_cache\hub'
+                # 使用项目内的模型缓存目录
+                os.environ['HF_HOME'] = str(HF_CACHE_DIR)
+                os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
 
-                # Debug: function started
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] transcribe_sync STARTED\n")
-                    f.flush()
-
-                # 直接使用 CTranslate2 避免 HuggingFace 依赖
-                import ctranslate2
                 import soundfile as sf
                 import numpy as np
-
-                # Debug: imports done
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] imports done (ctranslate2 direct)\n")
-                    f.flush()
-
-                # 使用本地缓存的模型 - base 模型适合 2核4G 服务器
-                model_path = r'E:\huggingface_cache\hub\models--Systran--faster-whisper-base\snapshots\ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66'
-
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] model_path={model_path}\n")
-                    f.flush()
-
-                # 使用 faster_whisper 但指定完整本地路径
                 from faster_whisper import WhisperModel
 
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Creating WhisperModel...\n")
-                    f.flush()
+                # 使用项目内的模型目录，或者使用模型名称让 faster-whisper 自动下载
+                # faster-whisper 支持直接使用模型名称: "base", "small", "medium", "large"
+                # 也可以指定 HuggingFace 模型: "Systran/faster-whisper-base"
+                model_name = "base"  # 使用 base 模型，适合资源受限服务器
 
-                # 强制使用 CPU 避免 CUDA 上下文清理问题（CUDA 版本在线程池中会卡死）
-                model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=True)
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Model loaded (CPU - forced to avoid CUDA hang)\n")
-                    f.flush()
+                logger.info(f"[{job_id}] Loading Whisper model: {model_name}")
+
+                # 强制使用 CPU 避免 CUDA 上下文清理问题
+                model = WhisperModel(model_name, device="cpu", compute_type="int8")
+                logger.info(f"[{job_id}] Whisper model loaded (CPU mode)")
 
                 # 加载音频
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Loading audio from {audio_path}...\n")
-                    f.flush()
-
                 audio, sr = sf.read(audio_path)
                 if audio.ndim > 1:
                     audio = audio.mean(axis=1)
@@ -1589,43 +1568,29 @@ class StoryGenerationService:
                 TARGET_SR = 16000
                 if sr != TARGET_SR:
                     import librosa
-                    with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                        f.write(f"[{job_id}] Resampling from {sr}Hz to {TARGET_SR}Hz...\n")
-                        f.flush()
+                    logger.info(f"[{job_id}] Resampling from {sr}Hz to {TARGET_SR}Hz")
                     audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
                     sr = TARGET_SR
 
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Audio loaded: shape={audio.shape}, sr={sr}\n")
-                    f.flush()
+                logger.info(f"[{job_id}] Audio loaded: shape={audio.shape}, sr={sr}")
 
                 # 转写
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Starting transcription...\n")
-                    f.flush()
-
                 segments, info = model.transcribe(
                     audio,
                     language="en",
                     word_timestamps=True,
-                    vad_filter=False,  # 禁用 VAD，因为可能误过滤整个音频
-                    condition_on_previous_text=False,  # 减少幻觉
-                    no_speech_threshold=0.6,  # 静音检测阈值
-                    compression_ratio_threshold=2.4  # 压缩比阈值，检测重复
+                    vad_filter=False,
+                    condition_on_previous_text=False,
+                    no_speech_threshold=0.6,
+                    compression_ratio_threshold=2.4
                 )
-
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Transcription complete, collecting results...\n")
-                    f.flush()
 
                 # 收集结果
                 all_text = []
                 all_words = []
                 all_segments = []
 
-                seg_count = 0
                 for seg in segments:
-                    seg_count += 1
                     all_text.append(seg.text)
                     all_segments.append({
                         "start": seg.start,
@@ -1640,11 +1605,9 @@ class StoryGenerationService:
                                 "end": word.end
                             })
 
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Collected {seg_count} segments, {len(all_words)} words\n")
-                    f.flush()
+                logger.info(f"[{job_id}] Transcription complete: {len(all_segments)} segments, {len(all_words)} words")
 
-                # 幻觉检测：检查转录结果是否合理
+                # 幻觉检测
                 audio_duration = len(audio) / sr
                 is_hallucination = False
                 hallucination_reason = ""
@@ -1653,63 +1616,34 @@ class StoryGenerationService:
                     first_word_start = all_words[0]["start"]
                     last_word_end = all_words[-1]["end"]
 
-                    # 检查1: 第一个词的时间戳是否异常（超过10秒才开始说话很可疑）
                     if first_word_start > 30:
                         is_hallucination = True
                         hallucination_reason = f"First word starts at {first_word_start:.1f}s (too late)"
 
-                    # 检查2: 最后一个词的时间戳是否超过音频时长
-                    if last_word_end > audio_duration + 5:  # 允许5秒误差
+                    if last_word_end > audio_duration + 5:
                         is_hallucination = True
                         hallucination_reason = f"Last word at {last_word_end:.1f}s exceeds audio duration {audio_duration:.1f}s"
 
-                    # 检查3: 文本重复率过高（幻觉常见模式）
                     if len(all_text) > 5:
                         unique_texts = set(t.strip().lower() for t in all_text)
                         repetition_ratio = 1 - (len(unique_texts) / len(all_text))
-                        if repetition_ratio > 0.8:  # 超过80%重复
+                        if repetition_ratio > 0.8:
                             is_hallucination = True
                             hallucination_reason = f"High text repetition: {repetition_ratio:.1%}"
 
                 if is_hallucination:
-                    with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                        f.write(f"[{job_id}] HALLUCINATION DETECTED: {hallucination_reason}\n")
-                        f.flush()
-                    # 返回 None 表示转录失败，让上层处理
+                    logger.warning(f"[{job_id}] HALLUCINATION DETECTED: {hallucination_reason}")
                     return None
 
-                # 构建结果
-                result_dict = {
+                return {
                     "text": " ".join(all_text),
                     "words": all_words,
                     "segments": all_segments
                 }
 
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Result created with {len(all_words)} words, returning...\n")
-                    f.flush()
-
-                # CPU 模式下不需要显式清理，直接返回
-                return result_dict
-
             # 在线程池中执行同步转写
             loop = asyncio.get_running_loop()
-
-            try:
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] About to run transcribe_sync in executor...\n")
-                    f.flush()
-            except:
-                pass
-
             result = await loop.run_in_executor(None, transcribe_sync)
-
-            try:
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] Executor returned, result={result is not None}\n")
-                    f.flush()
-            except:
-                pass
 
             if result:
                 logger.info(f"[{job_id}] Chunk {chunk_index}: Local Whisper success, {len(result.get('words', []))} words")
@@ -1718,15 +1652,6 @@ class StoryGenerationService:
         except Exception as e:
             logger.error(f"[{job_id}] Chunk {chunk_index}: Local Whisper error: {e}")
             import traceback
-            traceback.print_exc()
-            # Write error to debug file
-            try:
-                with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                    f.write(f"[{job_id}] LOCAL WHISPER ERROR: {e}\n")
-                    f.write(traceback.format_exc())
-                    f.flush()
-            except:
-                pass
             traceback.print_exc()
             return None
 

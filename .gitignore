@@ -31,18 +31,12 @@ uploads/*
 *.log
 
 # Models (大文件)
-models/
 *.pt
 *.pth
 *.bin
 *.safetensors
 *.onnx
 *.ckpt
-
-# Voice Clone Server
-voice_clone_server/venv/
-voice_clone_server/uploads/
-voice_clone_server/outputs/
 
 # Temporary files
 nul
@@ -68,7 +62,7 @@ video_tests/
 src_backup_*/
 
 # Large model files
-pretrained_models/
+pretrained_models/huggingface/
 torch_wheels/
 
 # Misc temp

@@ -1,9 +1,0 @@
-# 语音克隆服务依赖 (FastAPI 等)
-# 这些是小型依赖，下载很快
-# pip install -r requirements_server.txt
-
-fastapi==0.125.0
-uvicorn==0.34.3
-python-multipart==0.0.20
-pydantic==2.12.1
-aiofiles==24.1.0

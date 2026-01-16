@@ -2,9 +2,23 @@
 配置管理模块
 使用 pydantic-settings 从环境变量加载配置
 """
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings
+
+# 项目根目录 (core/config/settings.py -> 项目根)
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# 模型缓存目录 (项目内)
+MODELS_DIR = BASE_DIR / "pretrained_models"
+HF_CACHE_DIR = MODELS_DIR / "huggingface"
+
+# 设置 HuggingFace 缓存目录为项目内目录
+os.environ.setdefault('HF_HOME', str(HF_CACHE_DIR))
+os.environ.setdefault('HF_HUB_CACHE', str(HF_CACHE_DIR / 'hub'))
+os.environ.setdefault('TRANSFORMERS_CACHE', str(HF_CACHE_DIR))
 
 
 class Settings(BaseSettings):
