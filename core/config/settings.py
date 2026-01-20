@@ -11,14 +11,22 @@ from pydantic_settings import BaseSettings
 # 项目根目录 (core/config/settings.py -> 项目根)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# 模型缓存目录 (项目内)
+# 模型缓存目录
 MODELS_DIR = BASE_DIR / "pretrained_models"
-HF_CACHE_DIR = MODELS_DIR / "huggingface"
 
-# 设置 HuggingFace 缓存目录为项目内目录
-os.environ.setdefault('HF_HOME', str(HF_CACHE_DIR))
-os.environ.setdefault('HF_HUB_CACHE', str(HF_CACHE_DIR / 'hub'))
-os.environ.setdefault('TRANSFORMERS_CACHE', str(HF_CACHE_DIR))
+# HuggingFace 缓存目录
+# 使用 C 盘根目录避免中文路径问题，服务器部署时可通过环境变量 HF_CACHE_PATH 自定义
+_default_hf_cache = "C:/hf_models" if os.name == 'nt' else "/opt/hf_models"
+HF_CACHE_DIR = Path(os.environ.get('HF_CACHE_PATH', _default_hf_cache))
+
+# 确保目录存在
+HF_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+# 强制设置 HuggingFace 缓存目录
+os.environ['HF_HOME'] = str(HF_CACHE_DIR)
+os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
+os.environ['TRANSFORMERS_CACHE'] = str(HF_CACHE_DIR)
 
 
 class Settings(BaseSettings):

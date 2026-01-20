@@ -120,19 +120,50 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
         start = time.time()
 
         try:
-            # 设置 HuggingFace 镜像
-            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-
+            import os
+            from pathlib import Path
             from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
             from speechbrain.inference import EncoderClassifier
+            from core.config.settings import MODELS_DIR, HF_CACHE_DIR
 
-            self.processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
-            self.tts_model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
-            self.vocoder = SpeechT5HifiGan.from_pretrained("microsoft/speecht5_hifigan")
+            # 确保环境变量正确设置
+            os.environ['HF_HOME'] = str(HF_CACHE_DIR)
+            os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
+            print(f"[LocalVoiceClone] HF_CACHE_DIR: {HF_CACHE_DIR}")
 
+            # 确保模型目录存在
+            speaker_model_dir = MODELS_DIR / "spkrec-xvect-voxceleb"
+            speaker_model_dir.mkdir(parents=True, exist_ok=True)
+
+            # 辅助函数：获取模型的本地路径
+            def get_local_model_path(model_name: str) -> str:
+                """从 HF 缓存目录获取模型的本地路径"""
+                hub_dir = HF_CACHE_DIR / 'hub'
+                model_dir_name = f"models--{model_name.replace('/', '--')}"
+                model_dir = hub_dir / model_dir_name / 'snapshots'
+                if model_dir.exists():
+                    snapshots = list(model_dir.iterdir())
+                    if snapshots:
+                        # 返回第一个 snapshot 目录
+                        return str(snapshots[0])
+                # 如果本地不存在，返回模型名称让它自动下载
+                return model_name
+
+            # 获取本地模型路径
+            tts_path = get_local_model_path("microsoft/speecht5_tts")
+            vocoder_path = get_local_model_path("microsoft/speecht5_hifigan")
+
+            print(f"[LocalVoiceClone] Loading SpeechT5 processor from: {tts_path}")
+            self.processor = SpeechT5Processor.from_pretrained(tts_path, local_files_only=Path(tts_path).exists())
+            print("[LocalVoiceClone] Loading SpeechT5 TTS model...")
+            self.tts_model = SpeechT5ForTextToSpeech.from_pretrained(tts_path, local_files_only=Path(tts_path).exists())
+            print(f"[LocalVoiceClone] Loading SpeechT5 vocoder from: {vocoder_path}")
+            self.vocoder = SpeechT5HifiGan.from_pretrained(vocoder_path, local_files_only=Path(vocoder_path).exists())
+
+            print("[LocalVoiceClone] Loading speaker encoder...")
             self.speaker_model = EncoderClassifier.from_hparams(
                 source="speechbrain/spkrec-xvect-voxceleb",
-                savedir="pretrained_models/spkrec-xvect-voxceleb",
+                savedir=str(speaker_model_dir),
                 run_opts={"device": self.device}
             )
 
@@ -141,6 +172,8 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
 
         except Exception as e:
             print(f"[LocalVoiceClone] Failed to load models: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
     def _extract_speaker_embedding(self, audio_path: str) -> torch.Tensor:

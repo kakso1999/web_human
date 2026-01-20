@@ -755,6 +755,7 @@ class VoiceSeparationService:
         import sys
         import tempfile
         import os
+        from core.config.settings import HF_CACHE_DIR
 
         # 准备临时文件
         segments_file = os.path.join(tempfile.gettempdir(), f"segments_{story_id}_{speaker_id}.json")
@@ -772,10 +773,12 @@ class VoiceSeparationService:
         lang_param = f'"{language}"' if language else 'None'
         script = f'''
 import sys
+import os
 import json
 from faster_whisper import WhisperModel
 import soundfile as sf
 import numpy as np
+import torch
 
 speaker_id = "{speaker_id}"
 audio_path = r"{audio_path}"
@@ -784,8 +787,21 @@ output_file = r"{output_file}"
 model_size = "{model_size}"
 language = {lang_param}
 
-print(f"[{{speaker_id}}] 加载 Whisper 模型 ({{model_size}})...", flush=True)
-model = WhisperModel(model_size, device="cuda", compute_type="float16")
+# 设置 HuggingFace 缓存目录 (使用项目内缓存)
+hf_cache_dir = r"{str(HF_CACHE_DIR)}"
+os.environ['HF_HOME'] = hf_cache_dir
+os.environ['HF_HUB_CACHE'] = os.path.join(hf_cache_dir, 'hub')
+os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+
+# 检测是否有 GPU
+use_cuda = torch.cuda.is_available()
+device = "cuda" if use_cuda else "cpu"
+compute_type = "float16" if use_cuda else "int8"
+
+print(f"[{{speaker_id}}] 加载 Whisper 模型 ({{model_size}}, device={{device}})...", flush=True)
+# 使用完整模型名称以支持自动下载
+full_model_name = f"Systran/faster-whisper-{{model_size}}"
+model = WhisperModel(full_model_name, device=device, compute_type=compute_type)
 
 print(f"[{{speaker_id}}] 加载音频: {{audio_path}}", flush=True)
 audio, sr = sf.read(audio_path)
