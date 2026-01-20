@@ -74,14 +74,86 @@ class StoryGenerationService:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
         return cls._instance
 
     def __init__(self):
+        # 防止重复初始化（实例级别）
+        if getattr(self, '_initialized', False):
+            return
+        self._initialized = True
+
         self.repository = get_story_generation_repository()
         self.apicore = get_apicore_client()
         self.upload_dir = Path(settings.UPLOAD_DIR) / "story_generation"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.media_bed_url = settings.MEDIA_BED_URL
+
+        # 任务队列：串行处理，避免资源竞争
+        self._task_queue: asyncio.Queue = asyncio.Queue()
+        self._worker_started = False
+        self._current_job_id: Optional[str] = None
+
+    async def start_worker(self):
+        """启动任务队列 worker（应用启动时调用）"""
+        if self._worker_started:
+            return
+        self._worker_started = True
+        asyncio.create_task(self._queue_worker())
+        logger.info("Story generation queue worker started")
+
+        # 恢复未完成的任务（pending 或 processing 状态）
+        await self._recover_pending_jobs()
+
+    async def _recover_pending_jobs(self):
+        """恢复未完成的任务到队列"""
+        try:
+            pending_jobs = await self.repository.get_pending_jobs()
+            for job in pending_jobs:
+                job_id = str(job["_id"])
+                mode = job.get("mode", "single")
+                await self._task_queue.put((job_id, mode))
+                logger.info(f"[Queue] Recovered job: {job_id}, mode={mode}")
+
+            if pending_jobs:
+                logger.info(f"[Queue] Recovered {len(pending_jobs)} pending jobs")
+        except Exception as e:
+            logger.error(f"[Queue] Failed to recover pending jobs: {e}")
+
+    async def _queue_worker(self):
+        """队列 worker：串行处理任务"""
+        while True:
+            try:
+                # 从队列获取任务
+                job_id, mode = await self._task_queue.get()
+                self._current_job_id = job_id
+                logger.info(f"[Queue] Processing job: {job_id}, mode={mode}, queue size={self._task_queue.qsize()}")
+
+                try:
+                    # 串行执行任务
+                    if mode == "dual":
+                        await self._process_job_multi_speaker(job_id)
+                    else:
+                        await self._process_job(job_id)
+                except Exception as e:
+                    logger.error(f"[Queue] Job {job_id} failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
+                    self._current_job_id = None
+                    self._task_queue.task_done()
+
+            except Exception as e:
+                logger.error(f"[Queue] Worker error: {e}")
+                await asyncio.sleep(1)
+
+    def get_queue_status(self) -> Dict[str, Any]:
+        """获取队列状态"""
+        return {
+            "queue_size": self._task_queue.qsize(),
+            "current_job": self._current_job_id,
+            "worker_running": self._worker_started
+        }
 
     # ===================== 任务管理 =====================
 
@@ -160,14 +232,12 @@ class StoryGenerationService:
             full_video=full_video
         )
 
-        # 根据模式启动对应的处理流程
-        if mode == "dual":
-            asyncio.create_task(self._process_job_multi_speaker(job_id))
-        else:
-            asyncio.create_task(self._process_job(job_id))
+        # 将任务放入队列（串行处理）
+        await self._task_queue.put((job_id, mode))
+        queue_position = self._task_queue.qsize()
 
-        logger.info(f"[{job_id}] Job created: mode={mode}, full_video={full_video}")
-        return {"id": job_id, "status": "pending"}
+        logger.info(f"[{job_id}] Job queued: mode={mode}, full_video={full_video}, position={queue_position}")
+        return {"id": job_id, "status": "pending", "queue_position": queue_position}
 
     async def get_job(self, user_id: str, job_id: str) -> Optional[Dict[str, Any]]:
         """获取任务详情"""
@@ -801,14 +871,75 @@ class StoryGenerationService:
             face_bbox = profile.get("face_bbox")
             ext_bbox = profile.get("ext_bbox")
 
-            if not image_url or not face_bbox or not ext_bbox:
-                logger.error(f"[{job_id}] Invalid avatar profile")
+            if not image_url:
+                logger.error(f"[{job_id}] Invalid avatar profile: missing image_url")
+                return None
+
+            # 调用数字人服务
+            from modules.digital_human.factory import get_digital_human_service
+            from core.config.settings import get_settings
+            settings = get_settings()
+
+            dh_service = get_digital_human_service()
+
+            # 本地模式：不需要 face_bbox 和 ext_bbox
+            if settings.AI_SERVICE_MODE == "local":
+                # 本地模式：直接调用 generate_digital_human_video
+                logger.info(f"[{job_id}] Using local digital human service for segment {segment_index}")
+
+                # 获取本地文件路径
+                job = await self.repository.get_job(job_id)
+                job_dir = Path(settings.UPLOAD_DIR) / "story_generation" / job_id
+                job_dir.mkdir(parents=True, exist_ok=True)
+
+                # 处理图片路径
+                if image_url.startswith("/"):
+                    local_image_path = str(Path(settings.UPLOAD_DIR).parent / image_url.lstrip("/"))
+                elif image_url.startswith("http"):
+                    # 下载远程图片
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(image_url) as resp:
+                            if resp.status == 200:
+                                local_image_path = str(job_dir / f"avatar_{segment_index}.jpg")
+                                with open(local_image_path, 'wb') as f:
+                                    f.write(await resp.read())
+                            else:
+                                logger.error(f"[{job_id}] Failed to download avatar image")
+                                return None
+                else:
+                    local_image_path = str(Path(settings.UPLOAD_DIR).parent / image_url)
+
+                # 处理音频路径
+                if audio_url.startswith("/"):
+                    local_audio_path = str(Path(settings.UPLOAD_DIR).parent / audio_url.lstrip("/"))
+                else:
+                    local_audio_path = audio_url
+
+                output_path = str(job_dir / f"digital_human_seg{segment_index}.mp4")
+
+                logger.info(f"[{job_id}] Local DH: image={local_image_path}, audio={local_audio_path}")
+
+                video_path = await dh_service.generate_digital_human_video(
+                    image_path=local_image_path,
+                    audio_path=local_audio_path,
+                    output_path=output_path
+                )
+
+                if video_path:
+                    video_url = f"/uploads/story_generation/{job_id}/digital_human_seg{segment_index}.mp4"
+                    logger.info(f"[{job_id}] Segment {segment_index} digital human: {video_url}")
+                    return video_url
+                else:
+                    logger.error(f"[{job_id}] Local digital human generation failed for segment {segment_index}")
+                    return None
+
+            # 云端模式：需要 face_bbox 和 ext_bbox
+            if not face_bbox or not ext_bbox:
+                logger.error(f"[{job_id}] Invalid avatar profile: cloud mode requires face_bbox and ext_bbox")
                 return None
 
             # 调用 EMO API
-            from modules.digital_human.factory import get_digital_human_service
-            dh_service = get_digital_human_service()
-
             emo_task_id = await dh_service._create_emo_task(
                 task_id=f"{job_id}_seg{segment_index}",
                 image_url=image_url,
@@ -1532,14 +1663,10 @@ class StoryGenerationService:
                 import os
                 from core.config.settings import HF_CACHE_DIR
 
-                # 完全禁用所有 HuggingFace 网络请求
-                os.environ['HF_HUB_OFFLINE'] = '1'
-                os.environ['TRANSFORMERS_OFFLINE'] = '1'
+                # 设置 HuggingFace 缓存目录
                 os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
-                os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN'] = '1'
                 os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
                 os.environ['DO_NOT_TRACK'] = '1'
-                # 使用项目内的模型缓存目录
                 os.environ['HF_HOME'] = str(HF_CACHE_DIR)
                 os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
 
@@ -1547,15 +1674,26 @@ class StoryGenerationService:
                 import numpy as np
                 from faster_whisper import WhisperModel
 
-                # 使用项目内的模型目录，或者使用模型名称让 faster-whisper 自动下载
-                # faster-whisper 支持直接使用模型名称: "base", "small", "medium", "large"
-                # 也可以指定 HuggingFace 模型: "Systran/faster-whisper-base"
-                model_name = "base"  # 使用 base 模型，适合资源受限服务器
+                # 尝试使用本地缓存的模型
+                model_path = HF_CACHE_DIR / 'hub' / 'models--Systran--faster-whisper-base' / 'snapshots'
+                local_files_only = False  # 默认允许下载
 
-                logger.info(f"[{job_id}] Loading Whisper model: {model_name}")
+                if model_path.exists():
+                    snapshot_dirs = list(model_path.glob('*'))
+                    if snapshot_dirs:
+                        model_path = str(snapshot_dirs[0])
+                        local_files_only = True  # 本地存在则使用本地
+                        logger.info(f"[{job_id}] Using cached Whisper model: {model_path}")
+                    else:
+                        model_path = "Systran/faster-whisper-base"
+                        logger.info(f"[{job_id}] Downloading Whisper model: {model_path}")
+                else:
+                    # 模型不存在，使用模型名称（会自动下载）
+                    model_path = "Systran/faster-whisper-base"
+                    logger.info(f"[{job_id}] Downloading Whisper model: {model_path}")
 
                 # 强制使用 CPU 避免 CUDA 上下文清理问题
-                model = WhisperModel(model_name, device="cpu", compute_type="int8")
+                model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=local_files_only)
                 logger.info(f"[{job_id}] Whisper model loaded (CPU mode)")
 
                 # 加载音频
