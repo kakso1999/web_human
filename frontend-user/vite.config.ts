@@ -6,7 +6,7 @@ export default defineConfig(({ mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd(), '')
 
-  const port = parseInt(env.VITE_PORT || '3000')
+  const port = parseInt(env.VITE_PORT || '3001')
   const apiBaseUrl = env.VITE_API_BASE_URL || 'http://localhost:8000'
 
   return {
@@ -19,7 +19,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
       port: port,
-      allowedHosts: ['localhost', '.ngrok-free.app'],
+      allowedHosts: true,
       proxy: {
         '/api': {
           target: apiBaseUrl,

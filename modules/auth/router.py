@@ -167,6 +167,79 @@ async def get_google_auth_url():
     return success_response({"url": google_auth_url})
 
 
+@router.post("/admin/init")
+async def init_admin(
+    response: Response,
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """
+    初始化管理员账号
+
+    仅当数据库中不存在任何管理员时可用。
+    创建默认管理员账号：admin / admin123
+
+    **注意**: 首次部署后请立即修改密码！
+    """
+    from modules.auth.repository import UserRepository
+
+    user_repo = UserRepository()
+
+    # 检查是否已存在管理员
+    admin_count = await user_repo.count({"role": {"$in": ["admin", "super"]}})
+    if admin_count > 0:
+        return {"code": 40003, "message": "管理员已存在，无法重复初始化", "data": None}
+
+    # 创建默认管理员
+    admin_id = await user_repo.create_user(
+        email="admin@echobot.local",
+        password="admin123",
+        nickname="Admin",
+        role="admin"
+    )
+
+    # 获取用户信息
+    admin = await user_repo.get_by_id(admin_id)
+
+    # 生成 Token
+    from core.security.jwt import create_token_pair
+    tokens = create_token_pair(admin_id, "admin")
+
+    # 设置 Cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=tokens.refresh_token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+    )
+
+    return success_response({
+        "message": "管理员初始化成功",
+        "email": "admin@echobot.local",
+        "password": "admin123",
+        "warning": "请立即修改默认密码！",
+        "tokens": tokens.model_dump()
+    })
+
+
+@router.get("/admin/check")
+async def check_admin():
+    """
+    检查是否存在管理员账号
+
+    用于前端判断是否需要显示初始化管理员按钮。
+    """
+    from modules.auth.repository import UserRepository
+
+    user_repo = UserRepository()
+    admin_count = await user_repo.count({"role": {"$in": ["admin", "super"]}})
+
+    return success_response({
+        "has_admin": admin_count > 0
+    })
+
+
 @router.get("/google/callback")
 async def google_callback(
     code: str = Query(..., description="Google 授权码"),

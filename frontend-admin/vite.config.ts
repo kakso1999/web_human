@@ -12,8 +12,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
     server: {
+      host: '0.0.0.0',
       port: port,
-      allowedHosts: ['localhost', '.ngrok-free.app'],
+      allowedHosts: true,
       proxy: {
         '/api': {
           target: apiBaseUrl,
