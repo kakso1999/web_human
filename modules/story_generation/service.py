@@ -29,6 +29,7 @@ except ImportError:
     pass  # DNS 补丁可选
 
 from core.config.settings import get_settings
+from core.utils import get_ffmpeg_path, get_ffprobe_path
 from .repository import get_story_generation_repository, StoryGenerationRepository
 from .apicore_client import get_apicore_client, APICoreClient
 from .schemas import StoryJobStatus, StoryJobStep
@@ -989,7 +990,7 @@ class StoryGenerationService:
             duration = end_time - start_time
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-ss', str(start_time),
                 '-i', str(video_path),
                 '-t', str(duration),
@@ -1083,8 +1084,8 @@ class StoryGenerationService:
         digital_human_url: str,
         audio_url: str
     ) -> Optional[str]:
-        """单个片段的画中画合成"""
-        logger.info(f"[{job_id}] Compositing segment {segment_index} with PIP")
+        """单个片段的画中画合成 - 内存优化版本（输出720p）"""
+        logger.info(f"[{job_id}] Compositing segment {segment_index} with PIP (memory-optimized)")
 
         try:
             import httpx
@@ -1107,7 +1108,7 @@ class StoryGenerationService:
 
             # 获取原视频尺寸
             probe_cmd = [
-                'ffprobe', '-v', 'error',
+                get_ffprobe_path(), '-v', 'error',
                 '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height',
                 '-of', 'csv=p=0',
@@ -1116,13 +1117,13 @@ class StoryGenerationService:
             returncode, stdout, stderr = await run_ffmpeg_command(probe_cmd)
 
             try:
-                width, height = map(int, stdout.decode().strip().split(','))
+                orig_width, orig_height = map(int, stdout.decode().strip().split(','))
             except:
-                width, height = 1920, 1080
+                orig_width, orig_height = 1920, 1080
 
-            # 获取数字人视频尺寸（保持原比例）
+            # 获取数字人视频尺寸
             probe_dh_cmd = [
-                'ffprobe', '-v', 'error',
+                get_ffprobe_path(), '-v', 'error',
                 '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height',
                 '-of', 'csv=p=0',
@@ -1133,24 +1134,38 @@ class StoryGenerationService:
             try:
                 dh_width, dh_height = map(int, stdout.decode().strip().split(','))
             except:
-                dh_width, dh_height = 512, 512  # EMO 默认输出
+                dh_width, dh_height = 512, 512
 
-            logger.info(f"[{job_id}] Original video: {width}x{height}, Digital human: {dh_width}x{dh_height}")
+            logger.info(f"[{job_id}] Original video: {orig_width}x{orig_height}, Digital human: {dh_width}x{dh_height}")
 
-            # 计算画中画尺寸（保持数字人原比例）
-            pip_width = width // 4
-            pip_height = int(pip_width * dh_height / dh_width)  # 保持原比例
-            pip_x = width - pip_width - 20
-            pip_y = 20
+            # ========== 内存优化：输出720p ==========
+            # 如果原视频大于720p，缩放到720p以节省内存
+            if orig_width > 1280 or orig_height > 720:
+                out_width, out_height = 1280, 720
+                logger.info(f"[{job_id}] Memory optimization: output scaled to {out_width}x{out_height}")
+            else:
+                out_width, out_height = orig_width, orig_height
 
-            # 画中画合成（使用 -1 保持比例）
+            # 计算PIP尺寸（基于输出分辨率）
+            pip_width = out_width // 5  # 1/5 宽度
+            pip_height = int(pip_width * dh_height / dh_width)
+            # 确保尺寸是偶数
+            pip_width = pip_width if pip_width % 2 == 0 else pip_width + 1
+            pip_height = pip_height if pip_height % 2 == 0 else pip_height + 1
+            pip_x = out_width - pip_width - 10
+            pip_y = 10
+
+            # 构建 filter_complex：同时缩放主视频和PIP视频，然后叠加
             filter_complex = (
-                f"[1:v]scale={pip_width}:-1[pip];"
-                f"[0:v][pip]overlay={pip_x}:{pip_y}:shortest=1[outv]"
+                f"[0:v]scale={out_width}:{out_height}[main];"
+                f"[1:v]scale={pip_width}:{pip_height}[pip];"
+                f"[main][pip]overlay={pip_x}:{pip_y}:shortest=1[outv]"
             )
 
+            # 使用内存优化的FFmpeg命令
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
+                '-threads', '1',  # 单线程减少内存
                 '-i', video_path,
                 '-i', str(dh_video_path),
                 '-i', str(audio_path),
@@ -1158,23 +1173,25 @@ class StoryGenerationService:
                 '-map', '[outv]',
                 '-map', '2:a',
                 '-c:v', 'libx264',
-                '-preset', 'fast',
-                '-crf', '23',
+                '-preset', 'ultrafast',  # 最快预设，内存最少
+                '-crf', '25',
                 '-c:a', 'aac',
-                '-b:a', '192k',
+                '-b:a', '128k',
                 '-shortest',
                 str(output_path)
             ]
 
+            logger.info(f"[{job_id}] PIP composite: {out_width}x{out_height} with {pip_width}x{pip_height} overlay at ({pip_x},{pip_y})")
             returncode, stdout, stderr = await run_ffmpeg_command(cmd)
 
             if returncode != 0:
-                logger.error(f"[{job_id}] FFmpeg PIP composite error: {stderr.decode()[:300]}")
+                logger.error(f"[{job_id}] FFmpeg PIP error: {stderr.decode()[-1500:]}")
                 return None
 
             if not output_path.exists():
                 return None
 
+            logger.info(f"[{job_id}] Segment {segment_index} PIP composite done")
             return str(output_path.resolve())
 
         except Exception as e:
@@ -1204,7 +1221,7 @@ class StoryGenerationService:
             output_path = self.upload_dir / f"{job_id}_seg{segment_index}_composited.mp4"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', video_path,
                 '-i', str(audio_path),
                 '-c:v', 'copy',
@@ -1251,7 +1268,7 @@ class StoryGenerationService:
             output_path = self.upload_dir / f"{job_id}_final.mp4"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', str(concat_list_path),
@@ -1330,7 +1347,7 @@ class StoryGenerationService:
             audio_path = self.upload_dir / f"{job_id}_audio.mp3"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', str(video_path),
                 '-vn',  # 无视频
                 '-acodec', 'libmp3lame',
@@ -1518,7 +1535,7 @@ class StoryGenerationService:
 
             # 使用 FFmpeg 分割
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', audio_path,
                 '-ss', str(start_time),
                 '-t', str(chunk_duration),
@@ -2255,7 +2272,7 @@ class StoryGenerationService:
     async def _get_audio_duration(self, audio_path: str) -> float:
         """获取音频时长（秒）"""
         cmd = [
-            'ffprobe',
+            get_ffprobe_path(),
             '-v', 'error',
             '-show_entries', 'format=duration',
             '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -2304,7 +2321,7 @@ class StoryGenerationService:
         filter_str = ",".join(atempo_filters)
 
         cmd = [
-            'ffmpeg', '-y',
+            get_ffmpeg_path(), '-y',
             '-i', input_path,
             '-filter:a', filter_str,
             '-vn',
@@ -2323,7 +2340,7 @@ class StoryGenerationService:
     ) -> bool:
         """截断音频到指定时长"""
         cmd = [
-            'ffmpeg', '-y',
+            get_ffmpeg_path(), '-y',
             '-i', input_path,
             '-t', str(duration),
             '-acodec', 'copy',
@@ -2376,7 +2393,7 @@ class StoryGenerationService:
         full_filter = ";".join(filter_parts) + ";" + mix_filter
 
         cmd = [
-            'ffmpeg', '-y',
+            get_ffmpeg_path(), '-y',
             *inputs,
             '-filter_complex', full_filter,
             '-map', '[out]',
@@ -2575,7 +2592,7 @@ class StoryGenerationService:
             truncated_path = self.upload_dir / f"{job_id}_emo_truncated.mp3"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', str(audio_path),
                 '-t', str(max_duration),
                 '-acodec', 'libmp3lame',
@@ -2696,7 +2713,7 @@ class StoryGenerationService:
 
                         # 混合音频：克隆语音 + 背景音乐（音量降低）
                         mix_cmd = [
-                            'ffmpeg', '-y',
+                            get_ffmpeg_path(), '-y',
                             '-i', str(cloned_audio_path),
                             '-i', str(instrumental_path),
                             '-filter_complex',
@@ -2717,7 +2734,7 @@ class StoryGenerationService:
             # 合成最终视频：原视频画面 + 音频
             logger.info(f"[{job_id}] Compositing final video...")
             composite_cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', str(video_path),
                 '-i', str(final_audio_path),
                 '-c:v', 'copy',  # 直接复制视频流
@@ -2845,7 +2862,7 @@ class StoryGenerationService:
 
             # 获取原视频尺寸
             probe_cmd = [
-                'ffprobe', '-v', 'error',
+                get_ffprobe_path(), '-v', 'error',
                 '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height',
                 '-of', 'csv=p=0',
@@ -2865,7 +2882,7 @@ class StoryGenerationService:
 
             # 获取数字人视频尺寸（保持原比例）
             probe_dh_cmd = [
-                'ffprobe', '-v', 'error',
+                get_ffprobe_path(), '-v', 'error',
                 '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height',
                 '-of', 'csv=p=0',
@@ -2902,7 +2919,7 @@ class StoryGenerationService:
 
                         # 混合：克隆语音 + 背景音乐（音量降低）
                         mix_cmd = [
-                            'ffmpeg', '-y',
+                            get_ffmpeg_path(), '-y',
                             '-i', str(cloned_audio_path),
                             '-i', str(instrumental_path),
                             '-filter_complex',
@@ -2925,7 +2942,7 @@ class StoryGenerationService:
             )
 
             composite_cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', str(video_path),        # 原视频
                 '-i', str(dh_video_path),     # 数字人视频
                 '-i', str(final_audio_path),  # 克隆语音（或混合音频）
@@ -3852,7 +3869,7 @@ class StoryGenerationService:
 
             # 获取原视频尺寸
             probe_cmd = [
-                'ffprobe', '-v', 'error',
+                get_ffprobe_path(), '-v', 'error',
                 '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height',
                 '-of', 'csv=p=0',
@@ -3997,7 +4014,7 @@ class StoryGenerationService:
             filter_complex = f"{video_filter};{audio_filter}"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 *inputs,
                 '-filter_complex', filter_complex,
                 '-map', '[outv]',
@@ -4055,7 +4072,7 @@ class StoryGenerationService:
             else:
                 # 需要获取视频宽度
                 probe_cmd = [
-                    'ffprobe', '-v', 'error',
+                    get_ffprobe_path(), '-v', 'error',
                     '-select_streams', 'v:0',
                     '-show_entries', 'stream=width',
                     '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -4110,7 +4127,7 @@ class StoryGenerationService:
             filter_complex = f"{video_filter};{audio_filter}"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 *inputs,
                 '-filter_complex', filter_complex,
                 '-map', '[outv]',
@@ -4184,7 +4201,7 @@ class StoryGenerationService:
                 final_audio = "[voices]"
 
             mix_cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 *inputs,
                 '-filter_complex', audio_filter,
                 '-map', final_audio,
@@ -4200,7 +4217,7 @@ class StoryGenerationService:
 
             # 合成视频 + 混合音频
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', video_path,
                 '-i', str(mixed_audio_path),
                 '-c:v', 'copy',
@@ -4275,7 +4292,7 @@ class StoryGenerationService:
             output_path = self.upload_dir / f"{job_id}_{speaker_id}_emo_seg{segment_index}.mp3"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-i', audio_path,
                 '-ss', str(start_time),
                 '-t', str(duration),
@@ -4474,7 +4491,7 @@ class StoryGenerationService:
             output_path = self.upload_dir / f"{job_id}_{speaker_id}_dh_full.mp4"
 
             cmd = [
-                'ffmpeg', '-y',
+                get_ffmpeg_path(), '-y',
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', str(concat_list_path),
