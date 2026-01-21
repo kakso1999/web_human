@@ -12,6 +12,53 @@ from typing import Optional, Any, Tuple
 from pathlib import Path
 
 
+def get_ffmpeg_path() -> str:
+    """获取 FFmpeg 可执行文件路径"""
+    # 首先检查系统 PATH
+    import shutil
+    ffmpeg_in_path = shutil.which('ffmpeg')
+    if ffmpeg_in_path:
+        return ffmpeg_in_path
+
+    # 检查常见安装位置
+    possible_paths = [
+        r"C:\ffmpeg\ffmpeg-8.0.1-essentials_build\bin\ffmpeg.exe",
+        r"C:\ffmpeg\bin\ffmpeg.exe",
+        r"C:\Program Files\ffmpeg\bin\ffmpeg.exe",
+        "/usr/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+
+    # 如果都找不到，返回默认值（让系统报错）
+    return "ffmpeg"
+
+
+def get_ffprobe_path() -> str:
+    """获取 FFprobe 可执行文件路径"""
+    import shutil
+    ffprobe_in_path = shutil.which('ffprobe')
+    if ffprobe_in_path:
+        return ffprobe_in_path
+
+    possible_paths = [
+        r"C:\ffmpeg\ffmpeg-8.0.1-essentials_build\bin\ffprobe.exe",
+        r"C:\ffmpeg\bin\ffprobe.exe",
+        r"C:\Program Files\ffmpeg\bin\ffprobe.exe",
+        "/usr/bin/ffprobe",
+        "/usr/local/bin/ffprobe",
+    ]
+
+    for path in possible_paths:
+        if os.path.exists(path):
+            return path
+
+    return "ffprobe"
+
+
 def generate_id() -> str:
     """生成唯一 ID"""
     return str(uuid.uuid4())
@@ -179,9 +226,10 @@ def get_video_duration(video_path: str) -> int:
         视频时长（秒），失败返回0
     """
     try:
+        ffprobe_path = get_ffprobe_path()
         result = subprocess.run(
             [
-                'ffprobe',
+                ffprobe_path,
                 '-v', 'error',
                 '-show_entries', 'format=duration',
                 '-of', 'json',
@@ -225,9 +273,10 @@ def extract_video_thumbnail(video_path: str, output_path: str, time_seconds: int
         if time_seconds < 1:
             time_seconds = 1
 
+        ffmpeg_path = get_ffmpeg_path()
         result = subprocess.run(
             [
-                'ffmpeg',
+                ffmpeg_path,
                 '-y',  # 覆盖输出文件
                 '-i', video_path,
                 '-ss', str(time_seconds),  # 跳转到指定时间
@@ -257,9 +306,10 @@ def extract_audio_from_video(video_path: str, output_path: str) -> bool:
         是否成功
     """
     try:
+        ffmpeg_path = get_ffmpeg_path()
         result = subprocess.run(
             [
-                'ffmpeg',
+                ffmpeg_path,
                 '-y',  # 覆盖输出文件
                 '-i', video_path,
                 '-vn',  # 不处理视频

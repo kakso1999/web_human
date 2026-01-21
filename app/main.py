@@ -58,6 +58,12 @@ async def lifespan(app: FastAPI):
     # import asyncio
     # asyncio.create_task(voice_clone_service.preload_model())
 
+    # 启动故事生成队列 worker
+    from modules.story_generation.service import StoryGenerationService
+    story_gen_service = StoryGenerationService()
+    await story_gen_service.start_worker()
+    print("Story generation worker started")
+
     yield
 
     # 关闭时

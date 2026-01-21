@@ -158,6 +158,17 @@ class StoryGenerationRepository:
         )
         return result.modified_count > 0
 
+    async def get_pending_jobs(self) -> List[Dict[str, Any]]:
+        """获取所有 pending 或 processing 状态的任务（用于重启恢复）"""
+        cursor = self.jobs_collection.find({
+            "status": {"$in": [StoryJobStatus.PENDING.value, StoryJobStatus.PROCESSING.value]}
+        }).sort("created_at", 1)  # 按创建时间排序，先进先出
+
+        jobs = []
+        async for doc in cursor:
+            jobs.append(doc)
+        return jobs
+
     # ===================== Subtitle 操作 =====================
 
     async def save_subtitles(

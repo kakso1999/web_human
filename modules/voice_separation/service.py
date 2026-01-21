@@ -23,6 +23,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from core.config.settings import get_settings
+from core.utils import get_ffmpeg_path
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -506,7 +507,7 @@ class VoiceSeparationService:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         cmd = [
-            "ffmpeg", "-y",
+            get_ffmpeg_path(), "-y",
             "-i", video_path,
             "-vn",
             "-acodec", "pcm_s16le",
