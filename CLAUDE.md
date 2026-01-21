@@ -1482,4 +1482,133 @@ python tests/test_digital_human_local.py
 
 ---
 
-*最后更新: 2026-01-13*
+## 十九、服务器部署配置 (2026-01-21)
+
+### 19.1 端口配置
+
+| 服务 | 端口 | 监听地址 |
+|------|------|---------|
+| 后端 API | 8000 | 0.0.0.0 |
+| 管理端前端 | 3000 | 0.0.0.0 |
+| 用户端前端 | 3001 | 0.0.0.0 |
+
+### 19.2 图床服务
+
+```bash
+# 图床 URL（用于托管媒体文件供阿里云 API 访问）
+MEDIA_BED_URL=http://47.251.179.50
+```
+
+图床支持上传接口：`POST /upload`
+
+### 19.3 管理员初始化
+
+首次部署时，数据库中没有管理员，需要调用初始化 API：
+
+```bash
+# 检查是否已有管理员
+curl http://服务器IP:8000/api/v1/auth/admin/check
+
+# 初始化管理员（仅当无管理员时可用）
+curl -X POST http://服务器IP:8000/api/v1/auth/admin/init
+```
+
+**默认管理员账号：**
+- 邮箱：`admin@echobot.local`
+- 密码：`admin123`
+
+> ⚠️ 首次部署后请立即修改默认密码！
+
+### 19.4 阿里云安全组配置
+
+需要开放以下入站端口：
+
+| 端口 | 协议 | 用途 |
+|------|------|------|
+| 8000 | TCP | 后端 API |
+| 3000 | TCP | 管理端前端 |
+| 3001 | TCP | 用户端前端 |
+
+### 19.5 部署步骤
+
+```bash
+# 1. 克隆代码
+git clone https://github.com/kakso1999/web_human.git
+cd web_human
+
+# 2. 安装后端依赖
+pip install -r requirements.txt
+
+# 3. 配置环境变量
+cp .env.example .env
+# 编辑 .env 配置
+
+# 4. 启动后端
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 5. 启动前端（管理端）
+cd frontend-admin && npm install && npm run dev
+
+# 6. 启动前端（用户端）
+cd frontend-user && npm install && npm run dev
+
+# 7. 初始化管理员
+curl -X POST http://localhost:8000/api/v1/auth/admin/init
+```
+
+### 19.6 HuggingFace 模型缓存
+
+```bash
+# Linux 服务器默认路径
+HF_CACHE_PATH=/opt/hf_models
+
+# Windows 开发环境默认路径
+HF_CACHE_PATH=C:/hf_models
+
+# 可通过环境变量自定义
+export HF_CACHE_PATH=/your/custom/path
+```
+
+---
+
+## 二十、EMO 数字人 API 注意事项 (2026-01-21)
+
+### 20.1 人脸检测 API
+
+EMO 人脸检测 API **必须指定 ratio 参数**，否则会返回 `InvalidParameter.Ratio` 错误。
+
+```python
+# 正确调用方式
+resp = requests.post(
+    'https://dashscope.aliyuncs.com/api/v1/services/aigc/image2video/face-detect',
+    headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+    json={
+        'model': 'emo-detect-v1',
+        'input': {
+            'image_url': 'http://your-image-url.jpg'
+        },
+        'parameters': {
+            'ratio': '1:1'  # 必须指定！可选值: '1:1', '9:16', '16:9'
+        }
+    }
+)
+```
+
+### 20.2 ratio 参数说明
+
+| ratio | 说明 | 适用场景 |
+|-------|------|---------|
+| 1:1 | 正方形 | 头像、证件照 |
+| 9:16 | 竖屏 | 手机竖屏视频 |
+| 16:9 | 横屏 | 电脑/电视横屏视频 |
+
+### 20.3 图片要求
+
+- 图片必须可被阿里云服务器公网访问
+- 建议使用图床托管（`http://47.251.179.50/upload`）
+- 支持 JPG、PNG 格式
+- 人脸清晰、正面
+
+---
+
+*最后更新: 2026-01-21*
