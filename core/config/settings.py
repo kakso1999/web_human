@@ -90,7 +90,7 @@ class Settings(BaseSettings):
 
     # 图床服务配置（用于托管音频文件供阿里云 API 访问）
     # 比 ngrok 更稳定可靠
-    MEDIA_BED_URL: str = "http://112.124.70.81"
+    MEDIA_BED_URL: str = "http://47.251.179.50"
 
     # HuggingFace Token (Pyannote 说话人分割)
     HF_TOKEN: Optional[str] = None
