@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     AES_KEY: str = "your-aes-key-change-in-production-32b"
 
     # JWT 配置
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # 2小时，适应长时间任务
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2880  # 2天 (48小时)
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
 
