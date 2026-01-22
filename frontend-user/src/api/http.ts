@@ -6,6 +6,7 @@ import type { ApiResponse } from '@/types'
 const instance: AxiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
+  withCredentials: true,  // 发送请求时携带 Cookie
   headers: {
     'Content-Type': 'application/json'
   }
@@ -33,27 +34,23 @@ instance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // Token 过期，尝试刷新
+    // Token 过期，尝试刷新 (refresh_token 通过 Cookie 自动携带)
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
-      const refreshToken = localStorage.getItem('refresh_token')
 
-      if (refreshToken) {
-        try {
-          const response = await axios.post('/api/v1/auth/refresh', {
-            refresh_token: refreshToken
-          })
-          const { access_token } = response.data.data
-          localStorage.setItem('access_token', access_token)
-          originalRequest.headers.Authorization = `Bearer ${access_token}`
-          return instance(originalRequest)
-        } catch (refreshError) {
-          // 刷新失败，清除登录状态
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-          window.location.href = '/login'
-        }
-      } else {
+      try {
+        // 发送空请求体，refresh_token 通过 Cookie 携带
+        const response = await axios.post('/api/v1/auth/refresh', {}, {
+          withCredentials: true
+        })
+        const { access_token } = response.data.data
+        localStorage.setItem('access_token', access_token)
+        originalRequest.headers.Authorization = `Bearer ${access_token}`
+        return instance(originalRequest)
+      } catch (refreshError) {
+        // 刷新失败，清除登录状态
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
         window.location.href = '/login'
       }
     }

@@ -2,8 +2,9 @@
 Auth 模块 - API 路由
 登录、注册、Token 刷新等接口
 """
-from fastapi import APIRouter, Depends, Response, Query
+from fastapi import APIRouter, Depends, Response, Query, Request, Cookie
 from fastapi.responses import RedirectResponse
+from typing import Optional
 
 from core.schemas.base import success_response
 from core.middleware.auth import get_current_user_id
@@ -74,16 +75,28 @@ async def login(
 
 @router.post("/refresh")
 async def refresh_token(
-    data: RefreshTokenRequest,
     response: Response,
+    data: RefreshTokenRequest = None,
+    refresh_token_cookie: Optional[str] = Cookie(None, alias="refresh_token"),
     auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     刷新 Token
 
-    - **refresh_token**: 刷新令牌
+    - **refresh_token**: 刷新令牌 (可从请求体或 Cookie 获取)
     """
-    tokens = await auth_service.refresh_token(data.refresh_token)
+    # 优先从请求体获取，其次从 Cookie 获取
+    token = None
+    if data and data.refresh_token:
+        token = data.refresh_token
+    elif refresh_token_cookie:
+        token = refresh_token_cookie
+
+    if not token:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Refresh token not provided")
+
+    tokens = await auth_service.refresh_token(token)
 
     # 更新 Cookie 中的 refresh_token
     response.set_cookie(
