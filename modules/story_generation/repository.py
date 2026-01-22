@@ -33,7 +33,8 @@ class StoryGenerationRepository:
         mode: str = "single",
         speaker_configs: Optional[List[Dict[str, Any]]] = None,
         replace_all_voice: bool = True,
-        full_video: bool = False
+        full_video: bool = False,
+        max_segments: Optional[int] = None
     ) -> str:
         """创建新任务
 
@@ -49,7 +50,8 @@ class StoryGenerationRepository:
             mode=mode,
             speaker_configs=speaker_configs,
             replace_all_voice=replace_all_voice,
-            full_video=full_video
+            full_video=full_video,
+            max_segments=max_segments
         )
         result = await self.jobs_collection.insert_one(doc)
         return str(result.inserted_id)
@@ -262,7 +264,8 @@ class StoryGenerationRepository:
             "completed_at": doc.get("completed_at"),
             "error": doc.get("error"),
             "replace_all_voice": doc.get("replace_all_voice", True),
-            "full_video": doc.get("full_video", False)
+            "full_video": doc.get("full_video", False),
+            "max_segments": doc.get("max_segments")
         }
 
     def _serialize_subtitle(self, doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -279,6 +282,17 @@ class StoryGenerationRepository:
             "speaker": doc.get("speaker"),
             "is_selected": doc.get("is_selected", True)
         }
+
+    async def get_pending_jobs(self) -> List[Dict[str, Any]]:
+        """获取所有未完成的任务（pending 或 processing 状态）"""
+        cursor = self.jobs_collection.find({
+            "status": {"$in": ["pending", "processing"]}
+        }).sort("created_at", 1)  # 按创建时间排序，先创建的先处理
+
+        jobs = []
+        async for doc in cursor:
+            jobs.append(doc)
+        return jobs
 
 
 # 单例

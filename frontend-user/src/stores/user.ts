@@ -83,6 +83,16 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
   }
 
+  // 设置用户（用于 OAuth 回调）
+  function setUser(userData: User) {
+    user.value = userData
+  }
+
+  // 设置 Token（用于 OAuth 回调）
+  function setToken(token: string) {
+    localStorage.setItem('access_token', token)
+  }
+
   // 更新用户信息
   async function updateProfile(data: { nickname?: string }) {
     const res = await userApi.updateProfile(data)
@@ -101,6 +111,8 @@ export const useUserStore = defineStore('user', () => {
     register,
     googleLogin,
     logout,
+    setUser,
+    setToken,
     updateProfile
   }
 })

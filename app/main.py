@@ -51,12 +51,11 @@ async def lifespan(app: FastAPI):
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "story_generation"), exist_ok=True)
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "audiobook"), exist_ok=True)
 
-    # 注意：模型预加载暂时禁用，模型会在第一次使用时加载
-    # 这避免了启动时长时间加载9GB模型导致服务器响应变慢的问题
-    # print("预加载 Chatterbox TTS 模型...")
-    # from modules.voice_clone.service import voice_clone_service
-    # import asyncio
-    # asyncio.create_task(voice_clone_service.preload_model())
+    # 启动故事生成任务队列 worker（串行处理，避免资源竞争）
+    print("Starting story generation queue worker...")
+    from modules.story_generation.service import StoryGenerationService
+    story_gen_service = StoryGenerationService()
+    await story_gen_service.start_worker()
 
     # 启动故事生成队列 worker
     from modules.story_generation.service import StoryGenerationService

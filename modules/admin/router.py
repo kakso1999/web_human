@@ -474,11 +474,26 @@ async def transcribe_with_local_whisper(audio_path: str) -> dict:
         # 设置 HuggingFace 缓存目录为项目内
         os.environ['HF_HOME'] = str(HF_CACHE_DIR)
         os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
+        os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
 
-        # 使用 faster-whisper 的模型名称，会自动下载到项目内的缓存目录
-        model_name = "base"
-        print(f"[Local Whisper] Loading model: {model_name}")
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
+        # 尝试使用本地缓存的模型
+        model_path = HF_CACHE_DIR / 'hub' / 'models--Systran--faster-whisper-base' / 'snapshots'
+        local_files_only = False
+
+        if model_path.exists():
+            snapshot_dirs = list(model_path.glob('*'))
+            if snapshot_dirs:
+                model_name = str(snapshot_dirs[0])
+                local_files_only = True
+                print(f"[Local Whisper] Using cached model: {model_name}")
+            else:
+                model_name = "Systran/faster-whisper-base"
+                print(f"[Local Whisper] Downloading model: {model_name}")
+        else:
+            model_name = "Systran/faster-whisper-base"
+            print(f"[Local Whisper] Downloading model: {model_name}")
+
+        model = WhisperModel(model_name, device="cpu", compute_type="int8", local_files_only=local_files_only)
 
         # 转写
         print(f"[Local Whisper] Transcribing: {audio_path}")
@@ -1472,6 +1487,225 @@ async def delete_audiobook_story(
         raise HTTPException(status_code=404, detail="故事不存在")
 
     return success_response(message="删除成功")
+
+
+# ========== 费用统计 ==========
+
+@router.get("/cost-statistics", summary="获取费用统计")
+async def get_cost_statistics(
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    _=Depends(require_admin)
+):
+    """
+    获取 AI 服务费用统计
+
+    统计 CosyVoice TTS 和 EMO 数字人视频的费用明细。
+
+    **查询参数:**
+    - **start_date**: 开始日期 (可选)
+    - **end_date**: 结束日期 (可选)
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "total_cost": 123.45,
+            "tts_cost": 23.45,
+            "emo_cost": 100.00,
+            "job_count": 50,
+            "tts_chars_total": 50000,
+            "emo_seconds_total": 1200.5,
+            "daily_stats": [...]
+        }
+    }
+    ```
+    """
+    from modules.story_generation.repository import get_story_generation_repository
+    from datetime import datetime, timedelta
+
+    repo = get_story_generation_repository()
+
+    # 构建查询条件
+    query = {"status": "completed"}
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query["created_at"] = {"$gte": start_dt}
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            if "created_at" in query:
+                query["created_at"]["$lt"] = end_dt
+            else:
+                query["created_at"] = {"$lt": end_dt}
+        except ValueError:
+            pass
+
+    # 聚合费用统计
+    pipeline = [
+        {"$match": query},
+        {
+            "$group": {
+                "_id": None,
+                "total_cost": {"$sum": {"$ifNull": ["$total_cost", 0]}},
+                "tts_cost": {"$sum": {"$ifNull": ["$cost_details.tts_cost", 0]}},
+                "tts_chars": {"$sum": {"$ifNull": ["$cost_details.tts_chars", 0]}},
+                "emo_detect_cost": {"$sum": {"$ifNull": ["$cost_details.emo_detect_cost", 0]}},
+                "emo_detect_count": {"$sum": {"$ifNull": ["$cost_details.emo_detect_count", 0]}},
+                "emo_video_cost": {"$sum": {"$ifNull": ["$cost_details.emo_video_cost", 0]}},
+                "emo_video_seconds": {"$sum": {"$ifNull": ["$cost_details.emo_video_seconds", 0]}},
+                "job_count": {"$sum": 1}
+            }
+        }
+    ]
+
+    cursor = repo.jobs_collection.aggregate(pipeline)
+    result = await cursor.to_list(length=1)
+
+    if result:
+        stats = result[0]
+        stats.pop("_id", None)
+    else:
+        stats = {
+            "total_cost": 0,
+            "tts_cost": 0,
+            "tts_chars": 0,
+            "emo_detect_cost": 0,
+            "emo_detect_count": 0,
+            "emo_video_cost": 0,
+            "emo_video_seconds": 0,
+            "job_count": 0
+        }
+
+    # 计算 EMO 总费用
+    stats["emo_cost"] = stats.get("emo_detect_cost", 0) + stats.get("emo_video_cost", 0)
+
+    # 获取每日统计（最近30天）
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    daily_pipeline = [
+        {"$match": {"status": "completed", "created_at": {"$gte": thirty_days_ago}}},
+        {
+            "$group": {
+                "_id": {
+                    "$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}
+                },
+                "cost": {"$sum": {"$ifNull": ["$total_cost", 0]}},
+                "jobs": {"$sum": 1}
+            }
+        },
+        {"$sort": {"_id": 1}}
+    ]
+
+    daily_cursor = repo.jobs_collection.aggregate(daily_pipeline)
+    daily_stats = await daily_cursor.to_list(length=30)
+    stats["daily_stats"] = [
+        {"date": d["_id"], "cost": d["cost"], "jobs": d["jobs"]}
+        for d in daily_stats
+    ]
+
+    return success_response(stats)
+
+
+@router.get("/cost-statistics/jobs", summary="获取费用详情任务列表")
+async def get_cost_jobs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    _=Depends(require_admin)
+):
+    """
+    获取有费用记录的任务列表
+
+    显示每个任务的费用明细，按完成时间倒序排列。
+    """
+    from modules.story_generation.repository import get_story_generation_repository
+    from datetime import datetime, timedelta
+
+    repo = get_story_generation_repository()
+
+    # 构建查询条件
+    query = {"status": "completed", "total_cost": {"$gt": 0}}
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query["created_at"] = {"$gte": start_dt}
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            if "created_at" in query:
+                query["created_at"]["$lt"] = end_dt
+            else:
+                query["created_at"] = {"$lt": end_dt}
+        except ValueError:
+            pass
+
+    # 计算总数
+    total = await repo.jobs_collection.count_documents(query)
+
+    # 获取分页数据
+    skip = (page - 1) * page_size
+    cursor = repo.jobs_collection.find(query).sort(
+        "completed_at", -1
+    ).skip(skip).limit(page_size)
+
+    jobs = []
+    user_repo = UserRepository()
+    story_service = get_story_service()
+
+    async for doc in cursor:
+        # 获取用户信息
+        user_info = None
+        if doc.get("user_id"):
+            user = await user_repo.get_by_id(str(doc["user_id"]))
+            if user:
+                user_info = {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "nickname": user.get("nickname")
+                }
+
+        # 获取故事信息
+        story_info = None
+        if doc.get("story_id"):
+            try:
+                story = await story_service.get_story(str(doc["story_id"]))
+                if story:
+                    story_info = {
+                        "id": story.id,
+                        "title": story.title
+                    }
+            except:
+                pass
+
+        cost_details = doc.get("cost_details", {})
+        jobs.append({
+            "id": str(doc["_id"]),
+            "user": user_info,
+            "story": story_info,
+            "mode": doc.get("mode", "single"),
+            "total_cost": doc.get("total_cost", 0),
+            "tts_cost": cost_details.get("tts_cost", 0),
+            "tts_chars": cost_details.get("tts_chars", 0),
+            "emo_detect_cost": cost_details.get("emo_detect_cost", 0),
+            "emo_video_cost": cost_details.get("emo_video_cost", 0),
+            "emo_video_seconds": cost_details.get("emo_video_seconds", 0),
+            "created_at": doc["created_at"].isoformat() if doc.get("created_at") else None,
+            "completed_at": doc["completed_at"].isoformat() if doc.get("completed_at") else None
+        })
+
+    return paginate(jobs, total, page, page_size)
 
 
 @router.get("/audiobook/jobs", summary="获取有声书任务列表（管理端）")

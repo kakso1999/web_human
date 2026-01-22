@@ -498,3 +498,25 @@ async def update_subtitle_selection(
         "code": 0,
         "message": "Subtitle selection updated"
     }
+
+
+@router.get("/queue/status", summary="获取任务队列状态")
+async def get_queue_status(
+    user_id: str = Depends(get_current_user_id)
+):
+    """
+    获取故事生成任务队列状态
+
+    返回：
+    - queue_size: 队列中等待的任务数
+    - current_job: 当前正在处理的任务 ID
+    - worker_running: worker 是否在运行
+    """
+    service = get_story_generation_service()
+    queue_status = service.get_queue_status()
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": queue_status
+    }

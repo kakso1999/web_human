@@ -21,7 +21,8 @@ class StoryJobDocument:
         mode: str = "single",
         speaker_configs: Optional[List[Dict[str, Any]]] = None,
         replace_all_voice: bool = True,
-        full_video: bool = False
+        full_video: bool = False,
+        max_segments: Optional[int] = None
     ) -> dict:
         """创建新任务文档
 
@@ -54,6 +55,7 @@ class StoryJobDocument:
             "original_video_url": original_video_url,
             "replace_all_voice": replace_all_voice,
             "full_video": full_video,  # 是否生成完整视频
+            "max_segments": max_segments,  # 最大片段数（测试用）
 
             # 中间产物
             "muted_video_url": None,           # 静音视频
@@ -77,7 +79,19 @@ class StoryJobDocument:
             "completed_at": None,
 
             # 错误信息
-            "error": None
+            "error": None,
+
+            # 费用统计 (云端模式)
+            "cost_details": {
+                "tts_chars": 0,           # TTS 处理字符数
+                "tts_cost": 0.0,          # TTS 费用 (元)
+                "emo_detect_count": 0,    # 人脸检测次数
+                "emo_detect_cost": 0.0,   # 人脸检测费用 (元)
+                "emo_video_seconds": 0.0, # 数字人视频秒数
+                "emo_video_ratio": "1:1", # 视频比例
+                "emo_video_cost": 0.0,    # 数字人视频费用 (元)
+            },
+            "total_cost": 0.0             # 总费用 (元)
         }
 
 

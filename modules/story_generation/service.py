@@ -30,6 +30,11 @@ except ImportError:
 
 from core.config.settings import get_settings
 from core.utils import get_ffmpeg_path, get_ffprobe_path
+from core.utils.cost_calculator import (
+    CostDetails, Limits, calculate_tts_cost, calculate_emo_detect_cost,
+    calculate_emo_video_cost, split_text_for_tts, count_tts_chars
+)
+from core.utils.concurrent import cloud_api_limit, run_with_limit
 from .repository import get_story_generation_repository, StoryGenerationRepository
 from .apicore_client import get_apicore_client, APICoreClient
 from .schemas import StoryJobStatus, StoryJobStep
@@ -95,6 +100,9 @@ class StoryGenerationService:
         self._worker_started = False
         self._current_job_id: Optional[str] = None
 
+        # 当前任务的费用统计 (云端模式)
+        self._current_job_cost: Optional[CostDetails] = None
+
     async def start_worker(self):
         """启动任务队列 worker（应用启动时调用）"""
         if self._worker_started:
@@ -131,6 +139,12 @@ class StoryGenerationService:
                 logger.info(f"[Queue] Processing job: {job_id}, mode={mode}, queue size={self._task_queue.qsize()}")
 
                 try:
+                    # 检查任务是否已被取消或标记为失败
+                    job = await self.repository.get_job(job_id)
+                    if job and job.get("status") in ["failed", "completed"]:
+                        logger.info(f"[Queue] Job {job_id} already {job.get('status')}, skipping")
+                        continue
+
                     # 串行执行任务
                     if mode == "dual":
                         await self._process_job_multi_speaker(job_id)
@@ -140,6 +154,16 @@ class StoryGenerationService:
                     logger.error(f"[Queue] Job {job_id} failed: {e}")
                     import traceback
                     traceback.print_exc()
+                    # 将任务状态更新为失败
+                    try:
+                        await self.repository.update_job_status(
+                            job_id,
+                            StoryJobStatus.FAILED,
+                            error=str(e)
+                        )
+                        logger.info(f"[Queue] Job {job_id} marked as failed in database")
+                    except Exception as update_err:
+                        logger.error(f"[Queue] Failed to update job status: {update_err}")
                 finally:
                     self._current_job_id = None
                     self._task_queue.task_done()
@@ -167,7 +191,8 @@ class StoryGenerationService:
         avatar_profile_id: Optional[str] = None,
         speaker_configs: Optional[List[Dict[str, Any]]] = None,
         replace_all_voice: bool = True,
-        full_video: bool = False
+        full_video: bool = False,
+        max_segments: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         创建故事生成任务
@@ -230,7 +255,8 @@ class StoryGenerationService:
             speaker_configs=speaker_configs,
             original_video_url=video_url,
             replace_all_voice=replace_all_voice,
-            full_video=full_video
+            full_video=full_video,
+            max_segments=max_segments
         )
 
         # 将任务放入队列（串行处理）
@@ -373,6 +399,14 @@ class StoryGenerationService:
         7. 拼接所有片段
         """
         logger.info(f"[{job_id}] Starting story generation job (segmented mode)")
+
+        # 初始化费用统计 (云端模式)
+        from core.config.settings import get_settings
+        settings = get_settings()
+        if settings.AI_SERVICE_MODE == "cloud":
+            self._current_job_cost = CostDetails()
+        else:
+            self._current_job_cost = None
 
         try:
             # 更新状态为处理中
@@ -544,12 +578,18 @@ class StoryGenerationService:
             )
             await self.repository.update_job_field(job_id, "final_video_url", final_video_url)
 
+            # 保存费用统计 (云端模式)
+            await self._save_cost_details(job_id)
+
             logger.info(f"[{job_id}] Story generation completed!")
 
         except Exception as e:
             logger.error(f"[{job_id}] Story generation failed: {e}")
             import traceback
             traceback.print_exc()
+
+            # 失败时也保存已产生的费用
+            await self._save_cost_details(job_id)
 
             await self.repository.update_job_status(
                 job_id,
@@ -570,6 +610,22 @@ class StoryGenerationService:
             progress=progress,
             current_step=step
         )
+
+    async def _save_cost_details(self, job_id: str):
+        """保存费用明细到数据库"""
+        if self._current_job_cost is None:
+            return
+
+        cost_data = self._current_job_cost.to_dict()
+        total_cost = self._current_job_cost.total_cost
+
+        await self.repository.update_job_field(job_id, "cost_details", cost_data)
+        await self.repository.update_job_field(job_id, "total_cost", round(total_cost, 4))
+
+        logger.info(f"[{job_id}] Cost saved: TTS={cost_data['tts_cost']:.4f}元, "
+                   f"EMO detect={cost_data['emo_detect_cost']:.4f}元, "
+                   f"EMO video={cost_data['emo_video_cost']:.4f}元, "
+                   f"Total={total_cost:.4f}元")
 
     # ===================== 分段处理辅助函数 =====================
 
@@ -853,7 +909,14 @@ class StoryGenerationService:
         segment_index: int,
         audio_url: str
     ) -> Optional[str]:
-        """为单个片段生成数字人视频"""
+        """
+        为单个片段生成数字人视频
+
+        云端模式支持:
+        - 音频时长 > 48秒时自动切分
+        - 费用自动统计
+        - 并发限制
+        """
         logger.info(f"[{job_id}] Generating digital human for segment {segment_index}")
 
         try:
@@ -935,12 +998,118 @@ class StoryGenerationService:
                     logger.error(f"[{job_id}] Local digital human generation failed for segment {segment_index}")
                     return None
 
-            # 云端模式：需要 face_bbox 和 ext_bbox
+            # ============ 云端模式 ============
             if not face_bbox or not ext_bbox:
                 logger.error(f"[{job_id}] Invalid avatar profile: cloud mode requires face_bbox and ext_bbox")
                 return None
 
-            # 调用 EMO API
+            # 确保 image_url 是公网可访问的 URL
+            if not image_url.startswith("http"):
+                # 本地路径，需要转换为公网 URL
+                # 尝试通过图床服务获取公网 URL
+                local_image_path = image_url
+                if not local_image_path.startswith("/"):
+                    # 相对路径，添加 uploads 目录前缀
+                    local_image_path = str(Path(settings.UPLOAD_DIR).parent / image_url)
+                else:
+                    local_image_path = str(Path(settings.UPLOAD_DIR).parent / image_url.lstrip("/"))
+
+                if Path(local_image_path).exists():
+                    logger.info(f"[{job_id}] Uploading local image to media bed: {local_image_path}")
+                    public_image_url = await dh_service.upload_to_media_bed(local_image_path)
+                    if public_image_url:
+                        image_url = public_image_url
+                        logger.info(f"[{job_id}] Image uploaded: {image_url}")
+                    else:
+                        logger.error(f"[{job_id}] Failed to upload image to media bed")
+                        return None
+                else:
+                    logger.error(f"[{job_id}] Local image not found: {local_image_path}")
+                    return None
+
+            # 统计人脸检测费用（每个片段检测一次）
+            if self._current_job_cost:
+                self._current_job_cost.emo_detect_count += 1
+                self._current_job_cost.emo_detect_cost += calculate_emo_detect_cost(1)
+                logger.info(f"[{job_id}] EMO detect cost: +{calculate_emo_detect_cost(1):.4f}元")
+
+            # 获取音频时长
+            audio_duration = await self._get_audio_duration_from_url(audio_url)
+            logger.info(f"[{job_id}] Segment {segment_index} audio duration: {audio_duration:.2f}s")
+
+            # 检查是否需要切分（> 48秒）
+            if audio_duration > Limits.EMO_MAX_DURATION:
+                logger.info(f"[{job_id}] Audio {audio_duration:.2f}s > {Limits.EMO_MAX_DURATION}s, splitting...")
+                video_url = await self._generate_emo_with_splitting(
+                    job_id, segment_index, image_url, audio_url,
+                    face_bbox, ext_bbox, audio_duration, dh_service
+                )
+            else:
+                # 单次 EMO 调用
+                video_url = await self._call_emo_api(
+                    job_id, segment_index, image_url, audio_url,
+                    face_bbox, ext_bbox, audio_duration, dh_service
+                )
+
+            logger.info(f"[{job_id}] Segment {segment_index} digital human: {video_url}")
+            return video_url
+
+        except Exception as e:
+            logger.error(f"[{job_id}] Generate digital human for segment {segment_index} error: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _get_audio_duration_from_url(self, audio_url: str) -> float:
+        """获取音频文件时长"""
+        try:
+            # 先下载音频到临时文件
+            import tempfile
+            temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+            temp_path = temp_file.name
+            temp_file.close()
+
+            if audio_url.startswith('/'):
+                # 本地路径
+                import shutil
+                local_path = str(Path(settings.UPLOAD_DIR).parent / audio_url.lstrip('/'))
+                shutil.copy(local_path, temp_path)
+            else:
+                # HTTP URL
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.get(audio_url)
+                    with open(temp_path, 'wb') as f:
+                        f.write(response.content)
+
+            duration = await self._get_audio_duration(temp_path)
+            os.unlink(temp_path)
+            return duration
+
+        except Exception as e:
+            logger.error(f"Get audio duration error: {e}")
+            return 30.0  # 默认返回 30 秒
+
+    async def _call_emo_api(
+        self,
+        job_id: str,
+        segment_index: int,
+        image_url: str,
+        audio_url: str,
+        face_bbox: list,
+        ext_bbox: list,
+        audio_duration: float,
+        dh_service
+    ) -> Optional[str]:
+        """调用 EMO API 生成单个数字人视频片段"""
+        # 统计视频费用
+        if self._current_job_cost:
+            cost = calculate_emo_video_cost(audio_duration, "1:1")
+            self._current_job_cost.emo_video_seconds += audio_duration
+            self._current_job_cost.emo_video_cost += cost
+            logger.info(f"[{job_id}] EMO video cost: +{cost:.4f}元 ({audio_duration:.2f}s)")
+
+        # 使用并发限制执行 EMO 调用
+        async def do_emo():
             emo_task_id = await dh_service._create_emo_task(
                 task_id=f"{job_id}_seg{segment_index}",
                 image_url=image_url,
@@ -953,22 +1122,153 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] Failed to create EMO task for segment {segment_index}")
                 return None
 
-            # 等待任务完成
             video_url = await dh_service._wait_for_emo_task(
                 task_id=f"{job_id}_seg{segment_index}",
                 emo_task_id=emo_task_id,
                 max_attempts=180,
                 poll_interval=5
             )
-
-            logger.info(f"[{job_id}] Segment {segment_index} digital human: {video_url}")
             return video_url
 
-        except Exception as e:
-            logger.error(f"[{job_id}] Generate digital human for segment {segment_index} error: {e}")
-            import traceback
-            traceback.print_exc()
+        return await run_with_limit(do_emo())
+
+    async def _generate_emo_with_splitting(
+        self,
+        job_id: str,
+        segment_index: int,
+        image_url: str,
+        audio_url: str,
+        face_bbox: list,
+        ext_bbox: list,
+        total_duration: float,
+        dh_service
+    ) -> Optional[str]:
+        """
+        对超长音频进行切分，分段生成 EMO 视频后合并
+
+        策略：
+        1. 将音频切分为 <= 48 秒的片段
+        2. 对每个片段调用 EMO API
+        3. 合并所有视频片段
+        """
+        from core.utils.cost_calculator import split_audio_for_emo
+
+        # 计算切分点
+        segments = split_audio_for_emo(total_duration, Limits.EMO_MAX_DURATION)
+        logger.info(f"[{job_id}] Audio split into {len(segments)} EMO segments")
+
+        # 下载原始音频
+        import tempfile
+        audio_temp = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+        audio_temp_path = audio_temp.name
+        audio_temp.close()
+
+        if audio_url.startswith('/'):
+            import shutil
+            local_path = str(Path(settings.UPLOAD_DIR).parent / audio_url.lstrip('/'))
+            shutil.copy(local_path, audio_temp_path)
+        else:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.get(audio_url)
+                with open(audio_temp_path, 'wb') as f:
+                    f.write(response.content)
+
+        # 切分音频并生成视频
+        video_segments = []
+        for i, (start, end) in enumerate(segments):
+            duration = end - start
+            logger.info(f"[{job_id}] Processing EMO sub-segment {i+1}/{len(segments)}: {start:.2f}s - {end:.2f}s")
+
+            # 切分音频
+            sub_audio_path = self.upload_dir / f"{job_id}_seg{segment_index}_emo{i}.mp3"
+            cmd = [
+                get_ffmpeg_path(), '-y',
+                '-i', audio_temp_path,
+                '-ss', str(start),
+                '-t', str(duration),
+                '-c', 'copy',
+                str(sub_audio_path)
+            ]
+            returncode, _, stderr = await run_ffmpeg_command(cmd)
+            if returncode != 0:
+                logger.error(f"[{job_id}] Failed to split audio: {stderr.decode()[:200]}")
+                continue
+
+            # 上传切分后的音频到图床
+            sub_audio_url = await self._upload_to_media_bed(str(sub_audio_path))
+            if not sub_audio_url:
+                continue
+
+            # 调用 EMO API
+            video_url = await self._call_emo_api(
+                job_id, f"{segment_index}_{i}", image_url, sub_audio_url,
+                face_bbox, ext_bbox, duration, dh_service
+            )
+
+            if video_url:
+                # 下载视频到本地
+                video_temp = self.upload_dir / f"{job_id}_seg{segment_index}_emo{i}.mp4"
+                result = await self._get_local_file_path(video_url, video_temp)
+                if result:
+                    video_segments.append(str(video_temp))
+
+        # 清理临时音频
+        os.unlink(audio_temp_path)
+
+        if not video_segments:
+            logger.error(f"[{job_id}] No EMO sub-segments generated")
             return None
+
+        # 合并视频片段
+        if len(video_segments) == 1:
+            # 只有一个片段，直接返回
+            final_url = await self._upload_to_media_bed(video_segments[0])
+            return final_url
+
+        # 多个片段需要合并
+        final_video_path = self.upload_dir / f"{job_id}_seg{segment_index}_emo_merged.mp4"
+        success = await self._concat_videos(video_segments, str(final_video_path))
+
+        if success:
+            final_url = await self._upload_to_media_bed(str(final_video_path))
+            logger.info(f"[{job_id}] Merged {len(video_segments)} EMO segments: {final_url}")
+            return final_url
+        else:
+            logger.error(f"[{job_id}] Failed to merge EMO segments")
+            return None
+
+    async def _concat_videos(self, video_paths: List[str], output_path: str) -> bool:
+        """合并多个视频文件"""
+        import tempfile
+
+        try:
+            # 创建 concat 文件列表
+            list_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+            for vp in video_paths:
+                list_file.write(f"file '{vp}'\n")
+            list_file.close()
+
+            cmd = [
+                get_ffmpeg_path(), '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', list_file.name,
+                '-c', 'copy',
+                output_path
+            ]
+
+            returncode, _, stderr = await run_ffmpeg_command(cmd)
+            os.unlink(list_file.name)
+
+            if returncode == 0 and Path(output_path).exists():
+                return True
+            else:
+                logger.error(f"Concat videos failed: {stderr.decode()[:200]}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Concat videos error: {e}")
+            return False
 
     async def _extract_video_segment(
         self,
@@ -2106,7 +2406,11 @@ class StoryGenerationService:
         logger.info(f"[{job_id}] Using segment-based approach (fallback)")
 
         try:
+            import dashscope
             from dashscope.audio.tts_v2 import SpeechSynthesizer
+
+            # 设置 API key
+            dashscope.api_key = settings.DASHSCOPE_API_KEY
 
             segments_dir = self.upload_dir / f"{job_id}_segments"
             segments_dir.mkdir(parents=True, exist_ok=True)
@@ -2198,30 +2502,123 @@ class StoryGenerationService:
             return await self._call_cloud_tts(voice_id, text)
 
     async def _call_cloud_tts(self, voice_id: str, text: str) -> Optional[bytes]:
-        """云端 TTS (CosyVoice)"""
+        """
+        云端 TTS (CosyVoice)
+
+        支持长文本自动切分（单次最大 2000 字符）
+        自动统计费用
+        """
         try:
+            import dashscope
             from dashscope.audio.tts_v2 import SpeechSynthesizer
 
-            def synthesize_sync():
-                synthesizer = SpeechSynthesizer(
-                    model='cosyvoice-v2',
-                    voice=voice_id
-                )
-                return synthesizer.call(text)
+            # 设置 API key
+            dashscope.api_key = settings.DASHSCOPE_API_KEY
 
-            audio_data = await asyncio.to_thread(synthesize_sync)
+            # 检查文本长度，必要时切分
+            text_segments = split_text_for_tts(text, Limits.TTS_MAX_CHARS)
 
-            if audio_data:
-                logger.info(f"TTS generated {len(audio_data)} bytes for text: '{text[:30]}...'")
-                return audio_data
-            else:
-                logger.error(f"TTS returned empty data for text: '{text[:30]}...'")
-                return None
+            if len(text_segments) > 1:
+                logger.info(f"Text split into {len(text_segments)} segments for TTS")
+
+            all_audio_data = []
+
+            for i, segment_text in enumerate(text_segments):
+                # 计算并累加费用
+                chars, cost = calculate_tts_cost(segment_text)
+                if self._current_job_cost:
+                    self._current_job_cost.tts_chars += chars
+                    self._current_job_cost.tts_cost += cost
+
+                # 使用并发限制执行 TTS
+                async def do_synthesize():
+                    def synthesize_sync():
+                        synthesizer = SpeechSynthesizer(
+                            model='cosyvoice-v2',
+                            voice=voice_id
+                        )
+                        return synthesizer.call(segment_text)
+                    return await asyncio.to_thread(synthesize_sync)
+
+                audio_data = await run_with_limit(do_synthesize())
+
+                if audio_data:
+                    all_audio_data.append(audio_data)
+                    logger.info(f"TTS segment {i+1}/{len(text_segments)}: {len(audio_data)} bytes, "
+                               f"{chars} chars, cost={cost:.4f}元")
+                else:
+                    logger.error(f"TTS segment {i+1} failed for text: '{segment_text[:30]}...'")
+                    return None
+
+            # 如果只有一个片段，直接返回
+            if len(all_audio_data) == 1:
+                return all_audio_data[0]
+
+            # 多个片段需要合并音频
+            # 使用 FFmpeg 合并
+            return await self._merge_audio_segments(all_audio_data)
 
         except Exception as e:
             logger.error(f"CosyVoice TTS error: {e}")
             import traceback
             traceback.print_exc()
+            return None
+
+    async def _merge_audio_segments(self, audio_segments: List[bytes]) -> Optional[bytes]:
+        """合并多个音频片段"""
+        import tempfile
+        import os
+
+        try:
+            # 保存临时文件
+            temp_files = []
+            for i, data in enumerate(audio_segments):
+                temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+                temp_file.write(data)
+                temp_file.close()
+                temp_files.append(temp_file.name)
+
+            # 创建 FFmpeg concat 文件列表
+            list_file = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+            for tf in temp_files:
+                list_file.write(f"file '{tf}'\n")
+            list_file.close()
+
+            # 输出文件
+            output_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+            output_file.close()
+
+            # 执行 FFmpeg 合并
+            cmd = [
+                get_ffmpeg_path(), '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', list_file.name,
+                '-c', 'copy',
+                output_file.name
+            ]
+
+            returncode, stdout, stderr = await run_ffmpeg_command(cmd)
+
+            # 读取合并后的音频
+            if returncode == 0 and os.path.exists(output_file.name):
+                with open(output_file.name, 'rb') as f:
+                    merged_audio = f.read()
+                logger.info(f"Merged {len(audio_segments)} audio segments: {len(merged_audio)} bytes")
+            else:
+                logger.error(f"FFmpeg merge failed: {stderr.decode()[:200]}")
+                merged_audio = None
+
+            # 清理临时文件
+            for tf in temp_files:
+                os.unlink(tf)
+            os.unlink(list_file.name)
+            os.unlink(output_file.name)
+
+            return merged_audio
+
+        except Exception as e:
+            logger.error(f"Merge audio segments error: {e}")
             return None
 
     async def _call_local_tts(self, voice_id: str, text: str, reference_audio_path: str = None) -> Optional[bytes]:
@@ -2422,7 +2819,11 @@ class StoryGenerationService:
     async def _create_voice_from_url(self, job_id: str, audio_url: str) -> Optional[str]:
         """从音频 URL 创建 voice"""
         try:
+            import dashscope
             from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            # 设置 API key
+            dashscope.api_key = settings.DASHSCOPE_API_KEY
 
             service = VoiceEnrollmentService()
             voice_prefix = f"sg{uuid.uuid4().hex[:6]}"
@@ -2450,7 +2851,11 @@ class StoryGenerationService:
         poll_interval: int = 3
     ) -> bool:
         """等待 voice 就绪"""
+        import dashscope
         from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+        # 设置 API key
+        dashscope.api_key = settings.DASHSCOPE_API_KEY
 
         service = VoiceEnrollmentService()
 
@@ -3115,7 +3520,7 @@ class StoryGenerationService:
             await self._update_progress(job_id, StoryJobStep.GENERATING_DIGITAL_HUMAN, 50)
             logger.info(f"[{job_id}] Phase 2 - Creating segmented EMO tasks")
 
-            MAX_SEGMENT_DURATION = 45  # 每段最大 45 秒
+            MAX_SEGMENT_DURATION = 50  # 每段最大 50 秒
             MAX_CONCURRENT_EMO = 5     # 最大并发 5 个
 
             configs_by_speaker = {cfg.get("speaker_id"): cfg for cfg in enabled_configs}
@@ -3142,6 +3547,13 @@ class StoryGenerationService:
                 # 计算需要多少个片段
                 import math
                 num_segments = math.ceil(audio_duration / MAX_SEGMENT_DURATION)
+
+                # 检查是否有片段限制（测试用）
+                job_max_segments = job.get("max_segments")
+                if job_max_segments and job_max_segments > 0:
+                    num_segments = min(num_segments, job_max_segments)
+                    logger.info(f"[{job_id}] Limiting to {num_segments} segments (max_segments={job_max_segments})")
+
                 logger.info(f"[{job_id}] Speaker {speaker_id} will have {num_segments} segments")
 
                 # 分割音频并创建 EMO 任务
@@ -3392,6 +3804,24 @@ class StoryGenerationService:
 
             logger.info(f"[{job_id}] Creating fresh voice from reference: {final_reference_path}")
 
+            # 云端模式：需要将本地路径转换为公网 URL
+            from core.config.settings import get_settings
+            settings_local = get_settings()
+
+            if settings_local.AI_SERVICE_MODE == "cloud":
+                # 检查是否已经是 HTTP URL
+                if not final_reference_path.startswith(("http://", "https://")):
+                    # 本地文件，需要上传到图床
+                    logger.info(f"[{job_id}] Cloud mode: uploading reference audio to media bed...")
+                    from modules.digital_human.factory import get_digital_human_service
+                    dh_service = get_digital_human_service()
+                    public_url = await dh_service.upload_to_media_bed(final_reference_path, compress_images=False)
+                    if not public_url:
+                        logger.error(f"[{job_id}] Failed to upload reference audio to media bed")
+                        return None
+                    logger.info(f"[{job_id}] Reference audio uploaded: {public_url}")
+                    final_reference_path = public_url
+
             # 调用 VoiceCloneService 创建新的 voice
             from modules.voice_clone.factory import get_voice_clone_service
             vc_service = get_voice_clone_service()
@@ -3609,6 +4039,45 @@ class StoryGenerationService:
             # 调用 EMO API 创建任务
             from modules.digital_human.factory import get_digital_human_service
             dh_service = get_digital_human_service()
+
+            # 云端模式：确保 image_url 是公网可访问的 URL
+            from core.config.settings import get_settings
+            settings_local = get_settings()
+            service_mode = getattr(settings_local, 'AI_SERVICE_MODE', 'local')
+
+            if service_mode == 'cloud':
+                old_unavailable_hosts = ['112.124.70.81']  # 阿里云无法访问的旧 IP
+                needs_reupload = False
+                local_image_path = None
+
+                # 检查是否是本地路径
+                if not image_url.startswith(("http://", "https://")):
+                    needs_reupload = True
+                    local_image_path = image_url
+                    if not local_image_path.startswith("/"):
+                        local_image_path = str(Path(settings_local.UPLOAD_DIR).parent / image_url)
+                    else:
+                        local_image_path = str(Path(settings_local.UPLOAD_DIR).parent / image_url.lstrip("/"))
+                # 检查是否是旧 IP
+                elif any(host in image_url for host in old_unavailable_hosts):
+                    needs_reupload = True
+                    # 从旧 URL 提取本地路径
+                    url_path = image_url.split('/', 3)[-1] if '/' in image_url else ""
+                    if url_path:
+                        local_image_path = str(Path(settings_local.UPLOAD_DIR).parent / url_path)
+
+                if needs_reupload and local_image_path and Path(local_image_path).exists():
+                    logger.info(f"[{job_id}] Uploading local image to media bed: {local_image_path}")
+                    public_image_url = await dh_service.upload_to_media_bed(local_image_path)
+                    if public_image_url:
+                        image_url = public_image_url
+                        logger.info(f"[{job_id}] Image uploaded to media bed: {image_url}")
+                    else:
+                        logger.error(f"[{job_id}] Failed to upload image to media bed")
+                        return None
+                elif needs_reupload:
+                    logger.error(f"[{job_id}] Local image not found: {local_image_path}")
+                    return None
 
             emo_task_id = await dh_service._create_emo_task(
                 task_id=f"{job_id}_{speaker_id}",
@@ -4354,6 +4823,44 @@ class StoryGenerationService:
             # 调用 EMO API 创建任务
             from modules.digital_human.factory import get_digital_human_service
             dh_service = get_digital_human_service()
+
+            # 云端模式：确保 image_url 是公网可访问的 URL
+            if service_mode == 'cloud':
+                old_unavailable_hosts = ['112.124.70.81']  # 阿里云无法访问的旧 IP
+                needs_reupload = False
+
+                # 检查是否是本地路径
+                if not image_url.startswith(("http://", "https://")):
+                    needs_reupload = True
+                    local_image_path = image_url
+                    if not local_image_path.startswith("/"):
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / image_url)
+                    else:
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / image_url.lstrip("/"))
+                # 检查是否是旧 IP
+                elif any(host in image_url for host in old_unavailable_hosts):
+                    needs_reupload = True
+                    # 从旧 URL 提取本地路径
+                    # 例如: http://112.124.70.81/uploads/... -> uploads/...
+                    url_path = image_url.split('/', 3)[-1] if '/' in image_url else ""
+                    if url_path:
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / url_path)
+                    else:
+                        local_image_path = None
+
+                if needs_reupload:
+                    if local_image_path and Path(local_image_path).exists():
+                        logger.info(f"[{job_id}] Uploading local image to media bed: {local_image_path}")
+                        public_image_url = await dh_service.upload_to_media_bed(local_image_path)
+                        if public_image_url:
+                            image_url = public_image_url
+                            logger.info(f"[{job_id}] Image uploaded to media bed: {image_url}")
+                        else:
+                            logger.error(f"[{job_id}] Failed to upload image to media bed")
+                            return None
+                    else:
+                        logger.error(f"[{job_id}] Local image not found: {local_image_path}")
+                        return None
 
             emo_task_id = await dh_service._create_emo_task(
                 task_id=f"{job_id}_{speaker_id}_seg{segment_index}",

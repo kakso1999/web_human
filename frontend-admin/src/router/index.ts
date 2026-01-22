@@ -47,6 +47,12 @@ const routes: RouteRecordRaw[] = [
     name: 'audiobooks',
     component: () => import('../views/Audiobooks.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/cost-statistics',
+    name: 'cost-statistics',
+    component: () => import('../views/CostStatistics.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

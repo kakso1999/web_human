@@ -292,6 +292,11 @@ const menuItems = [
     path: '/audiobooks',
     name: '有声书管理',
     icon: '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>'
+  },
+  {
+    path: '/cost-statistics',
+    name: '费用统计',
+    icon: '<svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>'
   }
 ]
 

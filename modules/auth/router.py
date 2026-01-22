@@ -251,33 +251,30 @@ async def google_callback(
     Google 认证成功后重定向到此地址，携带授权码。
     处理授权码并重定向到前端。
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         user, tokens = await auth_service.google_login(code)
 
-        # 重定向到前端，带上 token 信息
-        frontend_url = "http://localhost:3001"
+        # 使用配置的前端 URL
+        frontend_url = settings.FRONTEND_URL
         redirect_url = (
             f"{frontend_url}/auth/callback"
             f"?access_token={tokens.access_token}"
+            f"&refresh_token={tokens.refresh_token}"
             f"&user_id={user.id}"
             f"&nickname={user.nickname}"
         )
 
-        response = RedirectResponse(url=redirect_url)
-
-        # 设置 refresh_token 到 Cookie
-        response.set_cookie(
-            key="refresh_token",
-            value=tokens.refresh_token,
-            httponly=True,
-            secure=not settings.DEBUG,
-            samesite="lax",
-            max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-        )
-
-        return response
+        logger.info(f"Google OAuth success for user: {user.email}")
+        return RedirectResponse(url=redirect_url)
 
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Google OAuth error: {str(e)}", exc_info=True)
+
         # 认证失败，重定向到登录页并带上错误信息
-        frontend_url = "http://localhost:3001"
+        frontend_url = settings.FRONTEND_URL
         return RedirectResponse(url=f"{frontend_url}/login?error=google_auth_failed")

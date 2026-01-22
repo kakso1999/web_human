@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     # CORS 配置
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:3001"]
 
+    # 前端 URL (用于 OAuth 回调重定向)
+    FRONTEND_URL: str = "http://localhost:3001"
+
     # 语音克隆服务配置
     VOICE_CLONE_SERVICE_URL: str = "http://localhost:3002"
 

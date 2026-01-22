@@ -1081,6 +1081,38 @@ task_id = response.json()["output"]["task_id"]
   - EMO: https://help.aliyun.com/zh/model-studio/developer-reference/emo-quick-start
   - IMS: https://help.aliyun.com/zh/ims/developer-reference/
 
+### 15.7 API 限制与定价 (重要)
+
+#### 限制参数
+
+| 服务 | 限制项 | 值 | 说明 |
+|------|--------|-----|------|
+| CosyVoice | 单次最大字符数 | 2000 | 1个中文字 = 2个字符，即最多约1000个汉字 |
+| CosyVoice | 流式最大字符数 | 200,000 | 流式模式可分多次发送 |
+| EMO | 单次最大音频时长 | **48秒** | 超过需要切分处理 |
+| 全局 | 最大并发数 | 5 | 同时最多5个任务并行 |
+
+#### 定价
+
+| 服务 | 计费项 | 单价 |
+|------|--------|------|
+| CosyVoice TTS | 字符数 | 2 元/万字符 |
+| EMO 人脸检测 | 图片数 | 0.004 元/张 |
+| EMO 视频生成 (1:1) | 视频时长 | 0.08 元/秒 |
+| EMO 视频生成 (3:4) | 视频时长 | 0.16 元/秒 |
+
+#### 分段策略
+
+```python
+# 长文本切分 (CosyVoice)
+MAX_TTS_CHARS = 2000  # 单次最大字符数
+# 按句子边界切分，确保每段不超过2000字符
+
+# 长视频切分 (EMO)
+MAX_EMO_DURATION = 48  # 单次最大48秒
+# 按时间戳切分音频，生成多个数字人片段后拼接
+```
+
 ---
 
 ## 十六、语音分离模块 (voice_separation)

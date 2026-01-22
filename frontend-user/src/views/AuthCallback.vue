@@ -19,6 +19,7 @@ const message = ref('Signing you in...')
 
 onMounted(async () => {
   const accessToken = route.query.access_token as string
+  const refreshToken = route.query.refresh_token as string
   const userId = route.query.user_id as string
   const nickname = route.query.nickname as string
   const error = route.query.error as string
@@ -32,9 +33,12 @@ onMounted(async () => {
   }
 
   if (accessToken && userId) {
-    // Save token to localStorage
+    // Save tokens to localStorage
     localStorage.setItem('access_token', accessToken)
     localStorage.setItem('user_id', userId)
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken)
+    }
 
     // Update user store
     userStore.setUser({

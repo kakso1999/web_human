@@ -223,7 +223,11 @@ class VoiceCloneService:
             voice_id 或 None
         """
         try:
+            import dashscope
             from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            # 设置 API key
+            dashscope.api_key = self.api_key
 
             service = VoiceEnrollmentService()
 
@@ -276,7 +280,11 @@ class VoiceCloneService:
             是否就绪
         """
         try:
+            import dashscope
             from dashscope.audio.tts_v2 import VoiceEnrollmentService
+
+            # 设置 API key
+            dashscope.api_key = self.api_key
 
             service = VoiceEnrollmentService()
 
