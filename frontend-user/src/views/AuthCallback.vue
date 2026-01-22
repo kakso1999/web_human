@@ -36,16 +36,14 @@ onMounted(async () => {
     localStorage.setItem('access_token', accessToken)
     localStorage.setItem('user_id', userId)
 
-    // Update user store
-    userStore.setUser({
-      id: userId,
-      nickname: nickname || 'User',
-      email: '',
-      avatar_url: ''
-    })
-    userStore.setToken(accessToken)
-
-    message.value = 'Success! Redirecting...'
+    // Fetch full user profile from API
+    try {
+      await userStore.fetchProfile()
+      message.value = 'Success! Redirecting...'
+    } catch (e) {
+      console.error('Failed to fetch profile:', e)
+      message.value = 'Success! Redirecting...'
+    }
 
     // Redirect to home or original destination
     setTimeout(() => {

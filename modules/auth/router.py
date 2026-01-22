@@ -254,8 +254,9 @@ async def google_callback(
     try:
         user, tokens = await auth_service.google_login(code)
 
-        # 重定向到前端，带上 token 信息
-        frontend_url = "http://localhost:3001"
+        # 重定向到前端，带上 token 信息（使用配置的 FRONTEND_URL）
+        settings = get_settings()
+        frontend_url = settings.FRONTEND_URL.rstrip('/')
         redirect_url = (
             f"{frontend_url}/auth/callback"
             f"?access_token={tokens.access_token}"
@@ -279,5 +280,6 @@ async def google_callback(
 
     except Exception as e:
         # 认证失败，重定向到登录页并带上错误信息
-        frontend_url = "http://localhost:3001"
+        settings = get_settings()
+        frontend_url = settings.FRONTEND_URL.rstrip('/')
         return RedirectResponse(url=f"{frontend_url}/login?error=google_auth_failed")

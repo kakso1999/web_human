@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
 
+    # 前端 URL (用于 OAuth 回调跳转)
+    FRONTEND_URL: str = "http://localhost:3000"
+
     # 文件上传配置
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
