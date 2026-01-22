@@ -122,10 +122,11 @@ class RefreshTokenRequest(BaseModel):
 
     使用刷新令牌获取新的访问令牌。
     当访问令牌过期时调用此接口。
+    refresh_token 可从请求体传入，也可从 HttpOnly Cookie 获取。
     """
-    refresh_token: str = Field(
-        ...,
-        description="之前获取的刷新令牌",
+    refresh_token: Optional[str] = Field(
+        None,
+        description="之前获取的刷新令牌（可选，也可通过 Cookie 获取）",
         json_schema_extra={"example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}
     )
 
