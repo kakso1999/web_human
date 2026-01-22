@@ -410,12 +410,20 @@ class StoryGenerationService:
                 instrumental_url = None
 
             # Step 3: 语音识别生成字幕（使用词级时间戳）
-            # 注意：转录使用原始音频（audio_url），而不是分离后的 vocals
-            # 因为分离后的 vocals 可能有质量问题，VAD 检测不到语音
+            # 优先使用故事分析阶段已保存的转录结果，避免重复计算
             await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 15)
-            transcription = await self._transcribe_audio(job_id, audio_url)
-            if not transcription:
-                raise Exception("Failed to transcribe audio")
+
+            # 检查是否已有转录结果
+            existing_transcription = single_analysis.get("transcription")
+            if existing_transcription and existing_transcription.get("words"):
+                logger.info(f"[{job_id}] Using pre-analyzed transcription (words: {len(existing_transcription.get('words', []))})")
+                transcription = existing_transcription
+            else:
+                # 没有预先转录，需要重新转录
+                logger.info(f"[{job_id}] No pre-analyzed transcription found, running Whisper...")
+                transcription = await self._transcribe_audio(job_id, audio_url)
+                if not transcription:
+                    raise Exception("Failed to transcribe audio")
 
             # Step 4: 智能切割为片段（最大30秒，在句子边界切割）
             words = transcription.get("words", [])
