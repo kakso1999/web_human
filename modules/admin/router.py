@@ -783,7 +783,7 @@ async def run_batch_upload(
     batch_id: str
 ):
     """
-    运行批量上传任务（最多5个并发）
+    运行批量上传任务（串行处理，避免资源竞争）
 
     Args:
         videos_data: 视频数据列表 [{"content": bytes, "filename": str}, ...]
@@ -791,26 +791,21 @@ async def run_batch_upload(
         api_key: APICore API Key
         batch_id: 批量任务ID
     """
-    semaphore = asyncio.Semaphore(5)  # 最多5个并发
-
-    async def process_with_semaphore(video_data, index):
-        async with semaphore:
-            return await process_single_video(
+    # 串行处理每个视频，避免 Whisper 并行加载导致卡死
+    for i, video_data in enumerate(videos_data):
+        try:
+            print(f"[Batch Upload] Processing video {i+1}/{len(videos_data)}: {video_data['filename']}")
+            await process_single_video(
                 video_content=video_data["content"],
                 video_filename=video_data["filename"],
                 category_id=category_id,
                 api_key=api_key,
                 batch_id=batch_id,
-                index=index
+                index=i
             )
-
-    # 并发处理所有视频
-    tasks = [
-        process_with_semaphore(video_data, i)
-        for i, video_data in enumerate(videos_data)
-    ]
-
-    await asyncio.gather(*tasks)
+            print(f"[Batch Upload] Completed video {i+1}/{len(videos_data)}")
+        except Exception as e:
+            print(f"[Batch Upload] Failed video {i+1}/{len(videos_data)}: {e}")
 
     # 标记批量任务完成
     if batch_id in batch_upload_tasks:
