@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     AES_KEY: str = "your-aes-key-change-in-production-32b"
 
     # JWT 配置
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120  # 2小时，适应长时间任务
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2880  # 2天 (48小时)
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     ALGORITHM: str = "HS256"
 
@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+
+    # 前端 URL (用于 OAuth 回调跳转)
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # 文件上传配置
     UPLOAD_DIR: str = "uploads"

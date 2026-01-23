@@ -255,6 +255,11 @@ class VoiceSeparationService:
             audio, sr = sf.read(separation_result["vocals"])
             duration = len(audio) / sr
 
+            # Step 3: 语音转录（词级时间戳）
+            logger.info(f"[{story_id}] Single: Transcribing audio with word timestamps")
+            # 使用原始提取的音频进行转录（质量更好）
+            transcription = await self._transcribe_audio(story_id, str(audio_path))
+
             # 上传到媒体床
             vocals_url = await self._upload_to_media_bed(separation_result["vocals"])
             background_url = await self._upload_to_media_bed(separation_result["background"])
@@ -263,10 +268,11 @@ class VoiceSeparationService:
                 "vocals_url": vocals_url,
                 "background_url": background_url,
                 "duration": round(duration, 2),
+                "transcription": transcription,  # 包含 text, words, segments
                 "is_analyzed": True
             }
 
-            logger.info(f"[{story_id}] Single-speaker analysis completed, duration: {duration:.2f}s")
+            logger.info(f"[{story_id}] Single-speaker analysis completed, duration: {duration:.2f}s, words: {len(transcription.get('words', [])) if transcription else 0}")
             return result
 
         except Exception as e:
@@ -1018,6 +1024,126 @@ print(f"[{{speaker_id}}] 结果已保存到: {{output_file}}", flush=True)
 
         except Exception as e:
             logger.error(f"Upload error: {e}")
+            return None
+
+    async def _transcribe_audio(
+        self,
+        story_id: str,
+        audio_path: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        使用 faster-whisper 进行词级转录
+
+        Returns:
+            {
+                "text": "完整文本",
+                "words": [{"word": "Hi", "start": 12.1, "end": 12.3}, ...],
+                "segments": [{"start": 12.1, "end": 17.3, "text": "..."}, ...]
+            }
+        """
+        logger.info(f"[{story_id}] Starting audio transcription with word timestamps")
+        print(f"[{story_id}] Starting audio transcription...", flush=True)
+
+        try:
+            def transcribe_sync():
+                import os
+                import numpy as np
+                import soundfile as sf
+                from core.config.settings import HF_CACHE_DIR
+
+                # 设置 HuggingFace 缓存目录
+                os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+                os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1'
+                os.environ['DO_NOT_TRACK'] = '1'
+                os.environ['HF_HOME'] = str(HF_CACHE_DIR)
+                os.environ['HF_HUB_CACHE'] = str(HF_CACHE_DIR / 'hub')
+
+                from faster_whisper import WhisperModel
+
+                # 尝试使用本地缓存的模型
+                model_path = HF_CACHE_DIR / 'hub' / 'models--Systran--faster-whisper-base' / 'snapshots'
+                local_files_only = False
+
+                if model_path.exists():
+                    snapshot_dirs = list(model_path.glob('*'))
+                    if snapshot_dirs:
+                        model_path = str(snapshot_dirs[0])
+                        local_files_only = True
+                        print(f"[{story_id}] Using cached Whisper model")
+                    else:
+                        model_path = "Systran/faster-whisper-base"
+                        print(f"[{story_id}] Downloading Whisper model...")
+                else:
+                    model_path = "Systran/faster-whisper-base"
+                    print(f"[{story_id}] Downloading Whisper model...")
+
+                # 强制使用 CPU 避免 CUDA 上下文清理问题
+                model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=local_files_only)
+                print(f"[{story_id}] Whisper model loaded (CPU mode)")
+
+                # 加载音频
+                audio, sr = sf.read(audio_path)
+                if audio.ndim > 1:
+                    audio = audio.mean(axis=1)
+                audio = audio.astype(np.float32)
+
+                # Whisper 期望 16kHz 采样率
+                TARGET_SR = 16000
+                if sr != TARGET_SR:
+                    import librosa
+                    print(f"[{story_id}] Resampling from {sr}Hz to {TARGET_SR}Hz")
+                    audio = librosa.resample(audio, orig_sr=sr, target_sr=TARGET_SR)
+                    sr = TARGET_SR
+
+                print(f"[{story_id}] Audio loaded: duration={len(audio)/sr:.2f}s")
+
+                # 转写
+                segments_gen, info = model.transcribe(
+                    audio,
+                    language="en",
+                    word_timestamps=True,
+                    vad_filter=False,
+                    condition_on_previous_text=False,
+                    no_speech_threshold=0.6,
+                    compression_ratio_threshold=2.4
+                )
+
+                # 收集结果
+                all_text = []
+                all_words = []
+                all_segments = []
+
+                for seg in segments_gen:
+                    all_text.append(seg.text)
+                    all_segments.append({
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip()
+                    })
+                    if seg.words:
+                        for word in seg.words:
+                            all_words.append({
+                                "word": word.word,
+                                "start": word.start,
+                                "end": word.end
+                            })
+
+                print(f"[{story_id}] Transcription complete: {len(all_segments)} segments, {len(all_words)} words")
+
+                return {
+                    "text": " ".join(all_text).strip(),
+                    "words": all_words,
+                    "segments": all_segments
+                }
+
+            result = await asyncio.to_thread(transcribe_sync)
+            logger.info(f"[{story_id}] Transcription completed successfully")
+            return result
+
+        except Exception as e:
+            logger.error(f"[{story_id}] Transcription failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
 

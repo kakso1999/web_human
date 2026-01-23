@@ -444,12 +444,20 @@ class StoryGenerationService:
                 instrumental_url = None
 
             # Step 3: 语音识别生成字幕（使用词级时间戳）
-            # 注意：转录使用原始音频（audio_url），而不是分离后的 vocals
-            # 因为分离后的 vocals 可能有质量问题，VAD 检测不到语音
+            # 优先使用故事分析阶段已保存的转录结果，避免重复计算
             await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 15)
-            transcription = await self._transcribe_audio(job_id, audio_url)
-            if not transcription:
-                raise Exception("Failed to transcribe audio")
+
+            # 检查是否已有转录结果
+            existing_transcription = single_analysis.get("transcription")
+            if existing_transcription and existing_transcription.get("words"):
+                logger.info(f"[{job_id}] Using pre-analyzed transcription (words: {len(existing_transcription.get('words', []))})")
+                transcription = existing_transcription
+            else:
+                # 没有预先转录，需要重新转录
+                logger.info(f"[{job_id}] No pre-analyzed transcription found, running Whisper...")
+                transcription = await self._transcribe_audio(job_id, audio_url)
+                if not transcription:
+                    raise Exception("Failed to transcribe audio")
 
             # Step 4: 智能切割为片段（最大30秒，在句子边界切割）
             words = transcription.get("words", [])
@@ -488,76 +496,118 @@ class StoryGenerationService:
                 segments_to_process = video_segments[:MAX_SEGMENTS_DEFAULT]
                 logger.info(f"[{job_id}] Preview mode: processing first {len(segments_to_process)} segments")
 
-            # Step 5-6: 对每个片段生成克隆语音和数字人
+            # Step 5-6: 对每个片段并行生成克隆语音和数字人（最多10个并发）
             await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 20)
 
+            # 创建并发限制器（最多10个并发任务）
+            semaphore = asyncio.Semaphore(10)
+            completed_count = [0]  # 使用列表以便在闭包中修改
+            total_segments = len(segments_to_process)
+
+            async def process_single_segment(i: int, segment: dict) -> Optional[dict]:
+                """处理单个片段（在 semaphore 限制下并发执行）"""
+                async with semaphore:
+                    seg_start = segment["start_time"]
+                    seg_end = segment["end_time"]
+                    seg_subtitles = segment["subtitles"]
+
+                    logger.info(f"[{job_id}] Processing segment {i+1}/{total_segments}: {seg_start:.2f}s - {seg_end:.2f}s")
+
+                    try:
+                        # 为此片段生成克隆语音
+                        cloned_audio_url = await self._generate_cloned_voice_for_segment(
+                            job_id, i, seg_subtitles
+                        )
+                        if not cloned_audio_url:
+                            logger.error(f"[{job_id}] Failed to generate cloned voice for segment {i+1}")
+                            return None
+
+                        # 为此片段生成数字人视频（需要克隆语音作为输入）
+                        digital_human_url = await self._generate_digital_human_for_segment(
+                            job_id, i, cloned_audio_url
+                        )
+
+                        # 截取原视频对应片段
+                        video_segment_path = await self._extract_video_segment(
+                            job_id, i, seg_start, seg_end
+                        )
+
+                        # 更新进度
+                        completed_count[0] += 1
+                        progress = 20 + int((completed_count[0] / total_segments) * 60)
+                        await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
+
+                        return {
+                            "index": i,
+                            "start_time": seg_start,
+                            "end_time": seg_end,
+                            "cloned_audio_url": cloned_audio_url,
+                            "digital_human_url": digital_human_url,
+                            "video_segment_path": video_segment_path
+                        }
+                    except Exception as e:
+                        logger.error(f"[{job_id}] Error processing segment {i+1}: {e}")
+                        return None
+
+            # 并行处理所有片段
+            logger.info(f"[{job_id}] Starting parallel processing of {total_segments} segments (max 10 concurrent)")
+            tasks = [process_single_segment(i, seg) for i, seg in enumerate(segments_to_process)]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 过滤有效结果并按 index 排序
             segment_results = []
-            for i, segment in enumerate(segments_to_process):
-                seg_start = segment["start_time"]
-                seg_end = segment["end_time"]
-                seg_subtitles = segment["subtitles"]
+            for result in results:
+                if isinstance(result, dict) and result is not None:
+                    segment_results.append(result)
+                elif isinstance(result, Exception):
+                    logger.error(f"[{job_id}] Segment processing exception: {result}")
 
-                logger.info(f"[{job_id}] Processing segment {i+1}/{len(segments_to_process)}: {seg_start:.2f}s - {seg_end:.2f}s")
-
-                # 更新进度
-                progress = 20 + int((i / len(segments_to_process)) * 60)
-                await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
-
-                # 为此片段生成克隆语音
-                cloned_audio_url = await self._generate_cloned_voice_for_segment(
-                    job_id, i, seg_subtitles
-                )
-                if not cloned_audio_url:
-                    logger.error(f"[{job_id}] Failed to generate cloned voice for segment {i+1}")
-                    continue
-
-                # 为此片段生成数字人视频
-                digital_human_url = await self._generate_digital_human_for_segment(
-                    job_id, i, cloned_audio_url
-                )
-
-                # 截取原视频对应片段
-                video_segment_path = await self._extract_video_segment(
-                    job_id, i, seg_start, seg_end
-                )
-
-                segment_results.append({
-                    "index": i,
-                    "start_time": seg_start,
-                    "end_time": seg_end,
-                    "cloned_audio_url": cloned_audio_url,
-                    "digital_human_url": digital_human_url,
-                    "video_segment_path": video_segment_path
-                })
+            segment_results.sort(key=lambda x: x["index"])
 
             if not segment_results:
                 raise Exception("No segments processed successfully")
 
-            # Step 7: 合成每个片段的视频（画中画）
+            # Step 7: 并行合成每个片段的视频（画中画）- 限制2个并发（FFmpeg 内存占用大）
             await self._update_progress(job_id, StoryJobStep.COMPOSITING_VIDEO, 85)
 
-            composited_segments = []
-            for seg_result in segment_results:
-                if seg_result["digital_human_url"] and seg_result["video_segment_path"]:
-                    # 有数字人：画中画合成
-                    composited_path = await self._composite_segment_pip(
-                        job_id,
-                        seg_result["index"],
-                        seg_result["video_segment_path"],
-                        seg_result["digital_human_url"],
-                        seg_result["cloned_audio_url"]
-                    )
-                else:
-                    # 无数字人：仅替换音频
-                    composited_path = await self._composite_segment_audio_only(
-                        job_id,
-                        seg_result["index"],
-                        seg_result["video_segment_path"],
-                        seg_result["cloned_audio_url"]
-                    )
+            composite_semaphore = asyncio.Semaphore(2)  # FFmpeg 内存占用大，限制并发数
 
-                if composited_path:
-                    composited_segments.append(composited_path)
+            async def composite_single_segment(seg_result: dict) -> Optional[str]:
+                """合成单个片段"""
+                async with composite_semaphore:
+                    try:
+                        if seg_result["digital_human_url"] and seg_result["video_segment_path"]:
+                            # 有数字人：画中画合成
+                            return await self._composite_segment_pip(
+                                job_id,
+                                seg_result["index"],
+                                seg_result["video_segment_path"],
+                                seg_result["digital_human_url"],
+                                seg_result["cloned_audio_url"]
+                            )
+                        else:
+                            # 无数字人：仅替换音频
+                            return await self._composite_segment_audio_only(
+                                job_id,
+                                seg_result["index"],
+                                seg_result["video_segment_path"],
+                                seg_result["cloned_audio_url"]
+                            )
+                    except Exception as e:
+                        logger.error(f"[{job_id}] Composite segment {seg_result['index']} error: {e}")
+                        return None
+
+            # 并行合成所有片段
+            logger.info(f"[{job_id}] Starting parallel compositing of {len(segment_results)} segments (max 2 concurrent)")
+            composite_tasks = [composite_single_segment(seg) for seg in segment_results]
+            composite_results = await asyncio.gather(*composite_tasks, return_exceptions=True)
+
+            composited_segments = []
+            for i, result in enumerate(composite_results):
+                if isinstance(result, str) and result:
+                    composited_segments.append(result)
+                elif isinstance(result, Exception):
+                    logger.error(f"[{job_id}] Composite exception: {result}")
 
             if not composited_segments:
                 raise Exception("No segments composited successfully")

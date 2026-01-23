@@ -2,8 +2,9 @@
 Auth 模块 - API 路由
 登录、注册、Token 刷新等接口
 """
-from fastapi import APIRouter, Depends, Response, Query
+from fastapi import APIRouter, Depends, Response, Query, Request, Cookie
 from fastapi.responses import RedirectResponse
+from typing import Optional
 
 from core.schemas.base import success_response
 from core.middleware.auth import get_current_user_id
@@ -74,16 +75,28 @@ async def login(
 
 @router.post("/refresh")
 async def refresh_token(
-    data: RefreshTokenRequest,
     response: Response,
+    data: RefreshTokenRequest = None,
+    refresh_token_cookie: Optional[str] = Cookie(None, alias="refresh_token"),
     auth_service: AuthService = Depends(get_auth_service)
 ):
     """
     刷新 Token
 
-    - **refresh_token**: 刷新令牌
+    - **refresh_token**: 刷新令牌 (可从请求体或 Cookie 获取)
     """
-    tokens = await auth_service.refresh_token(data.refresh_token)
+    # 优先从请求体获取，其次从 Cookie 获取
+    token = None
+    if data and data.refresh_token:
+        token = data.refresh_token
+    elif refresh_token_cookie:
+        token = refresh_token_cookie
+
+    if not token:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Refresh token not provided")
+
+    tokens = await auth_service.refresh_token(token)
 
     # 更新 Cookie 中的 refresh_token
     response.set_cookie(
@@ -257,8 +270,8 @@ async def google_callback(
     try:
         user, tokens = await auth_service.google_login(code)
 
-        # 使用配置的前端 URL
-        frontend_url = settings.FRONTEND_URL
+        # 重定向到前端，带上 token 信息（使用配置的 FRONTEND_URL）
+        frontend_url = settings.FRONTEND_URL.rstrip('/')
         redirect_url = (
             f"{frontend_url}/auth/callback"
             f"?access_token={tokens.access_token}"
@@ -276,5 +289,5 @@ async def google_callback(
         logger.error(f"Google OAuth error: {str(e)}", exc_info=True)
 
         # 认证失败，重定向到登录页并带上错误信息
-        frontend_url = settings.FRONTEND_URL
+        frontend_url = settings.FRONTEND_URL.rstrip('/')
         return RedirectResponse(url=f"{frontend_url}/login?error=google_auth_failed")
