@@ -78,6 +78,10 @@ class VoiceProfileRepository:
             "status": "active"
         })
 
+    async def update_voice_id(self, profile_id: str, voice_id: str) -> bool:
+        """更新声音档案的 voice_id（用于云端模式下更新阿里云 voice_id）"""
+        return await self.update(profile_id, {"voice_id": voice_id})
+
 
 # 全局实例
 voice_profile_repository = VoiceProfileRepository()

@@ -516,78 +516,58 @@ class StoryGenerationService:
                 total_duration = sum(seg["end_time"] - seg["start_time"] for seg in segments_to_process)
                 logger.info(f"[{job_id}] Preview mode: processing first {len(segments_to_process)} segments (~{total_duration:.1f}s)")
 
-            # Step 5-6: 对每个片段并行生成克隆语音和数字人（最多10个并发）
+            # Step 5-6: 串行处理每个片段（避免阿里云 API 限流）
+            # 每个片段内的字幕串行调用 TTS，完成后再处理下一个片段
             await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 20)
 
-            # 创建并发限制器（最多10个并发任务）
-            semaphore = asyncio.Semaphore(10)
-            completed_count = [0]  # 使用列表以便在闭包中修改
+            segment_results = []
             total_segments = len(segments_to_process)
 
-            async def process_single_segment(i: int, segment: dict) -> Optional[dict]:
-                """处理单个片段（在 semaphore 限制下并发执行）"""
-                async with semaphore:
-                    seg_start = segment["start_time"]
-                    seg_end = segment["end_time"]
-                    seg_subtitles = segment["subtitles"]
+            for i, segment in enumerate(segments_to_process):
+                seg_start = segment["start_time"]
+                seg_end = segment["end_time"]
+                seg_subtitles = segment["subtitles"]
 
-                    logger.info(f"[{job_id}] Processing segment {i+1}/{total_segments}: {seg_start:.2f}s - {seg_end:.2f}s")
+                logger.info(f"[{job_id}] Processing segment {i+1}/{total_segments}: {seg_start:.2f}s - {seg_end:.2f}s")
 
-                    try:
-                        # 为此片段生成克隆语音
-                        cloned_audio_url = await self._generate_cloned_voice_for_segment(
-                            job_id, i, seg_subtitles
-                        )
-                        if not cloned_audio_url:
-                            logger.error(f"[{job_id}] Failed to generate cloned voice for segment {i+1}")
-                            return None
+                try:
+                    # 为此片段生成克隆语音（串行处理）
+                    cloned_audio_url = await self._generate_cloned_voice_for_segment(
+                        job_id, i, seg_subtitles
+                    )
+                    if not cloned_audio_url:
+                        raise Exception(f"Failed to generate cloned voice for segment {i+1}")
 
-                        # 为此片段生成数字人视频（需要克隆语音作为输入）
-                        digital_human_url = await self._generate_digital_human_for_segment(
-                            job_id, i, cloned_audio_url
-                        )
+                    # 为此片段生成数字人视频
+                    digital_human_url = await self._generate_digital_human_for_segment(
+                        job_id, i, cloned_audio_url
+                    )
 
-                        # 截取原视频对应片段
-                        video_segment_path = await self._extract_video_segment(
-                            job_id, i, seg_start, seg_end
-                        )
+                    # 截取原视频对应片段
+                    video_segment_path = await self._extract_video_segment(
+                        job_id, i, seg_start, seg_end
+                    )
 
-                        # 更新进度
-                        completed_count[0] += 1
-                        progress = 20 + int((completed_count[0] / total_segments) * 60)
-                        await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
+                    # 更新进度
+                    progress = 20 + int(((i + 1) / total_segments) * 60)
+                    await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
 
-                        return {
-                            "index": i,
-                            "start_time": seg_start,
-                            "end_time": seg_end,
-                            "cloned_audio_url": cloned_audio_url,
-                            "digital_human_url": digital_human_url,
-                            "video_segment_path": video_segment_path
-                        }
-                    except Exception as e:
-                        logger.error(f"[{job_id}] Error processing segment {i+1}: {e}")
-                        return None
-
-            # 并行处理所有片段
-            logger.info(f"[{job_id}] Starting parallel processing of {total_segments} segments (max 10 concurrent)")
-            tasks = [process_single_segment(i, seg) for i, seg in enumerate(segments_to_process)]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # 过滤有效结果并按 index 排序
-            segment_results = []
-            for result in results:
-                if isinstance(result, dict) and result is not None:
-                    segment_results.append(result)
-                elif isinstance(result, Exception):
-                    logger.error(f"[{job_id}] Segment processing exception: {result}")
-
-            segment_results.sort(key=lambda x: x["index"])
+                    segment_results.append({
+                        "index": i,
+                        "start_time": seg_start,
+                        "end_time": seg_end,
+                        "cloned_audio_url": cloned_audio_url,
+                        "digital_human_url": digital_human_url,
+                        "video_segment_path": video_segment_path
+                    })
+                except Exception as e:
+                    logger.error(f"[{job_id}] Error processing segment {i+1}: {e}")
+                    raise Exception(f"Segment {i+1} processing failed: {e}")
 
             if not segment_results:
                 raise Exception("No segments processed successfully")
 
-            # Step 7: 并行合成每个片段的视频（画中画）- 限制2个并发（FFmpeg 内存占用大）
+            # Step 7: 串行合成每个片段的视频（画中画）
             await self._update_progress(job_id, StoryJobStep.COMPOSITING_VIDEO, 85)
 
             composite_semaphore = asyncio.Semaphore(2)  # FFmpeg 内存占用大，限制并发数
@@ -603,7 +583,8 @@ class StoryGenerationService:
                                 seg_result["index"],
                                 seg_result["video_segment_path"],
                                 seg_result["digital_human_url"],
-                                seg_result["cloned_audio_url"]
+                                seg_result["cloned_audio_url"],
+                                instrumental_url  # 添加背景音
                             )
                         else:
                             # 无数字人：仅替换音频
@@ -611,7 +592,8 @@ class StoryGenerationService:
                                 job_id,
                                 seg_result["index"],
                                 seg_result["video_segment_path"],
-                                seg_result["cloned_audio_url"]
+                                seg_result["cloned_audio_url"],
+                                instrumental_url  # 添加背景音
                             )
                     except Exception as e:
                         logger.error(f"[{job_id}] Composite segment {seg_result['index']} error: {e}")
@@ -623,11 +605,21 @@ class StoryGenerationService:
             composite_results = await asyncio.gather(*composite_tasks, return_exceptions=True)
 
             composited_segments = []
+            failed_segments = []
             for i, result in enumerate(composite_results):
                 if isinstance(result, str) and result:
                     composited_segments.append(result)
                 elif isinstance(result, Exception):
-                    logger.error(f"[{job_id}] Composite exception: {result}")
+                    logger.error(f"[{job_id}] Composite segment {i} exception: {result}")
+                    failed_segments.append(i)
+                else:
+                    # result is None - segment failed
+                    logger.error(f"[{job_id}] Composite segment {i} returned None")
+                    failed_segments.append(i)
+
+            # 所有片段都必须成功，否则整体失败
+            if failed_segments:
+                raise Exception(f"Segments {failed_segments} failed to composite. All segments must succeed.")
 
             if not composited_segments:
                 raise Exception("No segments composited successfully")
@@ -878,9 +870,63 @@ class StoryGenerationService:
 
             else:
                 # 云端模式
-                if not voice_id:
-                    logger.error(f"[{job_id}] No voice_id in profile")
-                    return None
+                # 检查 voice_id 是否是阿里云格式（本地格式以 local_ 开头）
+                if not voice_id or voice_id.startswith("local_"):
+                    # 需要使用参考音频在阿里云创建声音克隆
+                    logger.info(f"[{job_id}] Voice ID is local format or empty, creating cloud voice...")
+
+                    reference_audio_url = profile.get("reference_audio_url")
+                    if not reference_audio_url:
+                        logger.error(f"[{job_id}] No reference audio URL in profile")
+                        return None
+
+                    # 确保是公网可访问的 URL
+                    if not reference_audio_url.startswith("http"):
+                        # 上传到图床获取公网 URL
+                        from modules.voice_clone.service import VoiceCloneService
+                        vc_service = VoiceCloneService()
+
+                        local_path = reference_audio_url
+                        if local_path.startswith("/uploads/"):
+                            local_path = str(Path(settings.UPLOAD_DIR) / local_path.removeprefix("/uploads/"))
+                        elif local_path.startswith("/"):
+                            local_path = str(Path(settings.UPLOAD_DIR).parent / local_path.lstrip("/"))
+
+                        if not Path(local_path).exists():
+                            logger.error(f"[{job_id}] Reference audio not found: {local_path}")
+                            return None
+
+                        reference_audio_url = await vc_service.upload_to_media_bed(local_path)
+                        if not reference_audio_url:
+                            logger.error(f"[{job_id}] Failed to upload reference audio to media bed")
+                            return None
+
+                        logger.info(f"[{job_id}] Uploaded reference audio: {reference_audio_url}")
+
+                    # 在阿里云创建声音克隆
+                    from modules.voice_clone.service import VoiceCloneService
+                    vc_service = VoiceCloneService()
+
+                    cloud_voice_id = await vc_service._create_voice(job_id, reference_audio_url)
+                    if not cloud_voice_id:
+                        logger.error(f"[{job_id}] Failed to create cloud voice")
+                        return None
+
+                    # 等待声音就绪
+                    voice_ready = await vc_service._wait_for_voice_ready(job_id, cloud_voice_id)
+                    if not voice_ready:
+                        logger.error(f"[{job_id}] Cloud voice not ready")
+                        return None
+
+                    voice_id = cloud_voice_id
+                    logger.info(f"[{job_id}] Created cloud voice: {voice_id}")
+
+                    # 更新声音档案的 voice_id（保存云端 voice_id）
+                    from modules.voice_clone.repository import voice_profile_repository
+                    await voice_profile_repository.update_voice_id(
+                        profile.get("_id") or profile.get("id"),
+                        voice_id
+                    )
 
             logger.info(f"[{job_id}] Using voice_id: {voice_id}")
 
@@ -1069,10 +1115,6 @@ class StoryGenerationService:
                     return None
 
             # ============ 云端模式 ============
-            if not face_bbox or not ext_bbox:
-                logger.error(f"[{job_id}] Invalid avatar profile: cloud mode requires face_bbox and ext_bbox")
-                return None
-
             # 确保 image_url 是公网可访问的 URL
             if not image_url.startswith("http"):
                 # 本地路径，需要转换为公网 URL
@@ -1096,6 +1138,34 @@ class StoryGenerationService:
                 else:
                     logger.error(f"[{job_id}] Local image not found: {local_image_path}")
                     return None
+
+            # 如果 face_bbox 为空，自动调用人脸检测 API
+            if not face_bbox or not ext_bbox or len(face_bbox) == 0 or len(ext_bbox) == 0:
+                logger.info(f"[{job_id}] face_bbox/ext_bbox empty, calling face detection API...")
+
+                # 需要先确保 image_url 是公网可访问的（上面已处理）
+                if not image_url.startswith("http"):
+                    logger.error(f"[{job_id}] Cannot detect face: image_url is not a public URL")
+                    return None
+
+                # 调用人脸检测
+                face_bbox, ext_bbox = await dh_service._detect_face(job_id, image_url)
+
+                if not face_bbox or not ext_bbox:
+                    logger.error(f"[{job_id}] Face detection failed for avatar profile")
+                    return None
+
+                logger.info(f"[{job_id}] Face detected: face_bbox={face_bbox}, ext_bbox={ext_bbox}")
+
+                # 更新头像档案的 face_bbox 和 ext_bbox（避免下次重复检测）
+                try:
+                    await avatar_profile_repository.update(
+                        avatar_profile_id,
+                        {"face_bbox": face_bbox, "ext_bbox": ext_bbox}
+                    )
+                    logger.info(f"[{job_id}] Updated avatar profile with face_bbox and ext_bbox")
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Failed to update avatar profile: {e}")
 
             # 统计人脸检测费用（每个片段检测一次）
             if self._current_job_cost:
@@ -1431,16 +1501,29 @@ class StoryGenerationService:
             shutil.copy(url_or_path, str(target_path))
             return target_path
 
-        # HTTP URL - 下载
+        # HTTP URL - 下载（带重试）
         elif url_or_path.startswith('http'):
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.get(url_or_path)
-                if response.status_code != 200:
-                    logger.error(f"Failed to download: {url_or_path}")
-                    return None
-                with open(target_path, 'wb') as f:
-                    f.write(response.content)
-                return target_path
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        response = await client.get(url_or_path)
+                        if response.status_code != 200:
+                            logger.error(f"Failed to download (attempt {attempt + 1}): {url_or_path}, status={response.status_code}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(2 ** attempt)  # 指数退避
+                                continue
+                            return None
+                        with open(target_path, 'wb') as f:
+                            f.write(response.content)
+                        return target_path
+                except Exception as e:
+                    logger.warning(f"Download error (attempt {attempt + 1}/{max_retries}): {e}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** attempt)  # 指数退避: 1s, 2s, 4s
+                    else:
+                        logger.error(f"Failed to download after {max_retries} attempts: {url_or_path}")
+                        return None
 
         else:
             logger.error(f"Unknown URL format: {url_or_path}")
@@ -1452,9 +1535,10 @@ class StoryGenerationService:
         segment_index: int,
         video_path: str,
         digital_human_url: str,
-        audio_url: str
+        audio_url: str,
+        background_url: Optional[str] = None
     ) -> Optional[str]:
-        """单个片段的画中画合成 - 内存优化版本（输出720p）"""
+        """单个片段的画中画合成 - 内存优化版本（输出720p）+ 背景音混合"""
         logger.info(f"[{job_id}] Compositing segment {segment_index} with PIP (memory-optimized)")
 
         try:
@@ -1473,6 +1557,17 @@ class StoryGenerationService:
             if not result:
                 logger.error(f"[{job_id}] Failed to get audio")
                 return None
+
+            # 获取背景音（如果有）
+            bg_audio_path = None
+            if background_url:
+                bg_audio_path = self.upload_dir / f"{job_id}_seg{segment_index}_bg.mp3"
+                result = await self._get_local_file_path(background_url, bg_audio_path)
+                if result:
+                    logger.info(f"[{job_id}] Background audio loaded for segment {segment_index}")
+                else:
+                    logger.warning(f"[{job_id}] Failed to get background audio, proceeding without it")
+                    bg_audio_path = None
 
             output_path = self.upload_dir / f"{job_id}_seg{segment_index}_composited.mp4"
 
@@ -1525,31 +1620,60 @@ class StoryGenerationService:
             pip_x = out_width - pip_width - 10
             pip_y = 10
 
-            # 构建 filter_complex：同时缩放主视频和PIP视频，然后叠加
-            filter_complex = (
-                f"[0:v]scale={out_width}:{out_height}[main];"
-                f"[1:v]scale={pip_width}:{pip_height}[pip];"
-                f"[main][pip]overlay={pip_x}:{pip_y}:shortest=1[outv]"
-            )
-
-            # 使用内存优化的FFmpeg命令
-            cmd = [
-                get_ffmpeg_path(), '-y',
-                '-threads', '1',  # 单线程减少内存
-                '-i', video_path,
-                '-i', str(dh_video_path),
-                '-i', str(audio_path),
-                '-filter_complex', filter_complex,
-                '-map', '[outv]',
-                '-map', '2:a',
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',  # 最快预设，内存最少
-                '-crf', '25',
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                '-shortest',
-                str(output_path)
-            ]
+            # 构建 filter_complex
+            if bg_audio_path and bg_audio_path.exists():
+                # 有背景音：混合克隆语音和背景音
+                # 克隆语音音量 1.0，背景音音量 0.3
+                filter_complex = (
+                    f"[0:v]scale={out_width}:{out_height}[main];"
+                    f"[1:v]scale={pip_width}:{pip_height}[pip];"
+                    f"[main][pip]overlay={pip_x}:{pip_y}:shortest=1[outv];"
+                    f"[2:a]volume=1.0[voice];[3:a]volume=0.3[bg];"
+                    f"[voice][bg]amix=inputs=2:duration=shortest:normalize=0[aout]"
+                )
+                cmd = [
+                    get_ffmpeg_path(), '-y',
+                    '-threads', '1',
+                    '-i', video_path,
+                    '-i', str(dh_video_path),
+                    '-i', str(audio_path),
+                    '-i', str(bg_audio_path),
+                    '-filter_complex', filter_complex,
+                    '-map', '[outv]',
+                    '-map', '[aout]',
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '25',
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    '-shortest',
+                    str(output_path)
+                ]
+                logger.info(f"[{job_id}] PIP composite with background audio mixing")
+            else:
+                # 无背景音：仅使用克隆语音
+                filter_complex = (
+                    f"[0:v]scale={out_width}:{out_height}[main];"
+                    f"[1:v]scale={pip_width}:{pip_height}[pip];"
+                    f"[main][pip]overlay={pip_x}:{pip_y}:shortest=1[outv]"
+                )
+                cmd = [
+                    get_ffmpeg_path(), '-y',
+                    '-threads', '1',
+                    '-i', video_path,
+                    '-i', str(dh_video_path),
+                    '-i', str(audio_path),
+                    '-filter_complex', filter_complex,
+                    '-map', '[outv]',
+                    '-map', '2:a',
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '25',
+                    '-c:a', 'aac',
+                    '-b:a', '128k',
+                    '-shortest',
+                    str(output_path)
+                ]
 
             logger.info(f"[{job_id}] PIP composite: {out_width}x{out_height} with {pip_width}x{pip_height} overlay at ({pip_x},{pip_y})")
             returncode, stdout, stderr = await run_ffmpeg_command(cmd)
@@ -1575,9 +1699,10 @@ class StoryGenerationService:
         job_id: str,
         segment_index: int,
         video_path: str,
-        audio_url: str
+        audio_url: str,
+        background_url: Optional[str] = None
     ) -> Optional[str]:
-        """单个片段仅替换音频"""
+        """单个片段仅替换音频（带背景音混合）"""
         logger.info(f"[{job_id}] Compositing segment {segment_index} audio only")
 
         try:
@@ -1588,19 +1713,52 @@ class StoryGenerationService:
                 logger.error(f"[{job_id}] Failed to get audio")
                 return None
 
+            # 获取背景音（如果有）
+            bg_audio_path = None
+            if background_url:
+                bg_audio_path = self.upload_dir / f"{job_id}_seg{segment_index}_bg.mp3"
+                result = await self._get_local_file_path(background_url, bg_audio_path)
+                if result:
+                    logger.info(f"[{job_id}] Background audio loaded for segment {segment_index}")
+                else:
+                    logger.warning(f"[{job_id}] Failed to get background audio, proceeding without it")
+                    bg_audio_path = None
+
             output_path = self.upload_dir / f"{job_id}_seg{segment_index}_composited.mp4"
 
-            cmd = [
-                get_ffmpeg_path(), '-y',
-                '-i', video_path,
-                '-i', str(audio_path),
-                '-c:v', 'copy',
-                '-map', '0:v',
-                '-map', '1:a',
-                '-c:a', 'aac',
-                '-shortest',
-                str(output_path)
-            ]
+            if bg_audio_path and bg_audio_path.exists():
+                # 有背景音：混合克隆语音和背景音
+                filter_complex = (
+                    f"[1:a]volume=1.0[voice];[2:a]volume=0.3[bg];"
+                    f"[voice][bg]amix=inputs=2:duration=shortest:normalize=0[aout]"
+                )
+                cmd = [
+                    get_ffmpeg_path(), '-y',
+                    '-i', video_path,
+                    '-i', str(audio_path),
+                    '-i', str(bg_audio_path),
+                    '-filter_complex', filter_complex,
+                    '-map', '0:v',
+                    '-map', '[aout]',
+                    '-c:v', 'copy',
+                    '-c:a', 'aac',
+                    '-shortest',
+                    str(output_path)
+                ]
+                logger.info(f"[{job_id}] Audio-only composite with background audio mixing")
+            else:
+                # 无背景音：仅使用克隆语音
+                cmd = [
+                    get_ffmpeg_path(), '-y',
+                    '-i', video_path,
+                    '-i', str(audio_path),
+                    '-c:v', 'copy',
+                    '-map', '0:v',
+                    '-map', '1:a',
+                    '-c:a', 'aac',
+                    '-shortest',
+                    str(output_path)
+                ]
 
             returncode, stdout, stderr = await run_ffmpeg_command(cmd)
 
@@ -2600,17 +2758,31 @@ class StoryGenerationService:
                     self._current_job_cost.tts_chars += chars
                     self._current_job_cost.tts_cost += cost
 
-                # 使用并发限制执行 TTS
-                async def do_synthesize():
-                    def synthesize_sync():
-                        synthesizer = SpeechSynthesizer(
-                            model='cosyvoice-v2',
-                            voice=voice_id
-                        )
-                        return synthesizer.call(segment_text)
-                    return await asyncio.to_thread(synthesize_sync)
+                # 重试机制（最多 3 次）
+                max_retries = 3
+                audio_data = None
 
-                audio_data = await run_with_limit(do_synthesize())
+                for attempt in range(max_retries):
+                    try:
+                        # TTS 调用
+                        def synthesize_sync():
+                            synthesizer = SpeechSynthesizer(
+                                model='cosyvoice-v2',
+                                voice=voice_id
+                            )
+                            return synthesizer.call(segment_text)
+
+                        audio_data = await asyncio.to_thread(synthesize_sync)
+
+                        if audio_data:
+                            break
+                    except Exception as e:
+                        logger.warning(f"TTS attempt {attempt+1}/{max_retries} failed: {e}")
+                        if attempt < max_retries - 1:
+                            # 等待后重试（递增延迟）
+                            await asyncio.sleep(2 * (attempt + 1))
+                        else:
+                            raise
 
                 if audio_data:
                     all_audio_data.append(audio_data)
@@ -2619,6 +2791,10 @@ class StoryGenerationService:
                 else:
                     logger.error(f"TTS segment {i+1} failed for text: '{segment_text[:30]}...'")
                     return None
+
+                # 每次 TTS 调用后等待 1 秒，避免触发限流
+                if i < len(text_segments) - 1:
+                    await asyncio.sleep(1.0)
 
             # 如果只有一个片段，直接返回
             if len(all_audio_data) == 1:
@@ -4024,9 +4200,54 @@ class StoryGenerationService:
             face_bbox = profile.get("face_bbox")
             ext_bbox = profile.get("ext_bbox")
 
-            if not image_url or not face_bbox or not ext_bbox:
-                logger.error(f"[{job_id}] Invalid avatar profile for speaker {speaker_id}")
+            if not image_url:
+                logger.error(f"[{job_id}] Invalid avatar profile for speaker {speaker_id}: missing image_url")
                 return None
+
+            # 如果 face_bbox 为空，自动检测
+            if not face_bbox or not ext_bbox:
+                logger.info(f"[{job_id}] face_bbox/ext_bbox empty for speaker {speaker_id}, calling face detection...")
+
+                from modules.digital_human.factory import get_digital_human_service
+                from core.config.settings import get_settings
+                settings = get_settings()
+                dh_service = get_digital_human_service()
+
+                # 确保图片是公网可访问的 URL
+                temp_image_url = image_url
+                if not temp_image_url.startswith(("http://", "https://")):
+                    local_image_path = temp_image_url
+                    if not local_image_path.startswith("/"):
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / temp_image_url)
+                    else:
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / temp_image_url.lstrip("/"))
+
+                    if Path(local_image_path).exists():
+                        public_url = await dh_service.upload_to_media_bed(local_image_path)
+                        if public_url:
+                            temp_image_url = public_url
+                        else:
+                            logger.error(f"[{job_id}] Failed to upload image for face detection")
+                            return None
+                    else:
+                        logger.error(f"[{job_id}] Image not found: {local_image_path}")
+                        return None
+
+                # 调用人脸检测
+                face_bbox, ext_bbox = await dh_service._detect_face(job_id, temp_image_url)
+
+                if not face_bbox or not ext_bbox:
+                    logger.error(f"[{job_id}] Face detection failed for speaker {speaker_id}")
+                    return None
+
+                logger.info(f"[{job_id}] Face detected: face_bbox={face_bbox}, ext_bbox={ext_bbox}")
+
+                # 更新头像档案
+                try:
+                    await avatar_profile_repository.update(avatar_profile_id, {"face_bbox": face_bbox, "ext_bbox": ext_bbox})
+                    logger.info(f"[{job_id}] Updated avatar profile with face_bbox and ext_bbox")
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Failed to update avatar profile: {e}")
 
             # 截取音频前55秒（EMO限制）
             truncated_audio_url = await self._truncate_audio_for_emo(
@@ -4095,9 +4316,54 @@ class StoryGenerationService:
             face_bbox = profile.get("face_bbox")
             ext_bbox = profile.get("ext_bbox")
 
-            if not image_url or not face_bbox or not ext_bbox:
-                logger.error(f"[{job_id}] Invalid avatar profile for speaker {speaker_id}")
+            if not image_url:
+                logger.error(f"[{job_id}] Invalid avatar profile for speaker {speaker_id}: missing image_url")
                 return None
+
+            # 如果 face_bbox 为空，自动检测
+            if not face_bbox or not ext_bbox:
+                logger.info(f"[{job_id}] face_bbox/ext_bbox empty for speaker {speaker_id}, calling face detection...")
+
+                from modules.digital_human.factory import get_digital_human_service
+                from core.config.settings import get_settings
+                settings = get_settings()
+                dh_service = get_digital_human_service()
+
+                # 确保图片是公网可访问的 URL
+                temp_image_url = image_url
+                if not temp_image_url.startswith(("http://", "https://")):
+                    local_image_path = temp_image_url
+                    if not local_image_path.startswith("/"):
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / temp_image_url)
+                    else:
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / temp_image_url.lstrip("/"))
+
+                    if Path(local_image_path).exists():
+                        public_url = await dh_service.upload_to_media_bed(local_image_path)
+                        if public_url:
+                            temp_image_url = public_url
+                        else:
+                            logger.error(f"[{job_id}] Failed to upload image for face detection")
+                            return None
+                    else:
+                        logger.error(f"[{job_id}] Image not found: {local_image_path}")
+                        return None
+
+                # 调用人脸检测
+                face_bbox, ext_bbox = await dh_service._detect_face(job_id, temp_image_url)
+
+                if not face_bbox or not ext_bbox:
+                    logger.error(f"[{job_id}] Face detection failed for speaker {speaker_id}")
+                    return None
+
+                logger.info(f"[{job_id}] Face detected: face_bbox={face_bbox}, ext_bbox={ext_bbox}")
+
+                # 更新头像档案
+                try:
+                    await avatar_profile_repository.update(avatar_profile_id, {"face_bbox": face_bbox, "ext_bbox": ext_bbox})
+                    logger.info(f"[{job_id}] Updated avatar profile with face_bbox and ext_bbox")
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Failed to update avatar profile: {e}")
 
             # 截取音频前55秒（EMO限制）
             truncated_audio_url = await self._truncate_audio_for_emo(
@@ -4886,13 +5152,51 @@ class StoryGenerationService:
             settings = get_settings()
             service_mode = getattr(settings, 'AI_SERVICE_MODE', 'local')
 
-            if service_mode == 'cloud' and (not face_bbox or not ext_bbox):
-                logger.error(f"[{job_id}] Invalid avatar profile: cloud mode requires face_bbox and ext_bbox")
-                return None
-
             # 调用 EMO API 创建任务
             from modules.digital_human.factory import get_digital_human_service
             dh_service = get_digital_human_service()
+
+            # 云端模式下，如果 face_bbox 为空，自动检测
+            if service_mode == 'cloud' and (not face_bbox or not ext_bbox):
+                logger.info(f"[{job_id}] face_bbox/ext_bbox empty, calling face detection API...")
+
+                # 需要先确保图片是公网可访问的 URL
+                temp_image_url = image_url
+                if not temp_image_url.startswith(("http://", "https://")):
+                    local_image_path = temp_image_url
+                    if not local_image_path.startswith("/"):
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / temp_image_url)
+                    else:
+                        local_image_path = str(Path(settings.UPLOAD_DIR).parent / temp_image_url.lstrip("/"))
+
+                    if Path(local_image_path).exists():
+                        logger.info(f"[{job_id}] Uploading image for face detection: {local_image_path}")
+                        public_url = await dh_service.upload_to_media_bed(local_image_path)
+                        if public_url:
+                            temp_image_url = public_url
+                        else:
+                            logger.error(f"[{job_id}] Failed to upload image for face detection")
+                            return None
+                    else:
+                        logger.error(f"[{job_id}] Image not found: {local_image_path}")
+                        return None
+
+                # 调用人脸检测
+                face_bbox, ext_bbox = await dh_service._detect_face(job_id, temp_image_url)
+
+                if not face_bbox or not ext_bbox:
+                    logger.error(f"[{job_id}] Face detection failed for avatar profile")
+                    return None
+
+                logger.info(f"[{job_id}] Face detected: face_bbox={face_bbox}, ext_bbox={ext_bbox}")
+
+                # 更新头像档案（避免下次重复检测）
+                try:
+                    from modules.digital_human.repository import avatar_profile_repository as apr
+                    await apr.update(avatar_profile_id, {"face_bbox": face_bbox, "ext_bbox": ext_bbox})
+                    logger.info(f"[{job_id}] Updated avatar profile with face_bbox and ext_bbox")
+                except Exception as e:
+                    logger.warning(f"[{job_id}] Failed to update avatar profile: {e}")
 
             # 云端模式：确保 image_url 是公网可访问的 URL
             if service_mode == 'cloud':
