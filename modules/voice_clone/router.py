@@ -27,9 +27,21 @@ from .schemas import (
 from .preset_stories import get_all_stories, get_story_by_id
 from .factory import get_voice_clone_service
 
+# 声音档案创建专用本地服务（知识产权保护）
+_local_service_instance = None
+
+def _get_local_service():
+    """获取本地声音克隆服务（用于声音档案创建）"""
+    global _local_service_instance
+    if _local_service_instance is None:
+        from .local_service import LocalVoiceCloneService
+        _local_service_instance = LocalVoiceCloneService()
+        print("[VoiceClone Router] Using LOCAL service for voice profile creation")
+    return _local_service_instance
+
 
 def _get_service():
-    """获取声音克隆服务实例"""
+    """获取声音克隆服务实例（根据配置选择）"""
     return get_voice_clone_service()
 
 router = APIRouter(prefix="/voice-clone", tags=["语音克隆"])
@@ -131,8 +143,8 @@ async def create_voice_clone_preview(
     if len(content) > max_size:
         raise HTTPException(status_code=400, detail="音频文件过大，最大支持 10MB")
 
-    # 保存参考音频
-    service = _get_service()
+    # 使用本地服务创建声音档案（知识产权保护 + 快速预览）
+    service = _get_local_service()
     reference_path = service.save_reference_audio(
         user_id=user_id,
         file_content=content,
@@ -198,8 +210,8 @@ async def get_voice_clone_status(
     if not task_id.startswith(user_id):
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
-    # 获取任务状态
-    service = _get_service()
+    # 获取任务状态（使用本地服务，因为任务是本地创建的）
+    service = _get_local_service()
     task = service.get_task_status(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -250,7 +262,8 @@ async def save_voice_profile(
     }
     ```
     """
-    service = _get_service()
+    # 使用本地服务保存档案（任务信息在本地服务内存中）
+    service = _get_local_service()
     profile = await service.save_voice_profile(
         user_id=user_id,
         task_id=request.task_id,

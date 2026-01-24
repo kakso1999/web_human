@@ -76,17 +76,27 @@ class VoiceCloneService:
         """
         try:
             file_path = Path(file_path)
+            print(f"[MediaBed] Attempting to upload: {file_path}")
+            print(f"[MediaBed] Media bed URL: {self.media_bed_url}")
+
             if not file_path.exists():
-                print(f"File not found: {file_path}")
+                print(f"[MediaBed] File not found: {file_path}")
                 return None
+
+            file_size = file_path.stat().st_size
+            print(f"[MediaBed] File size: {file_size} bytes")
 
             async with httpx.AsyncClient(timeout=60.0) as client:
                 with open(file_path, 'rb') as f:
                     files = {'file': (file_path.name, f, 'audio/wav')}
+                    print(f"[MediaBed] Posting to {self.media_bed_url}/upload")
                     response = await client.post(
                         f"{self.media_bed_url}/upload",
                         files=files
                     )
+
+                print(f"[MediaBed] Response status: {response.status_code}")
+                print(f"[MediaBed] Response body: {response.text[:500]}")
 
                 if response.status_code == 200:
                     result = response.json()
@@ -94,14 +104,16 @@ class VoiceCloneService:
                         # 返回完整的公网 URL
                         file_url = result.get('url', '')
                         full_url = f"{self.media_bed_url}{file_url}"
-                        print(f"Uploaded to media bed: {full_url}")
+                        print(f"[MediaBed] Uploaded successfully: {full_url}")
                         return full_url
+                    else:
+                        print(f"[MediaBed] Upload returned success=False: {result}")
 
-                print(f"Media bed upload failed: {response.text}")
+                print(f"[MediaBed] Upload failed with status {response.status_code}")
                 return None
 
         except Exception as e:
-            print(f"Media bed upload error: {e}")
+            print(f"[MediaBed] Upload error: {e}")
             import traceback
             traceback.print_exc()
             return None
@@ -144,6 +156,13 @@ class VoiceCloneService:
                 raise Exception("DASHSCOPE_API_KEY not configured in .env")
 
             voice_clone_tasks[task_id]["progress"] = 10
+
+            # 调试：检查文件路径
+            import os
+            print(f"[{task_id}] Current working directory: {os.getcwd()}")
+            print(f"[{task_id}] Reference audio path: {reference_audio_path}")
+            print(f"[{task_id}] Path exists: {Path(reference_audio_path).exists()}")
+            print(f"[{task_id}] Absolute path: {Path(reference_audio_path).resolve()}")
 
             # 上传音频到图床服务获取公网 URL
             print(f"[{task_id}] Uploading audio to media bed...")
