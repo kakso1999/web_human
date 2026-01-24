@@ -496,9 +496,10 @@ class StoryGenerationService:
             await self.repository.save_subtitles(job_id, subtitles)
             await self.repository.update_job_field(job_id, "transcription_text", transcription_text)
 
-            # 将字幕切割为最大30秒的片段
-            video_segments = self._split_into_chunks(subtitles, max_duration=30.0)
-            logger.info(f"[{job_id}] Split into {len(video_segments)} video segments")
+            # 将字幕切割为最大 48 秒的片段（与 EMO API 限制一致）
+            # 这样每个片段可以直接调用一次 EMO，无需再次切分
+            video_segments = self._split_into_chunks(subtitles, max_duration=48.0)
+            logger.info(f"[{job_id}] Split into {len(video_segments)} video segments (max 48s each)")
 
             # 获取任务配置，检查是否生成完整视频
             job = await self.repository.get_job(job_id)
@@ -509,10 +510,11 @@ class StoryGenerationService:
                 segments_to_process = video_segments
                 logger.info(f"[{job_id}] Full video mode: processing all {len(segments_to_process)} segments")
             else:
-                # 默认模式：只处理前2个片段
+                # 默认模式：只处理前 2 个片段（约 96 秒，节省成本）
                 MAX_SEGMENTS_DEFAULT = 2
                 segments_to_process = video_segments[:MAX_SEGMENTS_DEFAULT]
-                logger.info(f"[{job_id}] Preview mode: processing first {len(segments_to_process)} segments")
+                total_duration = sum(seg["end_time"] - seg["start_time"] for seg in segments_to_process)
+                logger.info(f"[{job_id}] Preview mode: processing first {len(segments_to_process)} segments (~{total_duration:.1f}s)")
 
             # Step 5-6: 对每个片段并行生成克隆语音和数字人（最多10个并发）
             await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 20)
@@ -3584,11 +3586,11 @@ class StoryGenerationService:
 
                 speaker_results[speaker_id] = result
 
-            # Phase 2: 分段生成数字人视频（最大45秒/段，最多5并发）
+            # Phase 2: 分段生成数字人视频（最大 48 秒/段，符合 EMO API 限制）
             await self._update_progress(job_id, StoryJobStep.GENERATING_DIGITAL_HUMAN, 50)
             logger.info(f"[{job_id}] Phase 2 - Creating segmented EMO tasks")
 
-            MAX_SEGMENT_DURATION = 50  # 每段最大 50 秒
+            MAX_SEGMENT_DURATION = 48  # 每段最大 48 秒（EMO API 限制）
             MAX_CONCURRENT_EMO = 5     # 最大并发 5 个
 
             configs_by_speaker = {cfg.get("speaker_id"): cfg for cfg in enabled_configs}

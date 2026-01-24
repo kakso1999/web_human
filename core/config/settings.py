@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # 阿里云百炼 DashScope API 配置
     DASHSCOPE_API_KEY: Optional[str] = None
 
+    # APIMart API 配置 (Whisper-1, Gemini)
+    APIMART_API_KEY: Optional[str] = None
+
     # 后端公网访问 URL（用于阿里云 API 访问本地文件）
     # 开发环境可使用 ngrok 等工具暴露本地服务
     BACKEND_PUBLIC_URL: Optional[str] = None
@@ -104,7 +107,7 @@ class Settings(BaseSettings):
     # AI 服务模式配置
     # "local": 使用本地模型 (SpeechT5 声音克隆, FFmpeg 数字人)
     # "cloud": 使用阿里云 API (CosyVoice 声音克隆, EMO 数字人)
-    AI_SERVICE_MODE: str = "local"
+    AI_SERVICE_MODE: str = "cloud"
 
     class Config:
         env_file = ".env"
