@@ -193,6 +193,14 @@ class StoryAnalysisQueue:
             dual_assignment = ai.get('dual_voice_assignment', {})
             original_speakers = {sp.get('speaker_id', sp.get('id', '')): sp for sp in ai.get('original_speakers', [])}
 
+            # 计算每个配音角色的时长（根据字幕分段）
+            voice_durations = {'VOICE_1': 0.0, 'VOICE_2': 0.0}
+            for seg in subtitles:
+                voice = seg.get('voice', 'VOICE_1')
+                seg_duration = seg.get('end', 0) - seg.get('start', 0)
+                if voice in voice_durations:
+                    voice_durations[voice] += seg_duration
+
             dual_speakers = []
             for voice_id in ['VOICE_1', 'VOICE_2']:
                 assigned_chars = dual_assignment.get(voice_id, [])
@@ -209,7 +217,7 @@ class StoryAnalysisQueue:
                         'label': voice_id.replace('_', ' ').title(),  # "Voice 1" / "Voice 2"
                         'description': ', '.join(descriptions),  # "Narrator, Father"
                         'gender': 'unknown',
-                        'duration': 0.0,
+                        'duration': round(voice_durations.get(voice_id, 0.0), 1),  # 计算实际时长
                         'assigned_characters': assigned_chars  # ["NARRATOR", "FATHER"]
                     })
 

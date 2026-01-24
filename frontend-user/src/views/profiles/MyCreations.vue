@@ -104,6 +104,8 @@ const getStatusClass = (status: string) => {
       return 'bg-blue-100 text-blue-700'
     case 'failed':
       return 'bg-red-100 text-red-700'
+    case 'cancelled':
+      return 'bg-orange-100 text-orange-700'
     default:
       return 'bg-gray-100 text-gray-700'
   }
@@ -117,8 +119,12 @@ const getStatusText = (status: string, progress?: number) => {
       return progress ? `Processing ${progress}%` : 'Processing...'
     case 'failed':
       return 'Failed'
-    default:
+    case 'cancelled':
+      return 'Cancelled'
+    case 'pending':
       return 'Pending'
+    default:
+      return status || 'Pending'
   }
 }
 

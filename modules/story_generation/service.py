@@ -3677,10 +3677,13 @@ class StoryGenerationService:
             if not story.get("is_analyzed"):
                 raise Exception("Story has not been analyzed for speakers")
 
-            # 获取说话人信息和分割片段
-            speakers = story.get("speakers", [])
-            diarization_segments = story.get("diarization_segments", [])
-            background_audio_url = story.get("background_audio_url")
+            # 获取双人模式分析数据
+            dual_analysis = story.get("dual_speaker_analysis") or {}
+
+            # 优先从 dual_speaker_analysis 读取，fallback 到顶层字段
+            speakers = dual_analysis.get("speakers") or story.get("speakers") or []
+            diarization_segments = dual_analysis.get("diarization_segments") or story.get("diarization_segments") or []
+            background_audio_url = dual_analysis.get("background_url") or story.get("background_audio_url")
 
             logger.info(f"[{job_id}] Story has {len(speakers)} speakers, {len(diarization_segments)} segments")
 
@@ -3695,30 +3698,69 @@ class StoryGenerationService:
             video_duration = await self._get_video_duration(str(video_path))
             logger.info(f"[{job_id}] Original video duration: {video_duration:.2f}s")
 
-            # Step 2: 语音识别（获取完整字幕）
+            # Step 2: 使用分析结果的字幕（跳过转录）
             await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 15)
-            transcription = await self._transcribe_audio(job_id, audio_url)
-            if not transcription:
-                raise Exception("Failed to transcribe audio")
 
-            # 保存字幕
-            words = transcription.get("words", [])
-            if words:
-                subtitles = self._words_to_segments(words, max_gap=0.7, max_segment_duration=10.0)
-            else:
-                segments = transcription.get("segments", [])
+            # 优先使用故事分析结果中的字幕数据
+            story_subtitles = story.get("subtitles") or []
+
+            # 检查 diarization_segments 是否有 text 字段（新版分析数据）
+            has_text = diarization_segments and len(diarization_segments) > 0 and diarization_segments[0].get("text")
+
+            if story_subtitles and len(story_subtitles) > 0:
+                # 使用故事级别的 subtitles（APIMart 分析结果）
+                print(f"[{job_id}] Using story.subtitles ({len(story_subtitles)} segments) - SKIPPING TRANSCRIPTION")
+                logger.info(f"[{job_id}] Using story.subtitles ({len(story_subtitles)} segments) - skipping transcription")
                 subtitles = [
                     {
                         "index": i + 1,
                         "start_time": seg.get("start", 0),
                         "end_time": seg.get("end", 0),
-                        "text": seg.get("text", "").strip()
+                        "text": seg.get("text", "").strip(),
+                        "speaker": seg.get("voice") or seg.get("speaker", "VOICE_1")
                     }
-                    for i, seg in enumerate(segments)
+                    for i, seg in enumerate(story_subtitles)
                 ]
+            elif has_text:
+                # diarization_segments 已包含 text，直接转换为 subtitles 格式
+                print(f"[{job_id}] Using diarization_segments ({len(diarization_segments)} segments) - SKIPPING TRANSCRIPTION")
+                logger.info(f"[{job_id}] Using diarization_segments with text ({len(diarization_segments)} segments) - skipping transcription")
+                subtitles = [
+                    {
+                        "index": i + 1,
+                        "start_time": seg.get("start", 0),
+                        "end_time": seg.get("end", 0),
+                        "text": seg.get("text", "").strip(),
+                        "speaker": seg.get("voice") or seg.get("speaker", "VOICE_1")
+                    }
+                    for i, seg in enumerate(diarization_segments)
+                ]
+            else:
+                # 没有预分析的字幕数据，需要进行转录（兼容旧数据）
+                print(f"[{job_id}] No pre-analyzed subtitles - PERFORMING TRANSCRIPTION")
+                logger.info(f"[{job_id}] No pre-analyzed subtitles found, performing transcription")
+                transcription = await self._transcribe_audio(job_id, audio_url)
+                if not transcription:
+                    raise Exception("Failed to transcribe audio")
 
-            # 为字幕分配说话人标签
-            subtitles = self._assign_speaker_to_subtitles(subtitles, diarization_segments)
+                # 保存字幕
+                words = transcription.get("words", [])
+                if words:
+                    subtitles = self._words_to_segments(words, max_gap=0.7, max_segment_duration=10.0)
+                else:
+                    segments = transcription.get("segments", [])
+                    subtitles = [
+                        {
+                            "index": i + 1,
+                            "start_time": seg.get("start", 0),
+                            "end_time": seg.get("end", 0),
+                            "text": seg.get("text", "").strip()
+                        }
+                        for i, seg in enumerate(segments)
+                    ]
+
+                # 为字幕分配说话人标签（仅当需要转录时）
+                subtitles = self._assign_speaker_to_subtitles(subtitles, diarization_segments)
             await self.repository.save_subtitles(job_id, subtitles)
 
             logger.info(f"[{job_id}] Subtitles with speakers: {len(subtitles)} items")
@@ -3732,6 +3774,15 @@ class StoryGenerationService:
 
             # Phase 1: 生成所有克隆语音
             speaker_results = {}
+
+            # 创建说话人ID映射 (SPEAKER_00 <-> VOICE_1, SPEAKER_01 <-> VOICE_2)
+            speaker_id_map = {
+                "SPEAKER_00": "VOICE_1",
+                "SPEAKER_01": "VOICE_2",
+                "VOICE_1": "SPEAKER_00",
+                "VOICE_2": "SPEAKER_01"
+            }
+
             for i, config in enumerate(enabled_configs):
                 speaker_id = config.get("speaker_id")
                 voice_profile_id = config.get("voice_profile_id")
@@ -3743,12 +3794,14 @@ class StoryGenerationService:
                 await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
 
                 # 获取该说话人的字幕片段
-                speaker_subtitles = [s for s in subtitles if s.get("speaker") == speaker_id]
+                # 映射 SPEAKER_XX 到 VOICE_X（因为字幕使用 VOICE_1/VOICE_2 格式）
+                voice_id = speaker_id_map.get(speaker_id, speaker_id)
+                speaker_subtitles = [s for s in subtitles if s.get("speaker") == speaker_id or s.get("speaker") == voice_id]
                 if not speaker_subtitles:
-                    logger.warning(f"[{job_id}] No subtitles found for speaker {speaker_id}")
+                    logger.warning(f"[{job_id}] No subtitles found for speaker {speaker_id} (mapped to {voice_id})")
                     continue
 
-                logger.info(f"[{job_id}] Speaker {speaker_id} has {len(speaker_subtitles)} subtitle segments")
+                logger.info(f"[{job_id}] Speaker {speaker_id} (voice_id={voice_id}) has {len(speaker_subtitles)} subtitle segments")
 
                 result = {"speaker_id": speaker_id}
 
@@ -3799,6 +3852,10 @@ class StoryGenerationService:
                 if job_max_segments and job_max_segments > 0:
                     num_segments = min(num_segments, job_max_segments)
                     logger.info(f"[{job_id}] Limiting to {num_segments} segments (max_segments={job_max_segments})")
+                else:
+                    # 默认限制为 2 个片段（测试阶段）
+                    num_segments = min(num_segments, 2)
+                    logger.info(f"[{job_id}] Default limiting to {num_segments} segments (testing mode)")
 
                 logger.info(f"[{job_id}] Speaker {speaker_id} will have {num_segments} segments")
 
@@ -3942,7 +3999,8 @@ class StoryGenerationService:
                 seg_start = seg.get("start", 0)
                 seg_end = seg.get("end", 0)
                 if seg_start <= sub_mid <= seg_end:
-                    best_speaker = seg.get("speaker")
+                    # 支持 "voice" 和 "speaker" 两种字段名
+                    best_speaker = seg.get("voice") or seg.get("speaker")
                     break
 
             if best_speaker:
@@ -4591,16 +4649,27 @@ class StoryGenerationService:
                     else:
                         logger.warning(f"[{job_id}] Local digital human video not found: {local_video_path}")
                 elif video_url.startswith('http'):
-                    # HTTP URL，下载
-                    async with httpx.AsyncClient(timeout=300.0) as client:
-                        response = await client.get(video_url)
-                        if response.status_code == 200:
-                            with open(dh_video_path, 'wb') as f:
-                                f.write(response.content)
-                            dh_video_paths.append(str(dh_video_path))
-                            dh_speaker_ids.append(speaker_id)
-                        else:
-                            logger.warning(f"[{job_id}] Failed to download digital human video for {dh['speaker_id']}")
+                    # HTTP URL，下载（带重试）
+                    max_retries = 3
+                    for retry in range(max_retries):
+                        try:
+                            async with httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0)) as client:
+                                response = await client.get(video_url)
+                                if response.status_code == 200:
+                                    with open(dh_video_path, 'wb') as f:
+                                        f.write(response.content)
+                                    dh_video_paths.append(str(dh_video_path))
+                                    dh_speaker_ids.append(speaker_id)
+                                    logger.info(f"[{job_id}] Downloaded digital human video for {speaker_id}")
+                                    break
+                                else:
+                                    logger.warning(f"[{job_id}] HTTP {response.status_code} downloading video for {speaker_id}")
+                        except Exception as e:
+                            logger.warning(f"[{job_id}] Download attempt {retry+1}/{max_retries} failed for {speaker_id}: {e}")
+                            if retry < max_retries - 1:
+                                await asyncio.sleep(5)  # 等待5秒后重试
+                            else:
+                                logger.error(f"[{job_id}] Failed to download digital human video for {speaker_id} after {max_retries} retries")
 
             # 下载克隆语音
             audio_paths = []
@@ -4626,12 +4695,20 @@ class StoryGenerationService:
                     else:
                         logger.warning(f"[{job_id}] Local audio not found: {local_audio_path}")
                 elif audio_url.startswith('http'):
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.get(audio_url)
-                        if response.status_code == 200:
-                            with open(audio_path, 'wb') as f:
-                                f.write(response.content)
-                            audio_paths.append(str(audio_path))
+                    # 带重试的音频下载
+                    for retry in range(3):
+                        try:
+                            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=30.0)) as client:
+                                response = await client.get(audio_url)
+                                if response.status_code == 200:
+                                    with open(audio_path, 'wb') as f:
+                                        f.write(response.content)
+                                    audio_paths.append(str(audio_path))
+                                    break
+                        except Exception as e:
+                            logger.warning(f"[{job_id}] Audio download attempt {retry+1}/3 failed: {e}")
+                            if retry < 2:
+                                await asyncio.sleep(3)
 
             # 下载背景音（如果有）
             bg_audio_path = None
