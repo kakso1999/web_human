@@ -555,27 +555,14 @@ def generate_title_from_text(text: str) -> str:
 
 async def process_video_ai(story_id: str, video_path: str, api_key: str):
     """
-    后台处理视频：提取音频、生成字幕、生成标题
-
-    支持两种模式：
-    - local: 使用本地 faster-whisper 模型
-    - cloud: 使用 APICore API
+    后台处理视频：提取音频，然后加入 APIMart 分析队列
 
     Args:
         story_id: 故事ID
         video_path: 视频文件路径
-        api_key: APICore API Key
+        api_key: API Key (未使用，保留兼容)
     """
     story_service = get_story_service()
-
-    # 检查服务模式
-    service_mode = getattr(settings, 'AI_SERVICE_MODE', 'cloud').lower()
-    print(f"[AI Processing] Service mode: {service_mode}")
-
-    # 云端模式才需要 apicore
-    apicore = None
-    if service_mode != 'local':
-        apicore = get_apicore_service(api_key)
 
     try:
         # 1. 提取音频
@@ -587,115 +574,32 @@ async def process_video_ai(story_id: str, video_path: str, api_key: str):
         print(f"[AI Processing] Extracting audio from {video_path}...")
         if not extract_audio_from_video(video_path, audio_path):
             print(f"[AI Processing] Failed to extract audio")
-            # 即使失败也要设置 is_processing 为 False
-            await story_service.story_repo.update(story_id, {"is_processing": False})
+            await story_service.story_repo.update(story_id, {
+                "is_processing": False,
+                "analysis_error": "Failed to extract audio"
+            })
             return
 
         audio_url = f"/uploads/audio/{audio_filename}"
 
-        # 2. 语音转文字（根据模式选择本地或云端）
-        print(f"[AI Processing] Transcribing audio (mode: {service_mode})...")
+        # 更新音频 URL
+        await story_service.story_repo.update(story_id, {"audio_url": audio_url})
 
-        subtitles = []
-        subtitle_text = ""
+        # 2. 加入 APIMart 分析队列
+        print(f"[AI Processing] Adding story {story_id} to analysis queue...")
+        from modules.story.analysis_queue import add_story_to_analysis_queue
 
-        if service_mode == 'local':
-            # 本地模式：使用 faster-whisper
-            try:
-                transcription = await transcribe_with_local_whisper(audio_path)
-                subtitle_text = transcription.get("text", "")
-                segments = transcription.get("segments", [])
-                for seg in segments:
-                    subtitles.append({
-                        "start": seg.get("start", 0),
-                        "end": seg.get("end", 0),
-                        "text": seg.get("text", "").strip()
-                    })
-                print(f"[AI Processing] Local transcription complete. {len(subtitles)} segments.")
-            except Exception as e:
-                print(f"[AI Processing] Local transcription failed: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            # 云端模式：使用 APICore API
-            transcription = await apicore.transcribe_audio(audio_path, response_format="verbose_json")
-            subtitle_text = transcription.get("text", "")
-            segments = transcription.get("segments", [])
-            for seg in segments:
-                subtitles.append({
-                    "start": seg.get("start", 0),
-                    "end": seg.get("end", 0),
-                    "text": seg.get("text", "").strip()
-                })
-            print(f"[AI Processing] Cloud transcription complete. {len(subtitles)} segments.")
-
-        # 3. 生成标题和描述（根据模式选择）
-        title = ""
-        description = ""
-        if subtitle_text:
-            if service_mode == 'local':
-                # 本地模式：从文本中提取标题
-                print(f"[AI Processing] Generating title from text (local)...")
-                title = generate_title_from_text(subtitle_text)
-                # 本地模式暂不生成描述，使用字幕前200字符
-                description = subtitle_text[:200] + "..." if len(subtitle_text) > 200 else subtitle_text
-                print(f"[AI Processing] Generated title: {title}")
-            else:
-                # 云端模式：使用 AI 生成
-                print(f"[AI Processing] Generating English title...")
-                try:
-                    title = await apicore.generate_title(subtitle_text)
-                    print(f"[AI Processing] Generated English title: {title}")
-                except Exception as e:
-                    print(f"[AI Processing] Title generation failed: {e}")
-
-                print(f"[AI Processing] Generating English description...")
-                try:
-                    description = await apicore.generate_description(subtitle_text)
-                    print(f"[AI Processing] Generated English description: {description}")
-                except Exception as e:
-                    print(f"[AI Processing] Description generation failed: {e}")
-
-        # 4. 更新数据库（保持 is_processing = True，等说话人分析完成再设为 False）
-        update_data = {
-            "audio_url": audio_url,
-            "subtitle_text": subtitle_text,
-            "subtitles": subtitles
-            # is_processing 保持 True，等说话人分析完成再设为 False
-        }
-        if title:
-            update_data["title"] = title
-        if description:
-            update_data["description"] = description
-
-        await story_service.story_repo.update(story_id, update_data)
-        print(f"[AI Processing] Story {story_id} updated successfully!")
-
-        # 5. 触发说话人分析（直接 await 执行）
-        print(f"[AI Processing] Starting speaker analysis for story {story_id}...")
-        try:
-            from modules.story_generation.service import get_story_generation_service
-            story_gen_service = get_story_generation_service()
-            await story_gen_service.analyze_story_audio_task(story_id, video_path, None)
-            print(f"[AI Processing] Speaker analysis completed for story {story_id}")
-            # 说话人分析完成后才设置 is_processing = False
-            await story_service.story_repo.update(story_id, {"is_processing": False})
-        except Exception as e:
-            print(f"[AI Processing] Failed to analyze speakers: {e}")
-            import traceback
-            traceback.print_exc()
-            # 分析失败也要设置 is_processing = False
-            await story_service.story_repo.update(story_id, {"is_processing": False})
+        queue_size = await add_story_to_analysis_queue(story_id, video_path)
+        print(f"[AI Processing] Story {story_id} added to queue. Queue size: {queue_size}")
 
     except Exception as e:
-        print(f"[AI Processing] Error processing video: {e}")
+        print(f"[AI Processing] Error: {e}")
         import traceback
         traceback.print_exc()
-        # 出错也要设置 is_processing 为 False
-        try:
-            await story_service.story_repo.update(story_id, {"is_processing": False})
-        except:
-            pass
+        await story_service.story_repo.update(story_id, {
+            "is_processing": False,
+            "analysis_error": str(e)
+        })
 
 
 async def process_single_video(
@@ -1100,8 +1004,8 @@ async def create_story(
     # 使用提供的标题或空字符串（AI会生成）
     effective_title = title or ""
 
-    # 检查是否需要AI处理
-    effective_api_key = api_key or settings.APICORE_API_KEY
+    # 检查是否需要AI处理 (优先使用 APIMART_API_KEY)
+    effective_api_key = api_key or getattr(settings, 'APIMART_API_KEY', None) or getattr(settings, 'APICORE_API_KEY', None)
     is_processing = bool(effective_api_key and not title)
 
     # 创建故事数据
@@ -1119,10 +1023,25 @@ async def create_story(
     story = await story_service.create_story(story_data)
 
     if effective_api_key:
-        # 后台处理 AI 任务
-        background_tasks.add_task(process_video_ai, story.id, video_path, effective_api_key)
+        # 使用队列处理 AI 分析任务（串行处理，避免 API 限流）
+        from modules.story.analysis_queue import add_story_to_analysis_queue
+        queue_size = await add_story_to_analysis_queue(story.id, video_path, effective_api_key)
+        print(f"[Story Upload] Added to analysis queue. Story: {story.id}, Queue size: {queue_size}")
 
     return success_response(story.model_dump())
+
+
+@router.get("/analysis-queue/status", summary="获取分析队列状态")
+async def get_analysis_queue_status(_=Depends(require_admin)):
+    """获取故事分析队列状态"""
+    from modules.story.analysis_queue import get_analysis_queue
+
+    queue = get_analysis_queue()
+    return success_response({
+        "queue_size": queue.get_queue_size(),
+        "current_processing": queue.get_current_task(),
+        "is_running": queue._is_running
+    })
 
 
 # ========== 故事管理 - 单个操作（带 {story_id} 的路由必须在 batch 路由之后） ==========

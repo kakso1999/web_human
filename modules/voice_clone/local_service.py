@@ -156,9 +156,22 @@ class LocalVoiceCloneService(BaseVoiceCloneService):
             print(f"[LocalVoiceClone] Loading SpeechT5 processor from: {tts_path}")
             self.processor = SpeechT5Processor.from_pretrained(tts_path, local_files_only=Path(tts_path).exists())
             print("[LocalVoiceClone] Loading SpeechT5 TTS model...")
-            self.tts_model = SpeechT5ForTextToSpeech.from_pretrained(tts_path, local_files_only=Path(tts_path).exists())
+            # 显式指定 device_map=None 和 low_cpu_mem_usage=False 避免 meta tensor 问题
+            self.tts_model = SpeechT5ForTextToSpeech.from_pretrained(
+                tts_path,
+                local_files_only=Path(tts_path).exists(),
+                device_map=None,
+                low_cpu_mem_usage=False
+            )
+            self.tts_model = self.tts_model.to(self.device)  # 显式移动到 CPU
             print(f"[LocalVoiceClone] Loading SpeechT5 vocoder from: {vocoder_path}")
-            self.vocoder = SpeechT5HifiGan.from_pretrained(vocoder_path, local_files_only=Path(vocoder_path).exists())
+            self.vocoder = SpeechT5HifiGan.from_pretrained(
+                vocoder_path,
+                local_files_only=Path(vocoder_path).exists(),
+                device_map=None,
+                low_cpu_mem_usage=False
+            )
+            self.vocoder = self.vocoder.to(self.device)  # 显式移动到 CPU
 
             print("[LocalVoiceClone] Loading speaker encoder...")
             self.speaker_model = EncoderClassifier.from_hparams(

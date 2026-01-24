@@ -72,34 +72,37 @@
             <!-- 说话人信息 -->
             <div class="speakers-section" v-if="story.speakers && story.speakers.length > 0">
               <div class="section-header">
-                <span class="section-title">说话人分析</span>
-                <span class="speaker-count">{{ story.speakers.length }} 位</span>
+                <span class="section-title">Voice Roles</span>
+                <span class="speaker-count">{{ story.speakers.length }} voices</span>
               </div>
               <div class="speakers-list">
                 <div
                   v-for="speaker in story.speakers"
                   :key="speaker.speaker_id"
                   class="speaker-item"
+                  :class="speaker.speaker_id?.toLowerCase()"
                 >
-                  <div class="speaker-avatar" :class="speaker.gender">
+                  <div class="speaker-avatar" :class="speaker.speaker_id?.includes('1') ? 'voice1' : 'voice2'">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                     </svg>
                   </div>
                   <div class="speaker-info">
                     <span class="speaker-label">{{ speaker.label || speaker.speaker_id }}</span>
-                    <span class="speaker-duration">{{ Math.round(speaker.duration) }}秒</span>
+                    <span class="speaker-description" v-if="speaker.description">{{ speaker.description }}</span>
+                    <span class="speaker-duration" v-if="speaker.duration">{{ Math.round(speaker.duration) }}s</span>
                   </div>
                   <audio v-if="speaker.audio_url" :src="speaker.audio_url" controls class="speaker-audio"></audio>
                 </div>
               </div>
             </div>
 
-            <!-- 字幕显示 - 支持新旧两种格式 -->
+            <!-- 字幕显示 - 支持多种格式 -->
             <div class="subtitle-section" v-if="hasSubtitles">
               <div class="section-header">
-                <span class="section-title">字幕内容</span>
-                <div class="subtitle-tabs" v-if="isNewSubtitleFormat">
+                <span class="section-title">Subtitles</span>
+                <!-- 配音分段格式（VOICE_1/VOICE_2）或旧的 speaker_id 格式 -->
+                <div class="subtitle-tabs" v-if="isVoiceSubtitleFormat || isNewSubtitleFormat">
                   <button
                     v-for="tab in subtitleTabs"
                     :key="tab.key"
@@ -109,7 +112,7 @@
                     {{ tab.label }} ({{ tab.count }})
                   </button>
                 </div>
-                <span v-else class="subtitle-count">{{ legacySubtitleCount }} 条</span>
+                <span v-else class="subtitle-count">{{ legacySubtitleCount }} segments</span>
               </div>
               <div class="subtitle-list">
                 <div
@@ -120,7 +123,12 @@
                   <span class="subtitle-time">
                     {{ formatSubtitleTime(segment.start_time || segment.start) }} - {{ formatSubtitleTime(segment.end_time || segment.end) }}
                   </span>
-                  <span v-if="segment.speaker_id && activeSubtitleTab === 'ALL'" class="subtitle-speaker">
+                  <!-- 配音分段格式显示 VOICE_1/VOICE_2 -->
+                  <span v-if="segment.voice && activeSubtitleTab === 'ALL'" class="subtitle-voice" :class="segment.voice.toLowerCase()">
+                    {{ segment.voice === 'VOICE_1' ? 'V1' : 'V2' }}
+                  </span>
+                  <!-- 旧格式显示 speaker_id -->
+                  <span v-else-if="segment.speaker_id && activeSubtitleTab === 'ALL'" class="subtitle-speaker">
                     {{ getSpeakerLabel(segment.speaker_id) }}
                   </span>
                   <span class="subtitle-text">{{ segment.text }}</span>
@@ -131,9 +139,9 @@
             <!-- 无字幕提示 -->
             <div class="subtitle-section empty" v-else-if="!story.subtitles">
               <div class="section-header">
-                <span class="section-title">字幕内容</span>
+                <span class="section-title">Subtitles</span>
               </div>
-              <p class="no-subtitle">字幕正在生成中，请稍后刷新查看...</p>
+              <p class="no-subtitle">Subtitles are being generated, please refresh later...</p>
             </div>
           </div>
 
@@ -262,9 +270,11 @@ interface SubtitleSegment {
 interface Speaker {
   speaker_id: string
   label: string | null
+  description: string | null  // 分配的角色描述
   gender: string
   audio_url: string | null
   duration: number
+  assigned_characters?: string[]  // 分配的原始角色ID列表
 }
 
 interface NewSubtitleSegment {
@@ -274,6 +284,14 @@ interface NewSubtitleSegment {
   end_time: number
   text: string
   words?: Array<{ word: string; start: number; end: number }>
+}
+
+// 新的配音分段格式（VOICE_1/VOICE_2）
+interface VoiceSubtitleSegment {
+  start: number
+  end: number
+  text: string
+  voice: string  // VOICE_1 or VOICE_2
 }
 
 interface Story {
@@ -287,7 +305,7 @@ interface Story {
   duration: number
   status: string
   category: Category | null
-  subtitles: SubtitleSegment[] | NewSubtitleSegment[] | null
+  subtitles: SubtitleSegment[] | NewSubtitleSegment[] | VoiceSubtitleSegment[] | null
   subtitle_text: string | null
   speakers: Speaker[] | null
   speaker_count: number | null
@@ -367,14 +385,44 @@ const hasSubtitles = computed(() => {
   return story.value?.subtitles && Array.isArray(story.value.subtitles) && story.value.subtitles.length > 0
 })
 
+// 检测是否是新的配音分段格式（带 voice 字段）
+const isVoiceSubtitleFormat = computed(() => {
+  if (!hasSubtitles.value || !story.value?.subtitles) return false
+  const first = story.value.subtitles[0] as any
+  return 'voice' in first && ('start' in first || 'end' in first)
+})
+
 const isNewSubtitleFormat = computed(() => {
   if (!hasSubtitles.value || !story.value?.subtitles) return false
   const first = story.value.subtitles[0] as any
+  // 检测旧的 speaker_id + start_time 格式
   return 'speaker_id' in first && 'start_time' in first
 })
 
 const subtitleTabs = computed(() => {
-  if (!isNewSubtitleFormat.value || !story.value?.subtitles) return []
+  if (!story.value?.subtitles) return []
+
+  // 处理新的配音分段格式（VOICE_1/VOICE_2）
+  if (isVoiceSubtitleFormat.value) {
+    const tabs = [{ key: 'ALL', label: 'All', count: story.value.subtitles.length }]
+    const voiceSubs = story.value.subtitles as VoiceSubtitleSegment[]
+
+    // 添加 VOICE_1 和 VOICE_2 标签页
+    const voice1Count = voiceSubs.filter(s => s.voice === 'VOICE_1').length
+    const voice2Count = voiceSubs.filter(s => s.voice === 'VOICE_2').length
+
+    if (voice1Count > 0) {
+      tabs.push({ key: 'VOICE_1', label: 'Voice 1', count: voice1Count })
+    }
+    if (voice2Count > 0) {
+      tabs.push({ key: 'VOICE_2', label: 'Voice 2', count: voice2Count })
+    }
+
+    return tabs
+  }
+
+  // 处理旧的 speaker_id 格式
+  if (!isNewSubtitleFormat.value) return []
 
   const tabs = [{ key: 'ALL', label: '全部', count: story.value.subtitles.length }]
 
@@ -397,6 +445,16 @@ const subtitleTabs = computed(() => {
 const displaySubtitles = computed(() => {
   if (!hasSubtitles.value || !story.value?.subtitles) return []
 
+  // 处理新的配音分段格式（VOICE_1/VOICE_2）
+  if (isVoiceSubtitleFormat.value) {
+    const subs = story.value.subtitles as VoiceSubtitleSegment[]
+    if (activeSubtitleTab.value === 'ALL') {
+      return subs
+    }
+    return subs.filter(s => s.voice === activeSubtitleTab.value)
+  }
+
+  // 处理旧的 speaker_id 格式
   if (isNewSubtitleFormat.value) {
     const subs = story.value.subtitles as NewSubtitleSegment[]
     if (activeSubtitleTab.value === 'ALL') {
@@ -796,6 +854,17 @@ onMounted(() => {
   color: #e74c3c;
 }
 
+/* 配音角色头像样式 */
+.speaker-avatar.voice1 {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.speaker-avatar.voice2 {
+  background: rgba(231, 76, 60, 0.2);
+  color: #e74c3c;
+}
+
 .speaker-info {
   display: flex;
   flex-direction: column;
@@ -807,6 +876,11 @@ onMounted(() => {
   font-size: var(--font-size-sm);
   font-weight: 500;
   color: var(--color-text-primary);
+}
+
+.speaker-description {
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
 }
 
 .speaker-duration {
@@ -854,6 +928,25 @@ onMounted(() => {
   background: rgba(45, 107, 107, 0.15);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
+}
+
+/* 配音角色指示器 */
+.subtitle-voice {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.subtitle-voice.voice_1 {
+  color: #3498db;
+  background: rgba(52, 152, 219, 0.15);
+}
+
+.subtitle-voice.voice_2 {
+  color: #e74c3c;
+  background: rgba(231, 76, 60, 0.15);
 }
 
 .edit-section {

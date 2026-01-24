@@ -444,27 +444,14 @@ class StoryGenerationService:
                 instrumental_url = None
 
             # Step 3: 语音识别生成字幕（使用词级时间戳）
-            # 优先使用故事分析阶段已保存的转录结果，避免重复计算
+            # 优先使用故事分析阶段已保存的字幕，避免重复计算
             await self._update_progress(job_id, StoryJobStep.TRANSCRIBING, 15)
 
-            # 检查是否已有转录结果
-            existing_transcription = single_analysis.get("transcription")
-            if existing_transcription and existing_transcription.get("words"):
-                logger.info(f"[{job_id}] Using pre-analyzed transcription (words: {len(existing_transcription.get('words', []))})")
-                transcription = existing_transcription
-            else:
-                # 没有预先转录，需要重新转录
-                logger.info(f"[{job_id}] No pre-analyzed transcription found, running Whisper...")
-                transcription = await self._transcribe_audio(job_id, audio_url)
-                if not transcription:
-                    raise Exception("Failed to transcribe audio")
-
-            # Step 4: 智能切割为片段（最大30秒，在句子边界切割）
-            words = transcription.get("words", [])
-            if words:
-                subtitles = self._words_to_segments(words, max_gap=0.7, max_segment_duration=10.0)
-            else:
-                segments = transcription.get("segments", [])
+            # 优先使用故事已有的字幕（来自 APIMart AI 分析）
+            story_subtitles = story.get("subtitles", [])
+            if story_subtitles:
+                logger.info(f"[{job_id}] Using story's existing subtitles ({len(story_subtitles)} segments)")
+                # 转换为统一格式
                 subtitles = [
                     {
                         "index": i + 1,
@@ -472,11 +459,42 @@ class StoryGenerationService:
                         "end_time": seg.get("end", 0),
                         "text": seg.get("text", "").strip()
                     }
-                    for i, seg in enumerate(segments)
+                    for i, seg in enumerate(story_subtitles)
                 ]
+                # 合并文本作为 transcription_text
+                transcription_text = " ".join(seg.get("text", "") for seg in story_subtitles)
+            else:
+                # 没有现有字幕，检查是否有转录结果
+                existing_transcription = single_analysis.get("transcription")
+                if existing_transcription and existing_transcription.get("words"):
+                    logger.info(f"[{job_id}] Using pre-analyzed transcription (words: {len(existing_transcription.get('words', []))})")
+                    transcription = existing_transcription
+                else:
+                    # 没有预先转录，需要重新转录
+                    logger.info(f"[{job_id}] No pre-analyzed subtitles/transcription found, running Whisper...")
+                    transcription = await self._transcribe_audio(job_id, audio_url)
+                    if not transcription:
+                        raise Exception("Failed to transcribe audio")
+
+                # Step 4: 智能切割为片段（最大30秒，在句子边界切割）
+                words = transcription.get("words", [])
+                if words:
+                    subtitles = self._words_to_segments(words, max_gap=0.7, max_segment_duration=10.0)
+                else:
+                    segments = transcription.get("segments", [])
+                    subtitles = [
+                        {
+                            "index": i + 1,
+                            "start_time": seg.get("start", 0),
+                            "end_time": seg.get("end", 0),
+                            "text": seg.get("text", "").strip()
+                        }
+                        for i, seg in enumerate(segments)
+                    ]
+                transcription_text = transcription.get("text", "")
 
             await self.repository.save_subtitles(job_id, subtitles)
-            await self.repository.update_job_field(job_id, "transcription_text", transcription.get("text", ""))
+            await self.repository.update_job_field(job_id, "transcription_text", transcription_text)
 
             # 将字幕切割为最大30秒的片段
             video_segments = self._split_into_chunks(subtitles, max_duration=30.0)
