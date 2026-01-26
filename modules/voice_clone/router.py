@@ -44,7 +44,7 @@ def _get_service():
     """获取声音克隆服务实例（根据配置选择）"""
     return get_voice_clone_service()
 
-router = APIRouter(prefix="/voice-clone", tags=["语音克隆"])
+router = APIRouter(prefix="/voice_clone", tags=["语音克隆"])
 
 
 @router.get("/preset-stories", summary="获取预设故事列表")

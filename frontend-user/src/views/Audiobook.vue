@@ -16,6 +16,7 @@ const selectedEbook = ref<UserEbook | null>(null)
 const selectedVoice = ref<VoiceProfile | null>(null)
 const showModal = ref(false)
 const generating = ref(false)
+const creationError = ref('')
 
 // 上传电子书状态
 const showUploadModal = ref(false)
@@ -118,6 +119,7 @@ const createAudiobook = async () => {
   if (!selectedVoice.value) return
 
   generating.value = true
+  creationError.value = ''
   try {
     if (sourceType.value === 'story' && selectedStory.value) {
       const res = await audiobookApi.createJob(selectedStory.value.id, selectedVoice.value.id)
@@ -133,7 +135,7 @@ const createAudiobook = async () => {
     selectedEbook.value = null
     selectedVoice.value = null
   } catch (e) {
-    alert('Creation failed, please try again')
+    creationError.value = 'Our service is currently busy. Please try again later.'
   } finally {
     generating.value = false
   }
@@ -567,12 +569,27 @@ const selectedTitle = computed(() => {
         v-if="showModal"
         class="fixed inset-0 z-50 flex items-center justify-center p-4"
       >
-        <div class="absolute inset-0 bg-black/50" @click="showModal = false"></div>
+        <div class="absolute inset-0 bg-black/50" @click="showModal = false; creationError = ''"></div>
         <div class="relative bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
           <h3 class="text-xl font-bold text-gray-900 mb-2">Select Voice</h3>
           <p class="text-sm text-gray-500 mb-4">
             Creating audiobook for: <span class="font-medium text-gray-700">{{ selectedTitle }}</span>
           </p>
+
+          <!-- Error Message -->
+          <div v-if="creationError" class="mb-4 p-4 bg-gradient-to-r from-orange-50 to-orange-100/50 border border-orange-200 rounded-xl">
+            <div class="flex items-start gap-3">
+              <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                <svg class="w-4 h-4 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+              </div>
+              <div class="flex-1">
+                <p class="text-sm font-medium text-gray-800">Service Temporarily Unavailable</p>
+                <p class="text-sm text-gray-600 mt-0.5">{{ creationError }}</p>
+              </div>
+            </div>
+          </div>
 
           <div v-if="voiceProfiles.length === 0" class="text-center py-8 text-gray-500">
             <p>You don't have any voice profiles yet</p>

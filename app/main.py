@@ -51,13 +51,14 @@ async def lifespan(app: FastAPI):
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "story_generation"), exist_ok=True)
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "audiobook"), exist_ok=True)
 
+    # 启动故事分析队列 worker（串行处理，避免 API 限流）
+    print("Starting story analysis queue worker...")
+    from modules.story.analysis_queue import start_analysis_worker
+    await start_analysis_worker()
+    print("Story analysis worker started")
+
     # 启动故事生成任务队列 worker（串行处理，避免资源竞争）
     print("Starting story generation queue worker...")
-    from modules.story_generation.service import StoryGenerationService
-    story_gen_service = StoryGenerationService()
-    await story_gen_service.start_worker()
-
-    # 启动故事生成队列 worker
     from modules.story_generation.service import StoryGenerationService
     story_gen_service = StoryGenerationService()
     await story_gen_service.start_worker()

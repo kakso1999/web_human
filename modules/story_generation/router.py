@@ -20,7 +20,7 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/story-generation", tags=["story-generation"])
+router = APIRouter(prefix="/story_generation", tags=["story-generation"])
 
 
 # ==================== 说话人分析 ====================
@@ -184,19 +184,12 @@ async def generate_speaker_subtitles(
     """
     为故事的所有说话人生成词级字幕
 
-    前提：故事必须已完成说话人分析
+    注意：此端点已废弃。在新架构中，字幕在故事上传时通过 APIMart API 自动生成。
+    此端点现在仅返回已存在的字幕。
 
-    流程：
-    1. 获取说话人分割结果
-    2. 对每个说话人使用 Whisper 生成词级字幕
-    3. 合并生成完整字幕
-
-    返回：
-    - 各说话人字幕
-    - 合并后的字幕 (按时间排序)
+    前提：故事必须已完成分析（is_analyzed=True）
     """
     from modules.story.repository import StoryRepository
-    from modules.voice_separation.service import get_voice_separation_service
 
     story_repo = StoryRepository()
     story = await story_repo.get_by_id(story_id)
@@ -210,80 +203,45 @@ async def generate_speaker_subtitles(
     if not story.get("is_analyzed"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Story not analyzed yet. Please run speaker analysis first."
+            detail="Story not analyzed yet. Subtitles are generated automatically during story upload."
         )
 
-    speakers = story.get("speakers", [])
-    if not speakers:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No speakers found in story"
-        )
-
-    diarization_segments = story.get("diarization_segments", [])
-    if not diarization_segments:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No diarization segments found"
-        )
-
-    # 检查是否已有字幕 (且是新格式)
+    # 获取已存在的字幕
     existing_subtitles = story.get("subtitles")
-    is_new_format = isinstance(existing_subtitles, dict) and "ALL" in existing_subtitles
 
-    logger.info(f"[{story_id}] existing_subtitles type: {type(existing_subtitles)}, is_new_format: {is_new_format}, force: {force}")
+    if not existing_subtitles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No subtitles available. Story analysis may not have completed successfully."
+        )
 
-    if existing_subtitles and is_new_format and not force:
+    # 新架构使用列表格式，兼容旧格式的字典
+    if isinstance(existing_subtitles, list):
+        # 新格式：直接返回列表
         return {
             "code": 0,
-            "message": "Subtitles already generated (cached)",
+            "message": "Subtitles retrieved from analysis",
             "data": {
                 "story_id": story_id,
                 "subtitles": existing_subtitles,
                 "has_subtitles": True
             }
         }
-
-    logger.info(f"[{story_id}] Proceeding to generate new subtitles...")
-
-    try:
-        voice_service = get_voice_separation_service()
-
-        # 获取输出目录
-        from pathlib import Path
-        project_root = Path(__file__).parent.parent.parent
-        base_path = str(project_root / "uploads" / "voice_separation" / story_id)
-
-        # 生成字幕
-        logger.info(f"[{story_id}] Generating subtitles for {len(speakers)} speakers...")
-
-        subtitles = await voice_service.generate_all_speaker_subtitles(
-            story_id=story_id,
-            speakers=speakers,
-            diarization_segments=diarization_segments,
-            base_path=base_path
-        )
-
-        # 保存到数据库
-        await story_repo.update(story_id, {"subtitles": subtitles})
-
+    elif isinstance(existing_subtitles, dict):
+        # 旧格式：字典格式
         return {
             "code": 0,
-            "message": "Subtitles generated successfully",
+            "message": "Subtitles retrieved (legacy format)",
             "data": {
                 "story_id": story_id,
-                "subtitles": subtitles,
-                "speaker_count": len(speakers),
-                "total_subtitle_count": len(subtitles.get("ALL", []))
+                "subtitles": existing_subtitles,
+                "has_subtitles": True
             }
         }
-
-    except Exception as e:
-        logger.error(f"Error generating subtitles: {e}")
-        logger.error(traceback.format_exc())
+    else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail="Invalid subtitles format"
         )
 
 

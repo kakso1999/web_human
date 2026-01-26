@@ -52,6 +52,8 @@ class APIMartClient:
         if not self.api_key:
             raise ValueError("APIMART_API_KEY is required")
 
+        self.base_url = self.BASE_URL
+
         # 禁用代理，增加超时和重试
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0, connect=60.0),  # 5分钟超时，连接60秒
@@ -89,7 +91,7 @@ class APIMartClient:
         Returns:
             WhisperResult: 转录结果，包含词级时间戳
         """
-        url = f"{self.BASE_URL}/audio/transcriptions"
+        url = f"{self.base_url}/audio/transcriptions"
 
         with open(audio_path, 'rb') as f:
             files = {'file': (os.path.basename(audio_path), f, 'audio/mpeg')}
@@ -133,7 +135,7 @@ class APIMartClient:
         Returns:
             SpeakerAnalysisResult: 说话人分析结果
         """
-        url = f"{self.BASE_URL}/chat/completions"
+        url = f"{self.base_url}/chat/completions"
 
         # 构建提示词
         prompt = self._build_speaker_analysis_prompt(transcript_with_timestamps, story_language)

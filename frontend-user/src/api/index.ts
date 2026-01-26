@@ -103,43 +103,43 @@ export const storyApi = {
 // ==================== 语音克隆 API ====================
 export const voiceCloneApi = {
   getPresetStories() {
-    return http.get<{ stories: PresetStory[] }>('/voice-clone/preset-stories')
+    return http.get<{ stories: PresetStory[] }>('/voice_clone/preset-stories')
   },
 
   createPreview(audio: File, storyId: string) {
     const formData = new FormData()
     formData.append('audio', audio)
     formData.append('story_id', storyId)
-    return http.post<VoiceCloneTask>('/voice-clone/preview', formData, {
+    return http.post<VoiceCloneTask>('/voice_clone/preview', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
 
   getPreviewStatus(taskId: string) {
-    return http.get<VoiceCloneTask>(`/voice-clone/preview/${taskId}`)
+    return http.get<VoiceCloneTask>(`/voice_clone/preview/${taskId}`)
   },
 
   getProfiles() {
-    return http.get<{ profiles: VoiceProfile[]; total: number }>('/voice-clone/profiles')
+    return http.get<{ profiles: VoiceProfile[]; total: number }>('/voice_clone/profiles')
   },
 
   getProfile(id: string) {
-    return http.get<VoiceProfile>(`/voice-clone/profiles/${id}`)
+    return http.get<VoiceProfile>(`/voice_clone/profiles/${id}`)
   },
 
   saveProfile(taskId: string, name: string) {
-    return http.post<{ profile: VoiceProfile }>('/voice-clone/profiles', {
+    return http.post<{ profile: VoiceProfile }>('/voice_clone/profiles', {
       task_id: taskId,
       name
     })
   },
 
   updateProfile(id: string, name: string) {
-    return http.put(`/voice-clone/profiles/${id}`, { name })
+    return http.put(`/voice_clone/profiles/${id}`, { name })
   },
 
   deleteProfile(id: string) {
-    return http.delete(`/voice-clone/profiles/${id}`)
+    return http.delete(`/voice_clone/profiles/${id}`)
   }
 }
 
@@ -161,36 +161,36 @@ export const digitalHumanApi = {
     if (options?.preview_text) {
       formData.append('preview_text', options.preview_text)
     }
-    return http.post<DigitalHumanTask>('/digital-human/preview', formData, {
+    return http.post<DigitalHumanTask>('/digital_human/preview', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
 
   getPreviewStatus(taskId: string) {
-    return http.get<DigitalHumanTask>(`/digital-human/preview/${taskId}`)
+    return http.get<DigitalHumanTask>(`/digital_human/preview/${taskId}`)
   },
 
   getProfiles() {
-    return http.get<{ profiles: AvatarProfile[]; total: number }>('/digital-human/profiles')
+    return http.get<{ profiles: AvatarProfile[]; total: number }>('/digital_human/profiles')
   },
 
   getProfile(id: string) {
-    return http.get<AvatarProfile>(`/digital-human/profiles/${id}`)
+    return http.get<AvatarProfile>(`/digital_human/profiles/${id}`)
   },
 
   saveProfile(taskId: string, name: string) {
-    return http.post<{ profile: AvatarProfile }>('/digital-human/profiles', {
+    return http.post<{ profile: AvatarProfile }>('/digital_human/profiles', {
       task_id: taskId,
       name
     })
   },
 
   updateProfile(id: string, name: string) {
-    return http.put(`/digital-human/profiles/${id}`, { name })
+    return http.put(`/digital_human/profiles/${id}`, { name })
   },
 
   deleteProfile(id: string) {
-    return http.delete(`/digital-human/profiles/${id}`)
+    return http.delete(`/digital_human/profiles/${id}`)
   }
 }
 
@@ -208,7 +208,7 @@ export const storyGenerationApi = {
       // 新架构：单人/双人两种分析模式
       single_speaker_analysis?: SingleSpeakerAnalysis
       dual_speaker_analysis?: DualSpeakerAnalysis
-    }>(`/story-generation/speakers/${storyId}`)
+    }>(`/story_generation/speakers/${storyId}`)
   },
 
   // 触发说话人分析
@@ -216,30 +216,30 @@ export const storyGenerationApi = {
     return http.post<{
       story_id: string
       status: string
-    }>(`/story-generation/analyze/${storyId}`, null, {
+    }>(`/story_generation/analyze/${storyId}`, null, {
       params: numSpeakers ? { num_speakers: numSpeakers } : undefined
     })
   },
 
   // 创建任务（支持单说话人和多说话人）
   createJob(data: CreateStoryJobRequest) {
-    return http.post<StoryGenerationJob>('/story-generation/jobs', data)
+    return http.post<StoryGenerationJob>('/story_generation/jobs', data)
   },
 
   getJobs(params?: { page?: number; page_size?: number }) {
-    return http.get<PaginatedResponse<StoryGenerationJob>>('/story-generation/jobs', { params })
+    return http.get<PaginatedResponse<StoryGenerationJob>>('/story_generation/jobs', { params })
   },
 
   getJob(id: string) {
-    return http.get<StoryGenerationJob>(`/story-generation/jobs/${id}`)
+    return http.get<StoryGenerationJob>(`/story_generation/jobs/${id}`)
   },
 
   getSubtitles(jobId: string) {
-    return http.get<{ subtitles: any[] }>(`/story-generation/jobs/${jobId}/subtitles`)
+    return http.get<{ subtitles: any[] }>(`/story_generation/jobs/${jobId}/subtitles`)
   },
 
   updateSubtitleSelection(jobId: string, selectedIndices: number[]) {
-    return http.put(`/story-generation/jobs/${jobId}/subtitles`, {
+    return http.put(`/story_generation/jobs/${jobId}/subtitles`, {
       selected_indices: selectedIndices
     })
   }

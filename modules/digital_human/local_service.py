@@ -243,9 +243,10 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
     ) -> Optional[str]:
         """使用声音档案合成音频"""
         try:
-            from modules.voice_clone.factory import get_voice_clone_service
+            # 使用本地声音克隆服务（不使用工厂，因为档案创建需要本地处理）
+            from modules.voice_clone.local_service import LocalVoiceCloneService
 
-            voice_service = get_voice_clone_service()
+            voice_service = LocalVoiceCloneService()
             output_path = str(self.previews_dir / f"{task_id}_audio.wav")
 
             result = await voice_service.synthesize_speech(
@@ -256,6 +257,8 @@ class LocalDigitalHumanService(BaseDigitalHumanService):
 
         except Exception as e:
             print(f"[{task_id}] Voice profile synthesis error: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     async def _generate_local_tts(self, task_id: str, text: str) -> Optional[str]:

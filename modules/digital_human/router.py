@@ -23,12 +23,24 @@ from .schemas import (
 )
 from .factory import get_digital_human_service
 
+# 头像档案创建专用本地服务（知识产权保护）
+_local_service_instance = None
+
+def _get_local_service():
+    """获取本地数字人服务（用于头像档案创建）"""
+    global _local_service_instance
+    if _local_service_instance is None:
+        from .local_service import LocalDigitalHumanService
+        _local_service_instance = LocalDigitalHumanService()
+        print("[DigitalHuman Router] Using LOCAL service for avatar profile creation")
+    return _local_service_instance
+
 
 def _get_service():
-    """获取数字人服务实例"""
+    """获取数字人服务实例（根据配置选择）"""
     return get_digital_human_service()
 
-router = APIRouter(prefix="/digital-human", tags=["数字人"])
+router = APIRouter(prefix="/digital_human", tags=["数字人"])
 
 
 @router.post("/preview", summary="创建数字人预览任务")
@@ -113,8 +125,8 @@ async def create_digital_human_preview(
             preview_text = "Hello, I am your digital avatar. Nice to meet you!"
         audio_source = AudioSourceType.VOICE_PROFILE
 
-    # 保存图片
-    service = _get_service()
+    # 使用本地服务创建头像档案（知识产权保护 + 快速预览）
+    service = _get_local_service()
     image_path = service.save_image(
         user_id=user_id,
         file_content=image_content,
@@ -198,8 +210,8 @@ async def get_digital_human_status(
     if not task_id.startswith(user_id):
         raise HTTPException(status_code=403, detail="无权访问此任务")
 
-    # 获取任务状态
-    service = _get_service()
+    # 获取任务状态（使用本地服务，因为任务是本地创建的）
+    service = _get_local_service()
     task = service.get_task_status(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -249,7 +261,8 @@ async def save_avatar_profile(
     }
     ```
     """
-    service = _get_service()
+    # 使用本地服务保存档案（任务信息在本地服务内存中）
+    service = _get_local_service()
     profile = await service.save_avatar_profile(
         user_id=user_id,
         task_id=request.task_id,

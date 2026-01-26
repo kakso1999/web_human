@@ -3,7 +3,7 @@ Story 模块 - Schema 定义
 故事相关的请求和响应模型
 """
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -83,6 +83,57 @@ class DualSpeakerAnalysis(BaseModel):
     background_url: Optional[str] = Field(None, description="背景音URL")
     diarization_segments: List[DiarizationSegment] = Field(default=[], description="说话人分割片段")
     is_analyzed: bool = Field(default=False, description="是否已完成分析")
+
+
+class WordTimestamp(BaseModel):
+    """词级时间戳
+
+    Whisper-1 API 返回的词级时间戳数据。
+    """
+    word: str = Field(..., description="单词文本")
+    start: float = Field(..., description="开始时间（秒）")
+    end: float = Field(..., description="结束时间（秒）")
+
+
+class OriginalSpeaker(BaseModel):
+    """原始说话人信息
+
+    AI 分析识别出的故事中的原始说话人。
+    """
+    id: str = Field(..., description="说话人ID，如 NARRATOR, CHARACTER_XXX")
+    description: str = Field(..., description="说话人描述")
+
+
+class VoiceSegment(BaseModel):
+    """配音分段
+
+    AI 分析后的配音分段，用于双人配音。
+    """
+    start: float = Field(..., description="开始时间（秒）")
+    end: float = Field(..., description="结束时间（秒）")
+    voice: str = Field(..., description="配音角色：VOICE_1 或 VOICE_2")
+    text: str = Field(..., description="该分段的文本内容")
+
+
+class AIAnalysisResult(BaseModel):
+    """AI 分析结果
+
+    使用 Gemini API 分析字幕后的结果，包含：
+    - 自动生成的标题和简介（中英文）
+    - 识别出的原始说话人列表
+    - 双人配音分配方案
+    - 按配音角色分段的时间戳
+    """
+    title: str = Field(default="", description="故事标题（中文）")
+    title_en: str = Field(default="", description="故事标题（英文）")
+    description: str = Field(default="", description="故事简介（中文）")
+    description_en: str = Field(default="", description="故事简介（英文）")
+    original_speakers: List[OriginalSpeaker] = Field(default=[], description="原始说话人列表")
+    dual_voice_assignment: Dict[str, List[str]] = Field(
+        default={},
+        description="双人配音分配，如 {'VOICE_1': ['NARRATOR'], 'VOICE_2': ['CHARACTER_A']}"
+    )
+    segments: List[VoiceSegment] = Field(default=[], description="配音分段列表")
 
 
 class CategoryBase(BaseModel):
@@ -223,6 +274,14 @@ class StoryCreate(BaseModel):
         None, description="双人模式分析结果（说话人1 + 说话人2 + 背景音）"
     )
 
+    # APIMart API 分析结果（新架构 2026-01）
+    word_timestamps: Optional[List[WordTimestamp]] = Field(
+        None, description="Whisper-1 词级时间戳"
+    )
+    ai_analysis: Optional[AIAnalysisResult] = Field(
+        None, description="Gemini AI 分析结果（标题、简介、说话人、分段）"
+    )
+
 
 class StoryUpdate(BaseModel):
     """更新故事请求
@@ -255,6 +314,14 @@ class StoryUpdate(BaseModel):
     )
     dual_speaker_analysis: Optional[DualSpeakerAnalysis] = Field(
         None, description="双人模式分析结果（说话人1 + 说话人2 + 背景音）"
+    )
+
+    # APIMart API 分析结果（新架构 2026-01）
+    word_timestamps: Optional[List[WordTimestamp]] = Field(
+        None, description="Whisper-1 词级时间戳"
+    )
+    ai_analysis: Optional[AIAnalysisResult] = Field(
+        None, description="Gemini AI 分析结果（标题、简介、说话人、分段）"
     )
 
     model_config = ConfigDict(
@@ -301,6 +368,13 @@ class StoryResponse(BaseModel):
     )
     dual_speaker_analysis: Optional[DualSpeakerAnalysis] = Field(
         None, description="双人模式分析结果（说话人1 + 说话人2 + 背景音）"
+    )
+    # APIMart API 分析结果（新架构 2026-01）
+    word_timestamps: Optional[List[WordTimestamp]] = Field(
+        None, description="Whisper-1 词级时间戳"
+    )
+    ai_analysis: Optional[AIAnalysisResult] = Field(
+        None, description="Gemini AI 分析结果（标题、简介、说话人、分段）"
     )
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")

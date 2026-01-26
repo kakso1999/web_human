@@ -47,6 +47,7 @@ const generating = ref(false)
 const progress = ref(0)
 const currentTask = ref('')
 const resultVideoUrl = ref('')
+const generationError = ref('')
 
 // 检查单人模式是否可用
 const isSingleModeAvailable = computed(() => {
@@ -251,12 +252,13 @@ const startGeneration = async () => {
   generating.value = true
   progress.value = 0
   currentTask.value = 'Preparing...'
+  generationError.value = ''
 
   try {
     let requestData: any = {
       story_id: selectedStory.value.id,
       mode: generationMode.value,
-      full_video: true
+      full_video: false
     }
 
     if (generationMode.value === 'single') {
@@ -287,7 +289,7 @@ const startGeneration = async () => {
         resultVideoUrl.value = job.final_video_url || ''
         generating.value = false
       } else if (job.status === 'failed') {
-        alert('Generation failed: ' + job.error)
+        generationError.value = 'Our service is currently busy. Please try again later.'
         generating.value = false
       } else {
         setTimeout(pollStatus, 2000)
@@ -297,7 +299,7 @@ const startGeneration = async () => {
   } catch (e) {
     console.error('Failed to start generation:', e)
     generating.value = false
-    alert('Failed to start generation')
+    generationError.value = 'Our service is currently busy. Please try again later.'
   }
 }
 
@@ -746,7 +748,7 @@ if (route.query.story_id) {
 
         <!-- Step 4: Generate -->
         <div v-else-if="currentStep === 4">
-          <div v-if="!generating && !resultVideoUrl">
+          <div v-if="!generating && !resultVideoUrl && !generationError">
             <h2 class="text-xl font-bold text-gray-900 mb-6">Review & Generate</h2>
 
             <div class="space-y-4 mb-8">
@@ -909,10 +911,35 @@ if (route.query.story_id) {
               </button>
             </div>
           </div>
+
+          <!-- Error State -->
+          <div v-else-if="generationError" class="text-center py-12">
+            <div class="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-orange-100 to-orange-50 rounded-full flex items-center justify-center">
+              <svg class="w-10 h-10 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-3">Service Temporarily Unavailable</h3>
+            <p class="text-gray-500 mb-8 max-w-md mx-auto">{{ generationError }}</p>
+            <div class="flex gap-4 justify-center">
+              <button
+                @click="generationError = ''; startGeneration()"
+                class="btn-primary"
+              >
+                Try Again
+              </button>
+              <button
+                @click="generationError = ''; currentStep = 1"
+                class="btn-secondary"
+              >
+                Start Over
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Navigation -->
-        <div v-if="currentStep < 4 || (!generating && !resultVideoUrl)" class="flex justify-between mt-8 pt-6 border-t">
+        <div v-if="currentStep < 4 || (!generating && !resultVideoUrl && !generationError)" class="flex justify-between mt-8 pt-6 border-t">
           <button
             v-if="currentStep > 1"
             @click="prevStep"

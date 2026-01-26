@@ -36,7 +36,6 @@ from core.utils.cost_calculator import (
 )
 from core.utils.concurrent import cloud_api_limit, run_with_limit
 from .repository import get_story_generation_repository, StoryGenerationRepository
-from .apicore_client import get_apicore_client, APICoreClient
 from .schemas import StoryJobStatus, StoryJobStep
 
 settings = get_settings()
@@ -90,7 +89,6 @@ class StoryGenerationService:
         self._initialized = True
 
         self.repository = get_story_generation_repository()
-        self.apicore = get_apicore_client()
         self.upload_dir = Path(settings.UPLOAD_DIR) / "story_generation"
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.media_bed_url = settings.MEDIA_BED_URL
@@ -314,70 +312,29 @@ class StoryGenerationService:
         """
         后台任务：分析故事音频
 
-        同时执行两种分析模式：
-        1. 单人模式：人声整体 + 背景音（不进行说话人分割）
-        2. 双人模式：说话人1 + 说话人2 + 背景音（最多2个说话人）
+        注意：此方法已废弃，故事分析现在通过 APIMart API 在故事上传时自动完成。
+        请使用 modules.story.analysis_queue 的队列系统。
 
-        管理员上传故事后自动调用，准备好两种模式的数据。
-        用户生成时可以选择使用哪种模式。
+        保留此方法是为了向后兼容，它会将任务添加到新的分析队列中。
         """
-        from modules.story.repository import StoryRepository
-        from modules.voice_separation import get_voice_separation_service
+        from modules.story.analysis_queue import get_analysis_queue
 
-        story_repo = StoryRepository()
+        logger.warning(f"[{story_id}] analyze_story_audio_task is deprecated. Using new analysis queue.")
 
         try:
-            logger.info(f"[{story_id}] Starting both-modes speaker analysis")
-
-            # 获取语音分离服务
-            voice_service = get_voice_separation_service()
-
-            # 执行两种模式的分析
-            result = await voice_service.analyze_both_modes(
-                story_id=story_id,
-                video_path=video_path
-            )
-
-            single_analysis = result.get("single_speaker_analysis")
-            dual_analysis = result.get("dual_speaker_analysis")
-
-            # 构建更新数据
-            update_data = {
-                "is_analyzed": True,
-                "analysis_error": None
-            }
-
-            # 单人模式分析结果
-            if single_analysis:
-                update_data["single_speaker_analysis"] = single_analysis
-
-            # 双人模式分析结果
-            if dual_analysis:
-                update_data["dual_speaker_analysis"] = dual_analysis
-                # 保持旧字段兼容性
-                update_data["speaker_count"] = len(dual_analysis.get("speakers", []))
-                update_data["speakers"] = dual_analysis.get("speakers", [])
-                update_data["background_audio_url"] = dual_analysis.get("background_url")
-                update_data["diarization_segments"] = dual_analysis.get("diarization_segments", [])
-
-            # 如果两种分析都失败，记录错误
-            errors = result.get("errors")
-            if errors and not single_analysis and not dual_analysis:
-                update_data["is_analyzed"] = False
-                update_data["analysis_error"] = "; ".join(errors)
-
-            await story_repo.update(story_id, update_data)
-
-            single_ok = "OK" if single_analysis else "FAILED"
-            dual_ok = "OK" if dual_analysis else "FAILED"
-            logger.info(f"[{story_id}] Both-modes analysis completed. Single: {single_ok}, Dual: {dual_ok}")
+            # 将任务添加到新的分析队列
+            queue = get_analysis_queue()
+            await queue.add_task(story_id, video_path)
+            logger.info(f"[{story_id}] Added to analysis queue via deprecated endpoint")
 
         except Exception as e:
-            logger.error(f"[{story_id}] Speaker analysis failed: {e}")
+            logger.error(f"[{story_id}] Failed to add to analysis queue: {e}")
             import traceback
             traceback.print_exc()
 
             # 记录错误
+            from modules.story.repository import StoryRepository
+            story_repo = StoryRepository()
             await story_repo.update(story_id, {
                 "is_analyzed": False,
                 "analysis_error": str(e)
@@ -1904,45 +1861,6 @@ class StoryGenerationService:
             import traceback
             traceback.print_exc()
             return None
-
-    # ===================== Step 2: 分离人声 =====================
-
-    async def _separate_vocals(
-        self,
-        job_id: str,
-        audio_url: str
-    ) -> tuple[Optional[str], Optional[str]]:
-        """分离人声和背景音乐"""
-        logger.info(f"[{job_id}] Separating vocals from audio")
-
-        try:
-            # 上传音频到 Suno
-            upload_result = await self.apicore.upload_audio_url(audio_url)
-            clip_id = upload_result.get("clip_id") or upload_result.get("id")
-
-            if not clip_id:
-                logger.error(f"[{job_id}] Failed to get clip_id from upload")
-                return None, None
-
-            logger.info(f"[{job_id}] Audio uploaded, clip_id: {clip_id}")
-
-            # 获取分离结果
-            stems = await self.apicore.get_stems(clip_id)
-            vocals_url = stems.get("vocals")
-            instrumental_url = stems.get("instrumental")
-
-            # 保存结果
-            await self.repository.update_job_fields(job_id, {
-                "vocals_url": vocals_url,
-                "instrumental_url": instrumental_url
-            })
-
-            logger.info(f"[{job_id}] Vocals separated - vocals: {vocals_url}, instrumental: {instrumental_url}")
-            return vocals_url, instrumental_url
-
-        except Exception as e:
-            logger.error(f"[{job_id}] Separate vocals error: {e}")
-            return None, None
 
     # ===================== Step 3: 语音识别 =====================
 

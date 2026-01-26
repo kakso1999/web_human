@@ -13,7 +13,6 @@ from core.schemas.pagination import paginate
 from core.middleware.auth import require_admin
 from core.config.settings import get_settings
 from core.utils.helpers import generate_filename, ensure_dir, get_video_duration, extract_video_thumbnail, extract_audio_from_video
-from core.services.apicore import get_apicore_service
 
 from modules.user.repository import UserRepository
 from modules.story.service import get_story_service, StoryService
@@ -779,7 +778,7 @@ async def batch_create_stories(
         })
 
     # 获取 API Key
-    api_key = settings.APICORE_API_KEY
+    api_key = settings.APIMART_API_KEY
 
     # 在后台执行批量上传
     background_tasks.add_task(
@@ -1004,8 +1003,8 @@ async def create_story(
     # 使用提供的标题或空字符串（AI会生成）
     effective_title = title or ""
 
-    # 检查是否需要AI处理 (优先使用 APIMART_API_KEY)
-    effective_api_key = api_key or getattr(settings, 'APIMART_API_KEY', None) or getattr(settings, 'APICORE_API_KEY', None)
+    # 检查是否需要AI处理
+    effective_api_key = api_key or getattr(settings, 'APIMART_API_KEY', None)
     is_processing = bool(effective_api_key and not title)
 
     # 创建故事数据
