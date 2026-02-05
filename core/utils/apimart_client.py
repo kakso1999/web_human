@@ -93,17 +93,20 @@ class APIMartClient:
         """
         url = f"{self.base_url}/audio/transcriptions"
 
+        # 读取文件内容到内存（避免异步请求时文件句柄已关闭）
         with open(audio_path, 'rb') as f:
-            files = {'file': (os.path.basename(audio_path), f, 'audio/mpeg')}
-            data = {
-                'model': 'whisper-1',
-                'response_format': response_format,
-                'language': language,
-                'timestamp_granularities[]': 'word'
-            }
+            file_content = f.read()
 
-            logger.info(f"Calling Whisper-1 API for: {audio_path}")
-            response = await self.client.post(url, files=files, data=data)
+        files = {'file': (os.path.basename(audio_path), file_content, 'audio/mpeg')}
+        data = {
+            'model': 'whisper-1',
+            'response_format': response_format,
+            'language': language,
+            'timestamp_granularities[]': 'word'
+        }
+
+        logger.info(f"Calling Whisper-1 API for: {audio_path}")
+        response = await self.client.post(url, files=files, data=data)
 
         if response.status_code != 200:
             logger.error(f"Whisper API error: {response.text}")

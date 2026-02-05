@@ -453,10 +453,10 @@ class StoryGenerationService:
             await self.repository.save_subtitles(job_id, subtitles)
             await self.repository.update_job_field(job_id, "transcription_text", transcription_text)
 
-            # 将字幕切割为最大 48 秒的片段（与 EMO API 限制一致）
+            # 将字幕切割为最大 55 秒的片段（阿里云 EMO 限制 < 60s）
             # 这样每个片段可以直接调用一次 EMO，无需再次切分
-            video_segments = self._split_into_chunks(subtitles, max_duration=48.0)
-            logger.info(f"[{job_id}] Split into {len(video_segments)} video segments (max 48s each)")
+            video_segments = self._split_into_chunks(subtitles, max_duration=55.0)
+            logger.info(f"[{job_id}] Split into {len(video_segments)} video segments (max 55s each)")
 
             # 获取任务配置，检查是否生成完整视频
             job = await self.repository.get_job(job_id)
@@ -473,53 +473,74 @@ class StoryGenerationService:
                 total_duration = sum(seg["end_time"] - seg["start_time"] for seg in segments_to_process)
                 logger.info(f"[{job_id}] Preview mode: processing first {len(segments_to_process)} segments (~{total_duration:.1f}s)")
 
-            # Step 5-6: 串行处理每个片段（避免阿里云 API 限流）
-            # 每个片段内的字幕串行调用 TTS，完成后再处理下一个片段
+            # Step 5-6: 并行处理片段（TTS 和 EMO 各最大 5 并发）
             await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 20)
 
             segment_results = []
             total_segments = len(segments_to_process)
 
-            for i, segment in enumerate(segments_to_process):
+            # 并发控制信号量
+            tts_semaphore = asyncio.Semaphore(5)   # TTS 最大 5 并发
+            emo_semaphore = asyncio.Semaphore(5)   # EMO 最大 5 并发
+
+            async def process_segment(i: int, segment: dict) -> dict:
+                """处理单个片段：TTS → EMO → 截取视频"""
                 seg_start = segment["start_time"]
                 seg_end = segment["end_time"]
                 seg_subtitles = segment["subtitles"]
 
                 logger.info(f"[{job_id}] Processing segment {i+1}/{total_segments}: {seg_start:.2f}s - {seg_end:.2f}s")
 
-                try:
-                    # 为此片段生成克隆语音（串行处理）
+                # Step 1: TTS 生成克隆语音（限制并发）
+                async with tts_semaphore:
+                    logger.info(f"[{job_id}] Segment {i+1}: Starting TTS")
                     cloned_audio_url = await self._generate_cloned_voice_for_segment(
                         job_id, i, seg_subtitles
                     )
                     if not cloned_audio_url:
                         raise Exception(f"Failed to generate cloned voice for segment {i+1}")
+                    logger.info(f"[{job_id}] Segment {i+1}: TTS completed")
 
-                    # 为此片段生成数字人视频
+                # Step 2: EMO 生成数字人（限制并发）
+                async with emo_semaphore:
+                    logger.info(f"[{job_id}] Segment {i+1}: Starting EMO")
                     digital_human_url = await self._generate_digital_human_for_segment(
                         job_id, i, cloned_audio_url
                     )
+                    logger.info(f"[{job_id}] Segment {i+1}: EMO completed")
 
-                    # 截取原视频对应片段
-                    video_segment_path = await self._extract_video_segment(
-                        job_id, i, seg_start, seg_end
-                    )
+                # Step 3: 截取原视频对应片段（本地操作，不限制）
+                video_segment_path = await self._extract_video_segment(
+                    job_id, i, seg_start, seg_end
+                )
 
-                    # 更新进度
-                    progress = 20 + int(((i + 1) / total_segments) * 60)
-                    await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, progress)
+                return {
+                    "index": i,
+                    "start_time": seg_start,
+                    "end_time": seg_end,
+                    "cloned_audio_url": cloned_audio_url,
+                    "digital_human_url": digital_human_url,
+                    "video_segment_path": video_segment_path
+                }
 
-                    segment_results.append({
-                        "index": i,
-                        "start_time": seg_start,
-                        "end_time": seg_end,
-                        "cloned_audio_url": cloned_audio_url,
-                        "digital_human_url": digital_human_url,
-                        "video_segment_path": video_segment_path
-                    })
-                except Exception as e:
-                    logger.error(f"[{job_id}] Error processing segment {i+1}: {e}")
-                    raise Exception(f"Segment {i+1} processing failed: {e}")
+            # 并行启动所有片段处理任务
+            logger.info(f"[{job_id}] Starting parallel processing of {total_segments} segments (TTS: max 5, EMO: max 5)")
+            tasks = [process_segment(i, seg) for i, seg in enumerate(segments_to_process)]
+
+            # 等待所有任务完成，收集结果
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 处理结果
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    logger.error(f"[{job_id}] Segment {i+1} failed: {result}")
+                    raise Exception(f"Segment {i+1} processing failed: {result}")
+                segment_results.append(result)
+
+            # 按 index 排序确保顺序正确
+            segment_results.sort(key=lambda x: x["index"])
+
+            await self._update_progress(job_id, StoryJobStep.GENERATING_VOICE, 80)
 
             if not segment_results:
                 raise Exception("No segments processed successfully")
@@ -920,10 +941,26 @@ class StoryGenerationService:
                 target_duration = duration  # 原始字幕时长
 
                 # 音轨对齐：调整 TTS 音频时长以匹配原始字幕时长
+                # 设置最大拉伸阈值：防止语速过慢导致听感差
+                # MIN_SPEED_RATIO = 0.7 表示最多减速到 0.7x (即拉伸到 1.43 倍时长)
+                MIN_SPEED_RATIO = 0.7
                 aligned_file = self.upload_dir / f"{job_id}_seg{segment_index}_sub{i}.mp3"
 
                 if actual_duration > 0 and target_duration > 0 and abs(actual_duration - target_duration) > 0.1:
-                    # 时长差异超过 0.1 秒才进行调整
+                    # 计算所需的速度比率
+                    speed_ratio = actual_duration / target_duration
+
+                    # 检查是否需要限制拉伸
+                    if speed_ratio < MIN_SPEED_RATIO:
+                        # 原语音太慢，需要大幅拉伸，但我们限制最大拉伸
+                        # 例如: TTS=5s, target=10s, speed_ratio=0.5 < 0.7
+                        # 限制后: new_target = 5s / 0.7 = 7.14s
+                        limited_target = actual_duration / MIN_SPEED_RATIO
+                        logger.info(f"[{job_id}] Seg{segment_index} Sub{i}: Stretch limited! "
+                                   f"{actual_duration:.2f}s -> {target_duration:.2f}s exceeds threshold, "
+                                   f"capped to {limited_target:.2f}s (ratio {speed_ratio:.2f} -> {MIN_SPEED_RATIO})")
+                        target_duration = limited_target
+
                     logger.info(f"[{job_id}] Seg{segment_index} Sub{i}: Aligning audio {actual_duration:.2f}s -> {target_duration:.2f}s")
                     success = await self._adjust_audio_duration(
                         str(raw_file), str(aligned_file),
@@ -936,10 +973,12 @@ class StoryGenerationService:
                     # 时长接近，直接使用原始文件
                     aligned_file = raw_file
 
+                # 注意: 如果因为阈值限制导致音频比原时长短，会在该句结尾留空
+                # 这是预期行为，下一句仍会在正确的时间点开始
                 segment_files.append({
                     "path": str(aligned_file),
                     "start_time": relative_start_time,  # 使用相对时间
-                    "target_duration": target_duration
+                    "target_duration": target_duration  # 可能是限制后的时长
                 })
 
             if not segment_files:
@@ -3733,11 +3772,11 @@ class StoryGenerationService:
 
                 speaker_results[speaker_id] = result
 
-            # Phase 2: 分段生成数字人视频（最大 48 秒/段，符合 EMO API 限制）
+            # Phase 2: 分段生成数字人视频（最大 55 秒/段）
             await self._update_progress(job_id, StoryJobStep.GENERATING_DIGITAL_HUMAN, 50)
             logger.info(f"[{job_id}] Phase 2 - Creating segmented EMO tasks")
 
-            MAX_SEGMENT_DURATION = 48  # 每段最大 48 秒（EMO API 限制）
+            MAX_SEGMENT_DURATION = 55  # 每段最大 55 秒
             MAX_CONCURRENT_EMO = 5     # 最大并发 5 个
 
             configs_by_speaker = {cfg.get("speaker_id"): cfg for cfg in enabled_configs}
@@ -4102,10 +4141,22 @@ class StoryGenerationService:
                 actual_duration = await self._get_audio_duration(str(raw_file))
 
                 # 音轨对齐：调整 TTS 音频时长以匹配原始字幕时长
+                # 设置最大拉伸阈值：防止语速过慢导致听感差
+                MIN_SPEED_RATIO = 0.7
                 aligned_file = self.upload_dir / f"{job_id}_{speaker_id}_sub{i}.mp3"
 
                 if actual_duration > 0 and target_duration > 0 and abs(actual_duration - target_duration) > 0.1:
-                    # 时长差异超过 0.1 秒才进行调整
+                    # 计算所需的速度比率
+                    speed_ratio = actual_duration / target_duration
+
+                    # 检查是否需要限制拉伸
+                    if speed_ratio < MIN_SPEED_RATIO:
+                        limited_target = actual_duration / MIN_SPEED_RATIO
+                        logger.info(f"[{job_id}] Speaker {speaker_id} Sub{i}: Stretch limited! "
+                                   f"{actual_duration:.2f}s -> {target_duration:.2f}s exceeds threshold, "
+                                   f"capped to {limited_target:.2f}s")
+                        target_duration = limited_target
+
                     logger.info(f"[{job_id}] Speaker {speaker_id} Sub{i}: Aligning audio {actual_duration:.2f}s -> {target_duration:.2f}s")
                     success = await self._adjust_audio_duration(
                         str(raw_file), str(aligned_file),

@@ -26,8 +26,8 @@ class Limits:
     TTS_MAX_CHARS = 2000  # 单次最大字符数
     TTS_CHINESE_CHAR_WEIGHT = 2  # 1个中文字 = 2个字符
 
-    # EMO 限制
-    EMO_MAX_DURATION = 48  # 单次最大音频时长(秒)
+    # EMO 限制 (阿里云官方限制 < 60s)
+    EMO_MAX_DURATION = 55  # 单次最大音频时长(秒)
 
     # 并发限制
     MAX_CONCURRENT_TASKS = 5  # 最大并发数

@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     # "cloud": 使用阿里云 API (CosyVoice 声音克隆, EMO 数字人)
     AI_SERVICE_MODE: str = "cloud"
 
+    # Whisper 服务模式配置
+    # "local": 使用本地 GPU 运行 Whisper large-v3 模型 (需要 RTX 显卡)
+    # "cloud": 使用 APIMart Whisper-1 API
+    # 服务器部署使用 cloud 模式，本地开发可使用 local 模式
+    WHISPER_SERVICE_MODE: str = "local"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

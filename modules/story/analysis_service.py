@@ -1,6 +1,7 @@
 """
 Story AI 分析服务
-使用 APIMart API 进行字幕提取和说话人分析
+使用 Whisper 进行字幕提取，Gemini 进行说话人分析
+支持本地和云端两种 Whisper 模式
 """
 import os
 import logging
@@ -11,6 +12,7 @@ from pathlib import Path
 from datetime import datetime
 
 from core.config.settings import get_settings, BASE_DIR
+from core.services.whisper import get_whisper_service, WHISPER_SERVICE_MODE
 from core.utils.apimart_client import APIMartClient
 
 logger = logging.getLogger(__name__)
@@ -63,16 +65,15 @@ class StoryAnalysisService:
             if not audio_path or not os.path.exists(audio_path):
                 raise Exception("音频提取失败")
 
-            # 步骤 2: 调用 Whisper-1 API 转录
+            # 步骤 2: Whisper 转录 (支持本地/云端切换)
             if on_progress:
                 await on_progress("transcribing", 30)
 
-            logger.info(f"[{story_id}] 步骤2: 调用 Whisper-1 API 转录")
-            async with APIMartClient() as client:
-                whisper_result = await client.transcribe_audio(
+            logger.info(f"[{story_id}] 步骤2: Whisper 转录 (模式: {WHISPER_SERVICE_MODE})")
+            async with get_whisper_service() as whisper:
+                whisper_result = await whisper.transcribe(
                     audio_path=audio_path,
-                    language=language,
-                    response_format="verbose_json"
+                    language=language
                 )
 
             result["word_timestamps"] = whisper_result.words
