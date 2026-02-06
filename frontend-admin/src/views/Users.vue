@@ -47,6 +47,7 @@
                 <th>邮箱</th>
                 <th>昵称</th>
                 <th>角色</th>
+                <th>订阅</th>
                 <th>状态</th>
                 <th>注册时间</th>
                 <th>操作</th>
@@ -63,8 +64,18 @@
                     @change="handleRoleChange(user.id, ($event.target as HTMLSelectElement).value)"
                   >
                     <option value="user">普通用户</option>
-                    <option value="subscriber">订阅用户</option>
                     <option value="admin">管理员</option>
+                  </select>
+                </td>
+                <td>
+                  <select
+                    :value="user.subscription_plan || 'free'"
+                    class="subscription-select"
+                    @change="handleSubscriptionChange(user.id, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="free">Free</option>
+                    <option value="basic">Basic</option>
+                    <option value="premium">Premium</option>
                   </select>
                 </td>
                 <td>
@@ -142,6 +153,7 @@ interface User {
   email: string
   nickname: string | null
   role: string
+  subscription_plan: string
   is_active: boolean
   created_at: string
 }
@@ -229,10 +241,19 @@ function changePage(page: number) {
 
 async function handleRoleChange(userId: string, role: string) {
   try {
-    await api.put(`/admin/users/${userId}/role`, { role })
+    await api.put(`/admin/users/${userId}/role`, null, { params: { role } })
     await fetchUsers()
   } catch (error) {
     console.error('Failed to change role:', error)
+  }
+}
+
+async function handleSubscriptionChange(userId: string, plan: string) {
+  try {
+    await api.put(`/admin/users/${userId}/subscription`, null, { params: { plan } })
+    await fetchUsers()
+  } catch (error) {
+    console.error('Failed to change subscription:', error)
   }
 }
 
@@ -306,13 +327,18 @@ onMounted(() => {
   overflow-y: auto;
 }
 
-.role-select {
+.role-select,
+.subscription-select {
   background: var(--color-bg-dark-tertiary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text-primary);
   padding: 4px 8px;
   cursor: pointer;
+}
+
+.subscription-select {
+  min-width: 90px;
 }
 
 .status-badge {

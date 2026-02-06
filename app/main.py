@@ -28,6 +28,7 @@ from modules.voice_clone.router import router as voice_clone_router
 from modules.digital_human.router import router as digital_human_router
 from modules.story_generation.router import router as story_generation_router
 from modules.audiobook.router import router as audiobook_router
+from modules.payment.router import router as payment_router
 
 settings = get_settings()
 
@@ -107,6 +108,7 @@ app.include_router(voice_clone_router, prefix=settings.API_V1_PREFIX)
 app.include_router(digital_human_router, prefix=settings.API_V1_PREFIX)
 app.include_router(story_generation_router, prefix=settings.API_V1_PREFIX)
 app.include_router(audiobook_router, prefix=settings.API_V1_PREFIX)
+app.include_router(payment_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/")

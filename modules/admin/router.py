@@ -216,13 +216,40 @@ async def update_user_role(
     - **user_id**: 用户ID
 
     **查询参数:**
-    - **role**: 新角色，可选值：user | subscriber | admin
+    - **role**: 新角色，可选值：user | admin
     """
-    if role not in ["user", "subscriber", "admin"]:
+    if role not in ["user", "admin"]:
         return {"code": 10001, "message": "无效的角色", "data": None}
 
     user_repo = UserRepository()
     await user_repo.update(user_id, {"role": role})
+    return success_response(message="更新成功")
+
+
+@router.put("/users/{user_id}/subscription", summary="修改用户订阅计划")
+async def update_user_subscription(
+    user_id: str,
+    plan: str,
+    _=Depends(require_admin)
+):
+    """
+    修改用户订阅计划
+
+    **路径参数:**
+    - **user_id**: 用户ID
+
+    **查询参数:**
+    - **plan**: 订阅计划，可选值：free | basic | premium
+    """
+    if plan not in ["free", "basic", "premium"]:
+        return {"code": 10001, "message": "无效的订阅计划", "data": None}
+
+    user_repo = UserRepository()
+    from datetime import datetime
+    await user_repo.update(user_id, {
+        "subscription.plan": plan,
+        "subscription.updated_at": datetime.utcnow()
+    })
     return success_response(message="更新成功")
 
 

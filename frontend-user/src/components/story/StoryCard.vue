@@ -1,17 +1,24 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Story } from '@/types'
+import ShareMenu from '@/components/common/ShareMenu.vue'
 
 interface Props {
   story: Story
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const formatDuration = (seconds: number) => {
   const mins = Math.floor(seconds / 60)
   const secs = seconds % 60
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
+
+// 生成分享链接
+const shareUrl = computed(() => {
+  return `${window.location.origin}/story/${props.story.id}`
+})
 </script>
 
 <template>
@@ -40,6 +47,15 @@ const formatDuration = (seconds: number) => {
       <div class="absolute bottom-2 right-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md">
         {{ formatDuration(story.duration) }}
       </div>
+      <!-- Share Button -->
+      <div class="share-btn-wrapper absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>
+        <ShareMenu
+          :url="shareUrl"
+          :title="story.title_en || story.title"
+          :description="story.description_en || story.description || ''"
+          :imageUrl="story.thumbnail_url"
+        />
+      </div>
     </div>
 
     <!-- Content -->
@@ -58,3 +74,15 @@ const formatDuration = (seconds: number) => {
     </div>
   </RouterLink>
 </template>
+
+<style scoped>
+.share-btn-wrapper :deep(.share-btn) {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.share-btn-wrapper :deep(.share-btn):hover {
+  background: white;
+}
+</style>

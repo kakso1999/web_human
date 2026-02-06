@@ -115,6 +115,13 @@ class Settings(BaseSettings):
     # 服务器部署使用 cloud 模式，本地开发可使用 local 模式
     WHISPER_SERVICE_MODE: str = "local"
 
+    # PayPal 支付配置
+    # 获取方式: https://developer.paypal.com/
+    PAYPAL_CLIENT_ID: str = ""
+    PAYPAL_CLIENT_SECRET: str = ""
+    # sandbox (测试环境) 或 live (生产环境)
+    PAYPAL_MODE: str = "sandbox"
+
     class Config:
         env_file = ".env"
         case_sensitive = True

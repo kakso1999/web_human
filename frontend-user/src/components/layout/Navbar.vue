@@ -21,6 +21,7 @@ const navLinks = [
   { name: 'Create Profile', path: '/create-profile' },
   { name: 'AI Studio', path: '/studio' },
   { name: 'Audiobook', path: '/audiobook' },
+  { name: 'Shopify', path: '/shopify' },
   { name: 'Pricing', path: '/subscription' },
 ]
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { storyApi } from '@/api'
 import type { Story } from '@/types'
+import ShareMenu from '@/components/common/ShareMenu.vue'
 
 const route = useRoute()
 const story = ref<Story | null>(null)
@@ -69,6 +70,11 @@ const updateSubtitle = () => {
 onMounted(() => {
   const interval = setInterval(updateSubtitle, 100)
   onUnmounted(() => clearInterval(interval))
+})
+
+// 分享链接
+const shareUrl = computed(() => {
+  return `${window.location.origin}/story/${route.params.id}`
 })
 </script>
 
@@ -148,12 +154,20 @@ onMounted(() => {
                 <span>{{ formatTime(story.duration) }}</span>
               </div>
             </div>
-            <RouterLink
-              :to="`/studio?story_id=${story.id}`"
-              class="btn-primary"
-            >
-              Tell with My Voice
-            </RouterLink>
+            <div class="flex items-center gap-3">
+              <ShareMenu
+                :url="shareUrl"
+                :title="story.title_en || story.title"
+                :description="story.description_en || story.description || ''"
+                :imageUrl="story.thumbnail_url"
+              />
+              <RouterLink
+                :to="`/studio?story_id=${story.id}`"
+                class="btn-primary"
+              >
+                Tell with My Voice
+              </RouterLink>
+            </div>
           </div>
 
           <p v-if="story.description" class="mt-6 text-gray-600 leading-relaxed">

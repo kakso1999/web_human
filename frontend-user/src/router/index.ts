@@ -39,6 +39,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Audiobook - Echobot', requiresAuth: true }
   },
   {
+    path: '/shopify',
+    name: 'Shopify',
+    component: () => import('@/views/Shopify.vue'),
+    meta: { title: 'Shopify Integration - Echobot' }
+  },
+  {
     path: '/profiles',
     name: 'Profiles',
     component: () => import('@/views/Profiles.vue'),

@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { storyGenerationApi, audiobookApi } from '@/api'
 import type { StoryGenerationJob, AudiobookJob } from '@/types'
+import ShareMenu from '@/components/common/ShareMenu.vue'
 
 // Story generation jobs
 const storyJobs = ref<StoryGenerationJob[]>([])
@@ -266,6 +267,11 @@ const formatDateTime = (dateStr: string) => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
             </a>
+            <ShareMenu
+              :url="job.final_video_url"
+              :title="`My Story Creation #${job.id.slice(-6)}`"
+              description="Check out this amazing story video I created with Echobot!"
+            />
           </div>
         </div>
 
@@ -321,6 +327,11 @@ const formatDateTime = (dateStr: string) => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
             </a>
+            <ShareMenu
+              :url="job.audio_url"
+              :title="job.story_title || 'My Audiobook'"
+              description="Listen to this audiobook I created with my cloned voice on Echobot!"
+            />
           </div>
         </div>
       </div>
