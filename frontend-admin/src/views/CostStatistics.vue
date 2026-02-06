@@ -37,6 +37,53 @@
 
       <!-- 内容区 -->
       <main class="content">
+        <!-- 概览卡片 -->
+        <div class="overview-grid">
+          <div class="overview-card revenue-overview">
+            <div class="overview-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1.41 16.09V20h-2.67v-1.93c-1.71-.36-3.16-1.46-3.27-3.4h1.96c.1 1.05.82 1.87 2.65 1.87 1.96 0 2.4-.98 2.4-1.59 0-.83-.44-1.61-2.67-2.14-2.48-.6-4.18-1.62-4.18-3.67 0-1.72 1.39-2.84 3.11-3.21V4h2.67v1.95c1.86.45 2.79 1.86 2.85 3.39H14.3c-.05-1.11-.64-1.87-2.22-1.87-1.5 0-2.4.68-2.4 1.64 0 .84.65 1.39 2.67 1.91s4.18 1.39 4.18 3.91c-.01 1.83-1.38 2.83-3.12 3.16z"/>
+              </svg>
+            </div>
+            <div class="overview-content">
+              <div class="overview-value">${{ revenue.total_revenue?.toFixed(2) || '0.00' }}</div>
+              <div class="overview-label">总收入</div>
+            </div>
+          </div>
+          <div class="overview-card cost-overview">
+            <div class="overview-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/>
+              </svg>
+            </div>
+            <div class="overview-content">
+              <div class="overview-value">{{ formatCurrency(stats.total_cost) }}</div>
+              <div class="overview-label">总支出</div>
+            </div>
+          </div>
+          <div class="overview-card profit-overview" :class="{ positive: netProfitCNY > 0, negative: netProfitCNY < 0 }">
+            <div class="overview-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24">
+                <path fill="currentColor" d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/>
+              </svg>
+            </div>
+            <div class="overview-content">
+              <div class="overview-value">{{ netProfitCNY >= 0 ? '+' : '' }}{{ formatCurrency(Math.abs(netProfitCNY)) }}</div>
+              <div class="overview-label">净利润 (汇率 7.2)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 切换 -->
+        <div class="tabs">
+          <button :class="['tab', { active: activeTab === 'revenue' }]" @click="activeTab = 'revenue'">
+            收入明细
+          </button>
+          <button :class="['tab', { active: activeTab === 'cost' }]" @click="activeTab = 'cost'">
+            支出明细
+          </button>
+        </div>
+
         <!-- 日期筛选 -->
         <div class="filter-bar">
           <div class="filter-group">
@@ -50,156 +97,198 @@
           <button class="btn-refresh" @click="refreshAll">刷新</button>
         </div>
 
-        <!-- 收入统计卡片 -->
-        <div class="stats-grid revenue-grid">
-          <div class="stat-card revenue">
-            <div class="stat-value">${{ revenue.total_revenue?.toFixed(2) || '0.00' }}</div>
-            <div class="stat-label">总收入</div>
-            <div class="stat-detail">{{ revenue.completed_orders || 0 }} 笔订单</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">${{ revenue.basic_revenue?.toFixed(2) || '0.00' }}</div>
-            <div class="stat-label">Basic 订阅收入</div>
-            <div class="stat-detail">{{ revenue.basic_orders || 0 }} 笔</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">${{ revenue.premium_revenue?.toFixed(2) || '0.00' }}</div>
-            <div class="stat-label">Premium 订阅收入</div>
-            <div class="stat-detail">{{ revenue.premium_orders || 0 }} 笔</div>
-          </div>
-          <div class="stat-card profit">
-            <div class="stat-value" :class="{ positive: netProfit > 0, negative: netProfit < 0 }">
-              {{ netProfit >= 0 ? '+' : '' }}${{ Math.abs(netProfit).toFixed(2) }}
+        <!-- 收入 Tab -->
+        <div v-if="activeTab === 'revenue'">
+          <div class="stats-grid stats-grid-4">
+            <div class="stat-card revenue">
+              <div class="stat-value">${{ revenue.total_revenue?.toFixed(2) || '0.00' }}</div>
+              <div class="stat-label">总收入</div>
+              <div class="stat-detail">{{ revenue.completed_orders || 0 }} 笔订单</div>
             </div>
-            <div class="stat-label">净利润</div>
-            <div class="stat-detail">收入 - 成本</div>
-          </div>
-        </div>
-
-        <!-- 费用统计卡片 -->
-        <div class="stats-grid">
-          <div class="stat-card total">
-            <div class="stat-value">{{ formatCurrency(stats.total_cost) }}</div>
-            <div class="stat-label">总费用 (AI成本)</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ formatCurrency(stats.tts_cost) }}</div>
-            <div class="stat-label">TTS 费用</div>
-            <div class="stat-detail">{{ formatNumber(stats.tts_chars) }} 字符</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ formatCurrency(stats.emo_cost) }}</div>
-            <div class="stat-label">EMO 数字人费用</div>
-            <div class="stat-detail">{{ formatDuration(stats.emo_video_seconds) }}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value">{{ stats.job_count }}</div>
-            <div class="stat-label">完成任务数</div>
-          </div>
-        </div>
-
-        <!-- 费用明细 -->
-        <div class="section">
-          <h2 class="section-title">费用明细</h2>
-          <div class="detail-cards">
-            <div class="detail-card">
-              <div class="detail-header">
-                <span class="detail-icon tts">T</span>
-                <span class="detail-title">CosyVoice TTS</span>
-              </div>
-              <div class="detail-body">
-                <div class="detail-row">
-                  <span class="detail-label">处理字符数</span>
-                  <span class="detail-value">{{ formatNumber(stats.tts_chars) }}</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">单价</span>
-                  <span class="detail-value">0.0002 元/字符</span>
-                </div>
-                <div class="detail-row total">
-                  <span class="detail-label">费用</span>
-                  <span class="detail-value">{{ formatCurrency(stats.tts_cost) }}</span>
-                </div>
-              </div>
+            <div class="stat-card">
+              <div class="stat-value">${{ revenue.basic_revenue?.toFixed(2) || '0.00' }}</div>
+              <div class="stat-label">Basic 订阅</div>
+              <div class="stat-detail">{{ revenue.basic_orders || 0 }} 笔 × $9.90</div>
             </div>
-            <div class="detail-card">
-              <div class="detail-header">
-                <span class="detail-icon emo">E</span>
-                <span class="detail-title">EMO 数字人</span>
-              </div>
-              <div class="detail-body">
-                <div class="detail-row">
-                  <span class="detail-label">人脸检测</span>
-                  <span class="detail-value">{{ stats.emo_detect_count }} 次 ({{ formatCurrency(stats.emo_detect_cost) }})</span>
-                </div>
-                <div class="detail-row">
-                  <span class="detail-label">视频生成</span>
-                  <span class="detail-value">{{ formatDuration(stats.emo_video_seconds) }} ({{ formatCurrency(stats.emo_video_cost) }})</span>
-                </div>
-                <div class="detail-row total">
-                  <span class="detail-label">费用</span>
-                  <span class="detail-value">{{ formatCurrency(stats.emo_cost) }}</span>
-                </div>
-              </div>
+            <div class="stat-card">
+              <div class="stat-value">${{ revenue.premium_revenue?.toFixed(2) || '0.00' }}</div>
+              <div class="stat-label">Premium 订阅</div>
+              <div class="stat-detail">{{ revenue.premium_orders || 0 }} 笔 × $19.90</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ revenue.completed_orders || 0 }}</div>
+              <div class="stat-label">完成订单数</div>
+              <div class="stat-detail">成功支付</div>
+            </div>
+          </div>
+
+          <!-- 收入订单列表 -->
+          <div class="section">
+            <h2 class="section-title">支付订单</h2>
+            <div class="card">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>订单号</th>
+                    <th>用户</th>
+                    <th>计划</th>
+                    <th>金额</th>
+                    <th>状态</th>
+                    <th>付款邮箱</th>
+                    <th>时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="order in revenueOrders" :key="order.order_id">
+                    <td class="order-id">{{ order.order_id.slice(-12) }}</td>
+                    <td>{{ order.user?.nickname || order.user?.email || '-' }}</td>
+                    <td>
+                      <span :class="['plan-badge', order.plan]">{{ order.plan }}</span>
+                    </td>
+                    <td class="amount">${{ order.amount?.toFixed(2) }}</td>
+                    <td>
+                      <span :class="['status-badge', order.status.toLowerCase()]">
+                        {{ order.status === 'COMPLETED' ? '已完成' : '待支付' }}
+                      </span>
+                    </td>
+                    <td>{{ order.payer_email || '-' }}</td>
+                    <td>{{ formatDate(order.completed_at || order.created_at) }}</td>
+                  </tr>
+                  <tr v-if="revenueOrders.length === 0">
+                    <td colspan="7" class="empty">暂无支付订单</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
 
-        <!-- 任务列表 -->
-        <div class="section">
-          <h2 class="section-title">费用记录</h2>
-          <div class="card">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>任务ID</th>
-                  <th>用户</th>
-                  <th>故事</th>
-                  <th>模式</th>
-                  <th>TTS费用</th>
-                  <th>EMO费用</th>
-                  <th>总费用</th>
-                  <th>完成时间</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="job in jobs" :key="job.id">
-                  <td class="job-id">{{ job.id.slice(-8) }}</td>
-                  <td>{{ job.user?.nickname || job.user?.email || '-' }}</td>
-                  <td class="story-title">{{ job.story?.title || '-' }}</td>
-                  <td>
-                    <span :class="['mode-badge', job.mode]">
-                      {{ job.mode === 'dual' ? '双人' : '单人' }}
-                    </span>
-                  </td>
-                  <td>{{ formatCurrency(job.tts_cost) }}</td>
-                  <td>{{ formatCurrency(job.emo_detect_cost + job.emo_video_cost) }}</td>
-                  <td class="total-cost">{{ formatCurrency(job.total_cost) }}</td>
-                  <td>{{ formatDate(job.completed_at) }}</td>
-                </tr>
-                <tr v-if="jobs.length === 0">
-                  <td colspan="8" class="empty">暂无费用记录</td>
-                </tr>
-              </tbody>
-            </table>
+        <!-- 支出 Tab -->
+        <div v-if="activeTab === 'cost'">
+          <div class="stats-grid stats-grid-4">
+            <div class="stat-card total">
+              <div class="stat-value">{{ formatCurrency(stats.total_cost) }}</div>
+              <div class="stat-label">总支出 (AI成本)</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ formatCurrency(stats.tts_cost) }}</div>
+              <div class="stat-label">TTS 费用</div>
+              <div class="stat-detail">{{ formatNumber(stats.tts_chars) }} 字符</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ formatCurrency(stats.emo_cost) }}</div>
+              <div class="stat-label">EMO 数字人费用</div>
+              <div class="stat-detail">{{ formatDuration(stats.emo_video_seconds) }}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value">{{ stats.job_count }}</div>
+              <div class="stat-label">完成任务数</div>
+            </div>
+          </div>
 
-            <!-- 分页 -->
-            <div class="pagination" v-if="totalPages > 1">
-              <button
-                class="page-btn"
-                :disabled="currentPage === 1"
-                @click="goToPage(currentPage - 1)"
-              >
-                上一页
-              </button>
-              <span class="page-info">第 {{ currentPage }} / {{ totalPages }} 页</span>
-              <button
-                class="page-btn"
-                :disabled="currentPage === totalPages"
-                @click="goToPage(currentPage + 1)"
-              >
-                下一页
-              </button>
+          <!-- 费用明细 -->
+          <div class="section">
+            <h2 class="section-title">费用明细</h2>
+            <div class="detail-cards">
+              <div class="detail-card">
+                <div class="detail-header">
+                  <span class="detail-icon tts">T</span>
+                  <span class="detail-title">CosyVoice TTS</span>
+                </div>
+                <div class="detail-body">
+                  <div class="detail-row">
+                    <span class="detail-label">处理字符数</span>
+                    <span class="detail-value">{{ formatNumber(stats.tts_chars) }}</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">单价</span>
+                    <span class="detail-value">0.0002 元/字符</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="detail-label">费用</span>
+                    <span class="detail-value">{{ formatCurrency(stats.tts_cost) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-header">
+                  <span class="detail-icon emo">E</span>
+                  <span class="detail-title">EMO 数字人</span>
+                </div>
+                <div class="detail-body">
+                  <div class="detail-row">
+                    <span class="detail-label">人脸检测</span>
+                    <span class="detail-value">{{ stats.emo_detect_count }} 次 ({{ formatCurrency(stats.emo_detect_cost) }})</span>
+                  </div>
+                  <div class="detail-row">
+                    <span class="detail-label">视频生成</span>
+                    <span class="detail-value">{{ formatDuration(stats.emo_video_seconds) }} ({{ formatCurrency(stats.emo_video_cost) }})</span>
+                  </div>
+                  <div class="detail-row total">
+                    <span class="detail-label">费用</span>
+                    <span class="detail-value">{{ formatCurrency(stats.emo_cost) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 任务列表 -->
+          <div class="section">
+            <h2 class="section-title">费用记录</h2>
+            <div class="card">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>任务ID</th>
+                    <th>用户</th>
+                    <th>故事</th>
+                    <th>模式</th>
+                    <th>TTS费用</th>
+                    <th>EMO费用</th>
+                    <th>总费用</th>
+                    <th>完成时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="job in jobs" :key="job.id">
+                    <td class="job-id">{{ job.id.slice(-8) }}</td>
+                    <td>{{ job.user?.nickname || job.user?.email || '-' }}</td>
+                    <td class="story-title">{{ job.story?.title || '-' }}</td>
+                    <td>
+                      <span :class="['mode-badge', job.mode]">
+                        {{ job.mode === 'dual' ? '双人' : '单人' }}
+                      </span>
+                    </td>
+                    <td>{{ formatCurrency(job.tts_cost) }}</td>
+                    <td>{{ formatCurrency(job.emo_detect_cost + job.emo_video_cost) }}</td>
+                    <td class="total-cost">{{ formatCurrency(job.total_cost) }}</td>
+                    <td>{{ formatDate(job.completed_at) }}</td>
+                  </tr>
+                  <tr v-if="jobs.length === 0">
+                    <td colspan="8" class="empty">暂无费用记录</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- 分页 -->
+              <div class="pagination" v-if="totalPages > 1">
+                <button
+                  class="page-btn"
+                  :disabled="currentPage === 1"
+                  @click="goToPage(currentPage - 1)"
+                >
+                  上一页
+                </button>
+                <span class="page-info">第 {{ currentPage }} / {{ totalPages }} 页</span>
+                <button
+                  class="page-btn"
+                  :disabled="currentPage === totalPages"
+                  @click="goToPage(currentPage + 1)"
+                >
+                  下一页
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -282,13 +371,15 @@ const revenue = ref<RevenueStats>({
   daily_stats: []
 })
 
-const netProfit = computed(() => {
+const netProfitCNY = computed(() => {
   // 收入是美元，成本是人民币，按汇率7.2换算
   const revenueInCNY = revenue.value.total_revenue * 7.2
   return revenueInCNY - stats.value.total_cost
 })
 
+const activeTab = ref<'revenue' | 'cost'>('revenue')
 const jobs = ref<CostJob[]>([])
+const revenueOrders = ref<any[]>([])
 const startDate = ref('')
 const endDate = ref('')
 const currentPage = ref(1)
@@ -396,6 +487,22 @@ async function fetchRevenue() {
   }
 }
 
+async function fetchRevenueOrders() {
+  try {
+    const params: Record<string, string | number> = {
+      page: 1,
+      page_size: 50
+    }
+    if (startDate.value) params.start_date = startDate.value
+    if (endDate.value) params.end_date = endDate.value
+
+    const response = await api.get('/admin/revenue-statistics/orders', { params })
+    revenueOrders.value = response.data.data.items
+  } catch (error) {
+    console.error('Failed to fetch revenue orders:', error)
+  }
+}
+
 async function fetchJobs() {
   try {
     const params: Record<string, string | number> = {
@@ -422,6 +529,7 @@ async function refreshAll() {
   await Promise.all([
     fetchStatistics(),
     fetchRevenue(),
+    fetchRevenueOrders(),
     fetchJobs()
   ])
 }
@@ -531,12 +639,133 @@ onMounted(async () => {
   background: var(--color-accent-light);
 }
 
+/* Overview Grid */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-xl);
+}
+
+.overview-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+  padding: var(--spacing-xl);
+  background: var(--color-bg-dark-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.overview-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-dark-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.overview-card.revenue-overview .overview-icon {
+  background: rgba(39, 174, 96, 0.15);
+  color: #27ae60;
+}
+
+.overview-card.cost-overview .overview-icon {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.overview-card.profit-overview .overview-icon {
+  background: rgba(52, 152, 219, 0.15);
+  color: #3498db;
+}
+
+.overview-card.profit-overview.positive .overview-icon {
+  background: rgba(39, 174, 96, 0.15);
+  color: #27ae60;
+}
+
+.overview-card.profit-overview.negative .overview-icon {
+  background: rgba(231, 76, 60, 0.15);
+  color: #e74c3c;
+}
+
+.overview-content {
+  flex: 1;
+}
+
+.overview-value {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.overview-card.revenue-overview .overview-value {
+  color: #27ae60;
+}
+
+.overview-card.cost-overview .overview-value {
+  color: #e74c3c;
+}
+
+.overview-card.profit-overview.positive .overview-value {
+  color: #27ae60;
+}
+
+.overview-card.profit-overview.negative .overview-value {
+  color: #e74c3c;
+}
+
+.overview-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-xs);
+  background: var(--color-bg-dark-secondary);
+  border-radius: var(--radius-lg);
+  width: fit-content;
+}
+
+.tab {
+  padding: var(--spacing-sm) var(--spacing-xl);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: var(--color-text-primary);
+}
+
+.tab.active {
+  background: var(--color-accent);
+  color: white;
+}
+
 /* 统计卡片 */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--spacing-lg);
   margin-bottom: var(--spacing-xl);
+}
+
+.stats-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .stat-card {
@@ -726,6 +955,56 @@ onMounted(async () => {
 .total-cost {
   font-weight: 600;
   color: var(--color-accent-light);
+}
+
+/* 订单表格样式 */
+.order-id {
+  font-family: monospace;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.amount {
+  color: #27ae60;
+  font-weight: 600;
+}
+
+.plan-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.plan-badge.basic {
+  background: rgba(52, 152, 219, 0.2);
+  color: #3498db;
+}
+
+.plan-badge.premium {
+  background: rgba(155, 89, 182, 0.2);
+  color: #9b59b6;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.status-badge.completed {
+  background: rgba(39, 174, 96, 0.2);
+  color: #27ae60;
+}
+
+.status-badge.created,
+.status-badge.pending {
+  background: rgba(241, 196, 15, 0.2);
+  color: #f1c40f;
 }
 
 .empty {

@@ -28,10 +28,14 @@
     <div class="main-area">
       <header class="topbar">
         <h1 class="page-title">有声书管理</h1>
-        <div class="topbar-actions">
+        <div class="topbar-right">
           <button class="btn btn-accent" @click="showCreateModal = true">
             新建故事
           </button>
+          <div class="admin-info">
+            <span class="admin-name">{{ adminStore.user?.nickname || '管理员' }}</span>
+            <span class="admin-role">{{ getRoleLabel(adminStore.user?.role) }}</span>
+          </div>
         </div>
       </header>
 
@@ -389,6 +393,15 @@ function isActivePath(path: string): boolean {
   return route.path === path || route.path.startsWith(path + '/')
 }
 
+function getRoleLabel(role: string | undefined): string {
+  const labels: Record<string, string> = {
+    user: '普通用户',
+    admin: '管理员',
+    super: '超级管理员'
+  }
+  return labels[role || ''] || role || '-'
+}
+
 function handleLogout() {
   adminStore.logout()
   router.push('/login')
@@ -574,96 +587,7 @@ onMounted(() => {
   min-height: 100vh;
 }
 
-.sidebar {
-  width: var(--sidebar-width, 200px);
-  background: #2B5F6C;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  height: 100vh;
-  position: sticky;
-  top: 0;
-}
-
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebar-logo img {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-}
-
-.sidebar-logo span {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: #E8E4D4;
-}
-
-.sidebar-nav {
-  padding: var(--spacing-sm) 0;
-  flex: 1;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  color: rgba(232, 228, 212, 0.85);
-  text-decoration: none;
-  transition: all var(--transition-fast);
-  margin: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
-}
-
-.nav-item:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-}
-
-.nav-item.active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-.nav-icon {
-  width: 18px;
-  height: 18px;
-}
-
-.nav-icon svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-}
-
-.sidebar-footer {
-  padding: var(--spacing-md);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btn {
-  width: 100%;
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-sm);
-  color: rgba(255, 255, 255, 0.9);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-}
-
-.logout-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
+/* sidebar 使用全局样式，不在此处重复定义 */
 
 .main-area {
   flex: 1;
@@ -685,9 +609,26 @@ onMounted(() => {
   font-weight: 600;
 }
 
-.topbar-actions {
+.topbar-right {
   display: flex;
-  gap: var(--spacing-md);
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.admin-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.admin-name {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.admin-role {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
 .content {
