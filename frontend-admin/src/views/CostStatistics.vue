@@ -41,20 +41,46 @@
         <div class="filter-bar">
           <div class="filter-group">
             <label>开始日期</label>
-            <input type="date" v-model="startDate" @change="fetchStatistics" />
+            <input type="date" v-model="startDate" @change="refreshAll" />
           </div>
           <div class="filter-group">
             <label>结束日期</label>
-            <input type="date" v-model="endDate" @change="fetchStatistics" />
+            <input type="date" v-model="endDate" @change="refreshAll" />
           </div>
-          <button class="btn-refresh" @click="fetchStatistics">刷新</button>
+          <button class="btn-refresh" @click="refreshAll">刷新</button>
         </div>
 
-        <!-- 统计卡片 -->
+        <!-- 收入统计卡片 -->
+        <div class="stats-grid revenue-grid">
+          <div class="stat-card revenue">
+            <div class="stat-value">${{ revenue.total_revenue?.toFixed(2) || '0.00' }}</div>
+            <div class="stat-label">总收入</div>
+            <div class="stat-detail">{{ revenue.completed_orders || 0 }} 笔订单</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${{ revenue.basic_revenue?.toFixed(2) || '0.00' }}</div>
+            <div class="stat-label">Basic 订阅收入</div>
+            <div class="stat-detail">{{ revenue.basic_orders || 0 }} 笔</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${{ revenue.premium_revenue?.toFixed(2) || '0.00' }}</div>
+            <div class="stat-label">Premium 订阅收入</div>
+            <div class="stat-detail">{{ revenue.premium_orders || 0 }} 笔</div>
+          </div>
+          <div class="stat-card profit">
+            <div class="stat-value" :class="{ positive: netProfit > 0, negative: netProfit < 0 }">
+              {{ netProfit >= 0 ? '+' : '' }}${{ Math.abs(netProfit).toFixed(2) }}
+            </div>
+            <div class="stat-label">净利润</div>
+            <div class="stat-detail">收入 - 成本</div>
+          </div>
+        </div>
+
+        <!-- 费用统计卡片 -->
         <div class="stats-grid">
           <div class="stat-card total">
             <div class="stat-value">{{ formatCurrency(stats.total_cost) }}</div>
-            <div class="stat-label">总费用</div>
+            <div class="stat-label">总费用 (AI成本)</div>
           </div>
           <div class="stat-card">
             <div class="stat-value">{{ formatCurrency(stats.tts_cost) }}</div>
@@ -208,6 +234,16 @@ interface CostStats {
   daily_stats: { date: string; cost: number; jobs: number }[]
 }
 
+interface RevenueStats {
+  total_revenue: number
+  completed_orders: number
+  basic_revenue: number
+  basic_orders: number
+  premium_revenue: number
+  premium_orders: number
+  daily_stats: { date: string; revenue: number; orders: number }[]
+}
+
 interface CostJob {
   id: string
   user: { id: string; email: string; nickname: string | null } | null
@@ -234,6 +270,22 @@ const stats = ref<CostStats>({
   emo_video_seconds: 0,
   job_count: 0,
   daily_stats: []
+})
+
+const revenue = ref<RevenueStats>({
+  total_revenue: 0,
+  completed_orders: 0,
+  basic_revenue: 0,
+  basic_orders: 0,
+  premium_revenue: 0,
+  premium_orders: 0,
+  daily_stats: []
+})
+
+const netProfit = computed(() => {
+  // 收入是美元，成本是人民币，按汇率7.2换算
+  const revenueInCNY = revenue.value.total_revenue * 7.2
+  return revenueInCNY - stats.value.total_cost
 })
 
 const jobs = ref<CostJob[]>([])
@@ -331,6 +383,19 @@ async function fetchStatistics() {
   }
 }
 
+async function fetchRevenue() {
+  try {
+    const params: Record<string, string> = {}
+    if (startDate.value) params.start_date = startDate.value
+    if (endDate.value) params.end_date = endDate.value
+
+    const response = await api.get('/admin/revenue-statistics', { params })
+    revenue.value = response.data.data
+  } catch (error) {
+    console.error('Failed to fetch revenue statistics:', error)
+  }
+}
+
 async function fetchJobs() {
   try {
     const params: Record<string, string | number> = {
@@ -353,10 +418,17 @@ function goToPage(page: number) {
   fetchJobs()
 }
 
+async function refreshAll() {
+  await Promise.all([
+    fetchStatistics(),
+    fetchRevenue(),
+    fetchJobs()
+  ])
+}
+
 onMounted(async () => {
   await adminStore.fetchProfile()
-  await fetchStatistics()
-  await fetchJobs()
+  await refreshAll()
 })
 </script>
 
@@ -497,6 +569,35 @@ onMounted(async () => {
 
 .stat-card.total .stat-label {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.stat-card.revenue {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+}
+
+.stat-card.revenue .stat-value {
+  color: white;
+  font-size: var(--font-size-3xl);
+}
+
+.stat-card.revenue .stat-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.stat-card.revenue .stat-detail {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.stat-card.profit .stat-value.positive {
+  color: #2ecc71;
+}
+
+.stat-card.profit .stat-value.negative {
+  color: #e74c3c;
+}
+
+.revenue-grid {
+  margin-bottom: var(--spacing-lg);
 }
 
 .stat-detail {

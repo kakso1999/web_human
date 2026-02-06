@@ -1730,3 +1730,179 @@ async def list_audiobook_jobs(
         "page": result["page"],
         "page_size": result["page_size"]
     })
+
+
+# ========== 收入统计 ==========
+
+@router.get("/revenue-statistics", summary="获取收入统计")
+async def get_revenue_statistics(
+    start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
+    _=Depends(require_admin)
+):
+    """
+    获取 PayPal 支付收入统计
+
+    **返回示例:**
+    ```json
+    {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "total_revenue": 199.00,
+            "completed_orders": 20,
+            "basic_revenue": 99.00,
+            "basic_orders": 10,
+            "premium_revenue": 100.00,
+            "premium_orders": 5,
+            "daily_stats": [...]
+        }
+    }
+    ```
+    """
+    from core.config.database import Database
+    from datetime import datetime, timedelta
+
+    db = Database.get_db()
+
+    # 构建查询条件
+    query = {"status": "COMPLETED"}
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query["completed_at"] = {"$gte": start_dt}
+        except ValueError:
+            pass
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            if "completed_at" in query:
+                query["completed_at"]["$lt"] = end_dt
+            else:
+                query["completed_at"] = {"$lt": end_dt}
+        except ValueError:
+            pass
+
+    # 聚合收入统计
+    pipeline = [
+        {"$match": query},
+        {
+            "$group": {
+                "_id": "$plan",
+                "revenue": {"$sum": "$amount"},
+                "orders": {"$sum": 1}
+            }
+        }
+    ]
+
+    cursor = db.payment_orders.aggregate(pipeline)
+    results = await cursor.to_list(length=10)
+
+    # 整理数据
+    total_revenue = 0
+    completed_orders = 0
+    basic_revenue = 0
+    basic_orders = 0
+    premium_revenue = 0
+    premium_orders = 0
+
+    for r in results:
+        total_revenue += r["revenue"]
+        completed_orders += r["orders"]
+        if r["_id"] == "basic":
+            basic_revenue = r["revenue"]
+            basic_orders = r["orders"]
+        elif r["_id"] == "premium":
+            premium_revenue = r["revenue"]
+            premium_orders = r["orders"]
+
+    # 获取每日统计（最近30天）
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    daily_pipeline = [
+        {"$match": {"status": "COMPLETED", "completed_at": {"$gte": thirty_days_ago}}},
+        {
+            "$group": {
+                "_id": {
+                    "$dateToString": {"format": "%Y-%m-%d", "date": "$completed_at"}
+                },
+                "revenue": {"$sum": "$amount"},
+                "orders": {"$sum": 1}
+            }
+        },
+        {"$sort": {"_id": 1}}
+    ]
+
+    daily_cursor = db.payment_orders.aggregate(daily_pipeline)
+    daily_stats = await daily_cursor.to_list(length=30)
+
+    return success_response({
+        "total_revenue": total_revenue,
+        "completed_orders": completed_orders,
+        "basic_revenue": basic_revenue,
+        "basic_orders": basic_orders,
+        "premium_revenue": premium_revenue,
+        "premium_orders": premium_orders,
+        "daily_stats": [
+            {"date": d["_id"], "revenue": d["revenue"], "orders": d["orders"]}
+            for d in daily_stats
+        ]
+    })
+
+
+@router.get("/revenue-statistics/orders", summary="获取支付订单列表")
+async def get_revenue_orders(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="订单状态：CREATED/COMPLETED"),
+    _=Depends(require_admin)
+):
+    """获取支付订单列表"""
+    from core.config.database import Database
+    from datetime import datetime
+
+    db = Database.get_db()
+
+    # 构建查询条件
+    query = {}
+    if status:
+        query["status"] = status
+
+    # 计算总数
+    total = await db.payment_orders.count_documents(query)
+
+    # 获取分页数据
+    skip = (page - 1) * page_size
+    cursor = db.payment_orders.find(query).sort(
+        "created_at", -1
+    ).skip(skip).limit(page_size)
+
+    user_repo = UserRepository()
+    orders = []
+
+    async for doc in cursor:
+        # 获取用户信息
+        user_info = None
+        if doc.get("user_id"):
+            user = await user_repo.get_by_id(str(doc["user_id"]))
+            if user:
+                user_info = {
+                    "id": user["id"],
+                    "email": user["email"],
+                    "nickname": user.get("nickname")
+                }
+
+        orders.append({
+            "order_id": doc["order_id"],
+            "user": user_info,
+            "plan": doc["plan"],
+            "amount": doc["amount"],
+            "currency": doc["currency"],
+            "status": doc["status"],
+            "payer_email": doc.get("payer_email"),
+            "created_at": doc["created_at"].isoformat() if doc.get("created_at") else None,
+            "completed_at": doc["completed_at"].isoformat() if doc.get("completed_at") else None
+        })
+
+    return paginate(orders, total, page, page_size)
