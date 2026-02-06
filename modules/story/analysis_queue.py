@@ -36,6 +36,7 @@ class StoryAnalysisQueue:
         self._worker_task: Optional[asyncio.Task] = None
         self._is_running = False
         self._current_story_id: Optional[str] = None
+        self._pending_list: list = []  # 追踪待处理任务列表
 
     async def start_worker(self):
         """启动队列工作者"""
@@ -67,6 +68,7 @@ class StoryAnalysisQueue:
             'added_at': datetime.utcnow()
         }
         await self._queue.put(task)
+        self._pending_list.append(story_id)
 
         # 更新数据库状态
         db = Database.get_db()
@@ -86,6 +88,15 @@ class StoryAnalysisQueue:
     def get_current_task(self) -> Optional[str]:
         """获取当前正在处理的故事ID"""
         return self._current_story_id
+
+    def get_position(self, story_id: str) -> Optional[int]:
+        """获取故事在队列中的位置 (0=正在处理, 1+=排队中)"""
+        if self._current_story_id == story_id:
+            return 0
+        try:
+            return self._pending_list.index(story_id) + 1
+        except ValueError:
+            return None
 
     async def _worker_loop(self):
         """工作者循环"""
@@ -137,6 +148,9 @@ class StoryAnalysisQueue:
                         await self._mark_story_failed(story_id, error_msg)
                 finally:
                     self._current_story_id = None
+                    # 从待处理列表中移除
+                    if story_id in self._pending_list:
+                        self._pending_list.remove(story_id)
                     self._queue.task_done()
 
                 # 处理完一个任务后等待，避免API限流

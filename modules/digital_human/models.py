@@ -29,12 +29,3 @@ class AvatarProfile(BaseModel):
 class AvatarProfileCreate(BaseModel):
     """创建头像档案请求"""
     name: str = Field(..., min_length=1, max_length=50, description="头像名称")
-
-
-class AvatarProfileResponse(BaseModel):
-    """头像档案响应"""
-    id: str
-    name: str
-    image_url: str
-    preview_video_url: Optional[str] = None
-    created_at: datetime

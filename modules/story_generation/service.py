@@ -1921,16 +1921,7 @@ class StoryGenerationService:
             }
         """
         logger.info(f"[{job_id}] Transcribing audio with word timestamps")
-        print(f"[DEBUG] Starting transcription for {job_id}", flush=True)
-
-        # 写入调试日志（使用固定绝对路径）
-        try:
-            debug_path = r"E:\工作代码\73_web_human\uploads\transcribe_debug.log"
-            with open(debug_path, "a", encoding="utf-8") as f:
-                f.write(f"[{job_id}] _transcribe_audio START, audio_url={audio_url}\n")
-                f.flush()
-        except Exception as debug_err:
-            logger.error(f"[{job_id}] Debug log write failed: {debug_err}")
+        logger.debug(f"[{job_id}] Starting transcription, audio_url={audio_url}")
 
         try:
             import json
@@ -1955,23 +1946,12 @@ class StoryGenerationService:
             # 获取音频时长
             audio_duration = await self._get_audio_duration(str(audio_path))
             logger.info(f"[{job_id}] Audio duration: {audio_duration:.2f}s")
-            print(f"[DEBUG] Audio duration: {audio_duration:.2f}s")
 
-            # 分块阈值：3 分钟 (临时禁用分块)
-            CHUNK_MAX_DURATION = 180  # 秒
+            # 直接转写整个音频（分块逻辑已禁用）
+            logger.debug(f"[{job_id}] Direct transcription (no chunking)")
+            result = await self._transcribe_audio_chunk(job_id, str(audio_path), 0)
 
-            # 临时：跳过分块，直接转写整个音频
-            if True:  # audio_duration <= CHUNK_MAX_DURATION:
-                # 短音频，直接转写
-                print(f"[DEBUG] Direct transcription (no chunking)")
-                result = await self._transcribe_audio_chunk(job_id, str(audio_path), 0)
-            else:
-                # 长音频，分块转写
-                logger.info(f"[{job_id}] Audio too long ({audio_duration:.0f}s), splitting into chunks")
-                print(f"[DEBUG] Long audio path, chunking ({audio_duration:.0f}s)")
-                result = await self._transcribe_audio_chunked(job_id, str(audio_path), audio_duration, CHUNK_MAX_DURATION)
-
-            print(f"[DEBUG] Transcription result: {result is not None}")
+            logger.debug(f"[{job_id}] Transcription result: {result is not None}")
             if not result:
                 return None
 
@@ -2120,21 +2100,10 @@ class StoryGenerationService:
 
         优先使用本地 faster-whisper，失败时回退到 APICORE API
         """
-        # Debug logging
-        try:
-            with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"[{job_id}] _transcribe_audio_chunk START, chunk={chunk_index}, path={audio_path}\n")
-                f.flush()
-        except:
-            pass
+        logger.debug(f"[{job_id}] _transcribe_audio_chunk START, chunk={chunk_index}, path={audio_path}")
 
         # 只使用本地 faster-whisper（不再回退到 APICORE API）
-        try:
-            with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"[{job_id}] About to call _transcribe_with_local_whisper...\n")
-                f.flush()
-        except:
-            pass
+        logger.debug(f"[{job_id}] Calling _transcribe_with_local_whisper...")
         result = await self._transcribe_with_local_whisper(job_id, audio_path, chunk_index)
         if result:
             return result
@@ -2149,14 +2118,8 @@ class StoryGenerationService:
         audio_path: str,
         chunk_index: int
     ) -> Optional[Dict[str, Any]]:
-        """使用本地 faster-whisper 进行转写（简化版，移除冗余调试代码）"""
-        # Debug entry
-        try:
-            with open(r"E:\工作代码\73_web_human\uploads\transcribe_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"[{job_id}] _transcribe_with_local_whisper ENTERED\n")
-                f.flush()
-        except:
-            pass
+        """使用本地 faster-whisper 进行转写"""
+        logger.debug(f"[{job_id}] _transcribe_with_local_whisper ENTERED")
 
         try:
             logger.info(f"[{job_id}] Chunk {chunk_index}: Using local faster-whisper, audio={audio_path}")
@@ -3666,7 +3629,6 @@ class StoryGenerationService:
 
             if story_subtitles and len(story_subtitles) > 0:
                 # 使用故事级别的 subtitles（APIMart 分析结果）
-                print(f"[{job_id}] Using story.subtitles ({len(story_subtitles)} segments) - SKIPPING TRANSCRIPTION")
                 logger.info(f"[{job_id}] Using story.subtitles ({len(story_subtitles)} segments) - skipping transcription")
                 subtitles = [
                     {
@@ -3680,7 +3642,6 @@ class StoryGenerationService:
                 ]
             elif has_text:
                 # diarization_segments 已包含 text，直接转换为 subtitles 格式
-                print(f"[{job_id}] Using diarization_segments ({len(diarization_segments)} segments) - SKIPPING TRANSCRIPTION")
                 logger.info(f"[{job_id}] Using diarization_segments with text ({len(diarization_segments)} segments) - skipping transcription")
                 subtitles = [
                     {
@@ -3694,7 +3655,6 @@ class StoryGenerationService:
                 ]
             else:
                 # 没有预分析的字幕数据，需要进行转录（兼容旧数据）
-                print(f"[{job_id}] No pre-analyzed subtitles - PERFORMING TRANSCRIPTION")
                 logger.info(f"[{job_id}] No pre-analyzed subtitles found, performing transcription")
                 transcription = await self._transcribe_audio(job_id, audio_url)
                 if not transcription:

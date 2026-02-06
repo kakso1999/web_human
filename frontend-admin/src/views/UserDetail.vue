@@ -71,6 +71,10 @@
               <span class="stat-value">{{ user.stats?.story_jobs || 0 }}</span>
               <span class="stat-label">故事生成</span>
             </div>
+            <div class="stat-item">
+              <span class="stat-value">{{ user.stats?.audiobook_jobs || 0 }}</span>
+              <span class="stat-label">有声书</span>
+            </div>
           </div>
           <div class="user-dates">
             <span>注册时间: {{ formatDate(user.created_at) }}</span>
@@ -97,6 +101,12 @@
             @click="activeTab = 'jobs'"
           >
             故事生成记录 ({{ storyJobs.length }})
+          </button>
+          <button
+            :class="['tab', { active: activeTab === 'audiobook' }]"
+            @click="activeTab = 'audiobook'"
+          >
+            有声书任务 ({{ audiobookJobs.length }})
           </button>
         </div>
 
@@ -196,6 +206,46 @@
             </tbody>
           </table>
         </div>
+
+        <!-- 有声书任务 -->
+        <div class="card" v-if="activeTab === 'audiobook'">
+          <div class="card-header">
+            <h3>有声书任务</h3>
+          </div>
+          <div v-if="audiobookJobs.length === 0" class="empty-state">
+            暂无有声书任务
+          </div>
+          <table v-else class="table">
+            <thead>
+              <tr>
+                <th>故事</th>
+                <th>声音档案</th>
+                <th>状态</th>
+                <th>时长</th>
+                <th>创建时间</th>
+                <th>音频</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="job in audiobookJobs" :key="job.id">
+                <td>{{ job.story_title || '-' }}</td>
+                <td>{{ job.voice_name || '-' }}</td>
+                <td>
+                  <span :class="['status-badge', `status-${job.status}`]">
+                    {{ statusLabel(job.status) }}
+                  </span>
+                </td>
+                <td>{{ job.duration ? formatDuration(job.duration) : '-' }}</td>
+                <td>{{ formatDate(job.created_at) }}</td>
+                <td>
+                  <audio v-if="job.audio_url" :src="job.audio_url" controls class="audio-mini"></audio>
+                  <span v-else-if="job.error" class="error-text" :title="job.error">失败</span>
+                  <span v-else>-</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </main>
 
       <!-- 加载中 -->
@@ -233,6 +283,7 @@ interface UserDetail {
     voice_profiles: number
     avatar_profiles: number
     story_jobs: number
+    audiobook_jobs: number
   }
 }
 
@@ -267,10 +318,26 @@ interface StoryJob {
   completed_at: string | null
 }
 
+interface AudiobookJob {
+  id: string
+  story_id: string
+  story_title: string | null
+  voice_profile_id: string
+  voice_name: string | null
+  status: string
+  audio_url: string | null
+  duration: number | null
+  error: string | null
+  is_favorite: boolean
+  created_at: string
+  completed_at: string | null
+}
+
 const user = ref<UserDetail | null>(null)
 const voiceProfiles = ref<VoiceProfile[]>([])
 const avatarProfiles = ref<AvatarProfile[]>([])
 const storyJobs = ref<StoryJob[]>([])
+const audiobookJobs = ref<AudiobookJob[]>([])
 
 const menuItems = [
   {
@@ -325,6 +392,12 @@ function statusLabel(status: string): string {
   return labels[status] || status
 }
 
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
 function getVideoUrl(url: string): string {
   if (url.startsWith('http')) return url
   if (url.startsWith('/files/')) return `http://112.124.70.81${url}`
@@ -376,6 +449,15 @@ async function fetchStoryJobs() {
   }
 }
 
+async function fetchAudiobookJobs() {
+  try {
+    const response = await api.get(`/admin/users/${userId}/audiobook-jobs`)
+    audiobookJobs.value = response.data.data.items
+  } catch (error) {
+    console.error('Failed to fetch audiobook jobs:', error)
+  }
+}
+
 async function deleteVoiceProfile(profileId: string) {
   if (!confirm('确定要删除此声音档案吗？')) return
 
@@ -405,6 +487,7 @@ onMounted(() => {
   fetchVoiceProfiles()
   fetchAvatarProfiles()
   fetchStoryJobs()
+  fetchAudiobookJobs()
 })
 </script>
 
@@ -413,6 +496,7 @@ onMounted(() => {
   display: flex;
   width: 100%;
   min-height: 100vh;
+  background: var(--color-bg-dark);
 }
 
 .main-area {
@@ -426,42 +510,46 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-lg) var(--spacing-xl);
+  padding: 20px 32px;
+  background: var(--color-bg-dark-secondary);
   border-bottom: 1px solid var(--color-border);
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: 16px;
 }
 
 .back-btn {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 8px;
+  padding: 10px 16px;
   background: var(--color-bg-dark-tertiary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
+  font-weight: 500;
 }
 
 .back-btn:hover {
   background: var(--color-bg-dark-hover);
   color: var(--color-text-primary);
+  transform: translateX(-2px);
 }
 
 .page-title {
   font-size: var(--font-size-2xl);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
 .content {
   flex: 1;
-  padding: var(--spacing-xl);
+  padding: 24px 32px;
   overflow-y: auto;
 }
 
@@ -471,25 +559,28 @@ onMounted(() => {
   justify-content: center;
   height: 100%;
   color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
 }
 
 /* 用户信息卡片 */
 .user-info-card {
-  margin-bottom: var(--spacing-xl);
+  margin-bottom: 28px;
+  border-radius: var(--radius-xl);
 }
 
 .user-header {
   display: flex;
-  gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
+  gap: 24px;
+  margin-bottom: 24px;
 }
 
 .user-avatar {
-  width: 80px;
-  height: 80px;
-  border-radius: var(--radius-lg);
+  width: 88px;
+  height: 88px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .user-avatar img {
@@ -504,10 +595,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
   color: white;
   font-size: var(--font-size-2xl);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .user-meta {
@@ -515,26 +606,30 @@ onMounted(() => {
 }
 
 .user-name {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  margin-bottom: var(--spacing-xs);
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  letter-spacing: -0.3px;
 }
 
 .user-email {
   color: var(--color-text-secondary);
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .user-badges {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .badge {
-  padding: 2px 8px;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .badge-user {
@@ -603,28 +698,34 @@ onMounted(() => {
 /* 标签页 */
 .tabs {
   display: flex;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-lg);
+  gap: 8px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .tab {
-  padding: var(--spacing-sm) var(--spacing-lg);
+  padding: 10px 20px;
   background: transparent;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
+  font-weight: 500;
+  font-size: var(--font-size-sm);
 }
 
 .tab:hover {
   background: var(--color-bg-dark-tertiary);
+  border-color: var(--color-border-light);
 }
 
 .tab.active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
+  border-color: transparent;
   color: white;
+  box-shadow: 0 2px 8px var(--color-accent-glow);
 }
 
 /* 卡片 */
@@ -632,35 +733,42 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: 20px;
 }
 
 .card-header h3 {
   font-size: var(--font-size-lg);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .empty-state {
   text-align: center;
-  padding: var(--spacing-xl);
+  padding: 48px 24px;
   color: var(--color-text-muted);
 }
 
 /* 档案网格 */
 .profile-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--spacing-lg);
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
 }
 
 .profile-card {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
-  padding: var(--spacing-lg);
-  background: var(--color-bg-dark-secondary);
-  border-radius: var(--radius-md);
+  gap: 16px;
+  padding: 20px;
+  background: var(--color-bg-dark-tertiary);
+  border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
+  transition: all var(--transition-normal);
+}
+
+.profile-card:hover {
+  border-color: var(--color-border-light);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .profile-icon {
@@ -732,29 +840,32 @@ onMounted(() => {
 }
 
 .status-badge {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .status-pending {
-  background: rgba(100, 100, 100, 0.2);
-  color: #999;
+  background: rgba(152, 152, 157, 0.15);
+  color: #98989d;
 }
 
 .status-processing {
-  background: rgba(0, 122, 255, 0.2);
+  background: rgba(100, 210, 255, 0.15);
   color: var(--color-info);
 }
 
 .status-completed {
-  background: rgba(52, 199, 89, 0.2);
+  background: rgba(48, 209, 88, 0.15);
   color: var(--color-success);
 }
 
 .status-failed {
-  background: rgba(255, 59, 48, 0.2);
+  background: rgba(255, 69, 58, 0.15);
   color: var(--color-error);
 }
 
@@ -778,5 +889,10 @@ onMounted(() => {
 .btn-sm {
   padding: 4px 8px;
   font-size: var(--font-size-sm);
+}
+
+.audio-mini {
+  width: 150px;
+  height: 28px;
 }
 </style>

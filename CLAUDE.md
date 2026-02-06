@@ -572,8 +572,40 @@ MEDIA_BED_URL=http://47.251.179.50
 | 服务 | 限制 |
 |------|------|
 | CosyVoice | 单次最大 2000 字符 |
-| EMO | 单次最大 48 秒音频 |
-| 全局 | 最大 5 并发 |
+| EMO | 单次最大 **55** 秒音频（官方限制 < 60s）|
+| 全局 | TTS 和 EMO 各最大 **5 并发** |
+
+### 5.4 Whisper 服务配置
+
+支持本地/云端切换：
+
+| 模式 | 环境变量 | 使用场景 |
+|------|---------|---------|
+| local | `WHISPER_SERVICE_MODE=local` | 本地 GPU (RTX 显卡) |
+| cloud | `WHISPER_SERVICE_MODE=cloud` | 服务器部署 (APIMart API) |
+
+切换方法：修改 `.env` 中的 `WHISPER_SERVICE_MODE`
+
+### 5.5 故事生成并行处理
+
+| 阶段 | 并发数 | 说明 |
+|------|--------|------|
+| TTS (CosyVoice) | 5 | 独立信号量控制 |
+| EMO (数字人) | 5 | 独立信号量控制 |
+| FFmpeg 合成 | 2 | 内存占用大 |
+
+### 5.6 音频拉伸阈值
+
+为防止语速过慢，设置最大拉伸倍数：
+- `MIN_SPEED_RATIO = 0.7`（最多减速到 0.7x，即 1.43 倍时长）
+- 超过阈值则留空，下一句按原时间点开始
+
+### 5.7 故事生成模式
+
+| 模式 | 片段数 | 参数 |
+|------|--------|------|
+| 预览模式（默认）| 前 2 个片段 | `full_video=false` |
+| 完整视频 | 所有片段 | `full_video=true` |
 
 ---
 
@@ -707,6 +739,25 @@ curl -X POST http://localhost:8000/api/v1/auth/admin/init
 ---
 
 ## 九、变更记录
+
+### 2026-02-06 代码审计修复
+
+**Bug 修复:**
+- 删除 `service.py` 中的硬编码 Windows 路径 (`E:\工作代码\...`)
+- 替换所有 debug print 语句为 `logger.debug()`
+- 删除 `repository.py` 中重复的 `get_pending_jobs()` 函数
+- 删除 `voice_clone/models.py` 中重复的 `VoiceProfileResponse`
+- 删除 `digital_human/models.py` 中重复的 `AvatarProfileResponse`
+
+**文档更新:**
+- 修正 EMO 限制为 55 秒（非 48 秒）
+- 新增 Whisper 服务工厂模式说明
+- 新增并行处理说明（TTS 5 并发 + EMO 5 并发）
+- 新增音频拉伸阈值说明 (`MIN_SPEED_RATIO = 0.7`)
+- 新增预览/完整视频模式说明
+
+**清理:**
+- 移除不可达的音频分块代码分支
 
 ### 2026-01-26 重构
 

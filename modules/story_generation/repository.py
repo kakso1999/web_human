@@ -283,17 +283,6 @@ class StoryGenerationRepository:
             "is_selected": doc.get("is_selected", True)
         }
 
-    async def get_pending_jobs(self) -> List[Dict[str, Any]]:
-        """获取所有未完成的任务（pending 或 processing 状态）"""
-        cursor = self.jobs_collection.find({
-            "status": {"$in": ["pending", "processing"]}
-        }).sort("created_at", 1)  # 按创建时间排序，先创建的先处理
-
-        jobs = []
-        async for doc in cursor:
-            jobs.append(doc)
-        return jobs
-
 
 # 单例
 _repository: Optional[StoryGenerationRepository] = None

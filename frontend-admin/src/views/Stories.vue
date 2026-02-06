@@ -81,6 +81,7 @@
                 <th>时长</th>
                 <th>分类</th>
                 <th>状态</th>
+                <th style="width: 100px">分析状态</th>
                 <th>创建时间</th>
                 <th>操作</th>
               </tr>
@@ -113,6 +114,27 @@
                   <span :class="['status-badge', story.status]">
                     {{ getStatusLabel(story.status) }}
                   </span>
+                </td>
+                <td>
+                  <div class="analysis-status">
+                    <template v-if="story.is_processing">
+                      <span class="status-indicator analyzing">
+                        <span class="spinner-small"></span>
+                        <span v-if="story.queue_position === 0">分析中</span>
+                        <span v-else-if="story.queue_position && story.queue_position > 0">队列 #{{ story.queue_position }}</span>
+                        <span v-else>等待中</span>
+                      </span>
+                    </template>
+                    <template v-else-if="story.analysis_error">
+                      <span class="status-indicator failed" :title="story.analysis_error">失败</span>
+                    </template>
+                    <template v-else-if="story.is_analyzed">
+                      <span class="status-indicator completed">已完成</span>
+                    </template>
+                    <template v-else>
+                      <span class="status-indicator pending">-</span>
+                    </template>
+                  </div>
                 </td>
                 <td>{{ formatDate(story.created_at) }}</td>
                 <td>
@@ -331,7 +353,36 @@
           </div>
         </div>
 
-        <p class="upload-tips">上传后视频将在后台处理，您可以在故事列表中查看处理进度</p>
+        <!-- 上传进度显示 -->
+        <div v-if="uploadProgress.isUploading" class="upload-progress-section">
+          <div class="progress-header">
+            <span class="progress-title">
+              {{ uploadProgress.phase === 'uploading' ? '正在上传...' : '正在处理...' }}
+            </span>
+            <span class="progress-percent">{{ uploadProgress.percent }}%</span>
+          </div>
+
+          <div class="progress-bar-wrapper">
+            <div class="progress-fill" :style="{ width: uploadProgress.percent + '%' }"></div>
+          </div>
+
+          <div class="progress-details">
+            <span class="progress-size">
+              {{ formatBytes(uploadProgress.loaded) }} / {{ formatBytes(uploadProgress.total) }}
+            </span>
+            <span class="progress-speed">
+              {{ formatBytes(uploadProgress.speed) }}/s
+            </span>
+          </div>
+
+          <!-- 处理阶段显示批量进度 -->
+          <div v-if="uploadProgress.phase === 'processing' && batchUpload.total > 0" class="batch-status">
+            <span>已完成: {{ batchUpload.completed }} / {{ batchUpload.total }}</span>
+            <span v-if="batchUpload.failed > 0" class="failed-count">失败: {{ batchUpload.failed }}</span>
+          </div>
+        </div>
+
+        <p v-if="!uploadProgress.isUploading" class="upload-tips">上传后视频将在后台处理，您可以在故事列表中查看处理进度</p>
 
         <p v-if="batchUpload.error" class="error-msg">{{ batchUpload.error }}</p>
 
@@ -340,17 +391,17 @@
             type="button"
             class="btn btn-outline"
             @click="closeBatchUploadModal"
-            :disabled="batchUpload.uploading"
+            :disabled="uploadProgress.isUploading && uploadProgress.phase === 'uploading'"
           >
-            取消
+            {{ uploadProgress.phase === 'processing' ? '关闭' : '取消' }}
           </button>
           <button
             type="button"
             class="btn btn-accent"
             @click="handleBatchUpload"
-            :disabled="batchUpload.uploading || batchUpload.videos.length === 0"
+            :disabled="uploadProgress.isUploading || batchUpload.videos.length === 0"
           >
-            {{ batchUpload.uploading ? '上传中...' : `开始上传 (${batchUpload.videos.length} 个)` }}
+            {{ uploadProgress.isUploading ? (uploadProgress.phase === 'uploading' ? '上传中...' : '处理中...') : `开始上传 (${batchUpload.videos.length} 个)` }}
           </button>
         </div>
       </div>
@@ -383,6 +434,10 @@ interface Story {
   status: string
   category: Category | null
   created_at: string
+  is_processing?: boolean
+  is_analyzed?: boolean
+  analysis_error?: string | null
+  queue_position?: number | null
 }
 
 const stories = ref<Story[]>([])
@@ -425,6 +480,21 @@ const batchUpload = ref({
   items: [] as any[],
   error: ''
 })
+
+// 上传进度
+const uploadProgress = ref({
+  isUploading: false,
+  phase: 'uploading' as 'uploading' | 'processing',
+  percent: 0,
+  loaded: 0,
+  total: 0,
+  speed: 0,
+  startTime: 0,
+  batchId: ''
+})
+
+// 批量状态轮询定时器
+let batchPollTimer: number | null = null
 
 // 自动刷新定时器（处理中的视频）
 let refreshTimer: number | null = null
@@ -489,6 +559,10 @@ function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+function formatBytes(bytes: number): string {
+  return formatFileSize(bytes)
 }
 
 function handleLogout() {
@@ -729,30 +803,13 @@ function toggleBatchNewCategory() {
 }
 
 function closeBatchUploadModal() {
-  showBatchUploadModal.value = false
-  showBatchNewCategory.value = false
-  batchNewCategoryName.value = ''
-
   // 如果正在上传，刷新列表查看处理中的视频
   if (batchUpload.value.uploading) {
     fetchStories()
   }
 
-  // 重置状态
-  batchUpload.value = {
-    category_id: '',
-    videos: [],
-    uploading: false,
-    batch_id: '',
-    total: 0,
-    completed: 0,
-    failed: 0,
-    items: [],
-    error: ''
-  }
-  if (batchVideoInput.value) {
-    batchVideoInput.value.value = ''
-  }
+  stopBatchPoll()
+  resetBatchUpload()
 }
 
 async function handleBatchUpload() {
@@ -760,6 +817,18 @@ async function handleBatchUpload() {
 
   batchUpload.value.uploading = true
   batchUpload.value.error = ''
+
+  // 初始化上传进度
+  uploadProgress.value = {
+    isUploading: true,
+    phase: 'uploading',
+    percent: 0,
+    loaded: 0,
+    total: 0,
+    speed: 0,
+    startTime: Date.now(),
+    batchId: ''
+  }
 
   try {
     let categoryId = batchUpload.value.category_id
@@ -782,37 +851,112 @@ async function handleBatchUpload() {
       formData.append('category_id', categoryId)
     }
 
-    await api.post('/admin/stories/batch', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    const response = await api.post('/admin/stories/batch', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        const loaded = progressEvent.loaded
+        const total = progressEvent.total || 0
+        const percent = total ? Math.round((loaded / total) * 100) : 0
+        const elapsed = (Date.now() - uploadProgress.value.startTime) / 1000
+        const speed = elapsed > 0 ? loaded / elapsed : 0
+
+        uploadProgress.value.percent = percent
+        uploadProgress.value.loaded = loaded
+        uploadProgress.value.total = total
+        uploadProgress.value.speed = speed
+      }
     })
 
-    // 上传请求成功后，关闭弹窗并刷新列表
-    // 视频会在后台处理，用户可以在故事列表中看到"处理中"状态
-    showBatchUploadModal.value = false
-    showBatchNewCategory.value = false
-    batchNewCategoryName.value = ''
-    batchUpload.value = {
-      category_id: '',
-      videos: [],
-      uploading: false,
-      batch_id: '',
-      total: 0,
-      completed: 0,
-      failed: 0,
-      items: [],
-      error: ''
-    }
-    if (batchVideoInput.value) {
-      batchVideoInput.value.value = ''
-    }
+    // 上传完成，切换到处理阶段
+    const batchId = response.data.data?.batch_id
+    if (batchId) {
+      uploadProgress.value.phase = 'processing'
+      uploadProgress.value.batchId = batchId
+      batchUpload.value.batch_id = batchId
 
-    // 刷新故事列表，显示处理中的视频
-    await fetchStories()
+      // 立即刷新列表，显示处理中的故事
+      await fetchStories()
+
+      // 启动状态轮询
+      startBatchPoll(batchId)
+    } else {
+      // 没有 batch_id，直接关闭
+      resetBatchUpload()
+      await fetchStories()
+    }
 
   } catch (error: any) {
     console.error('Failed to start batch upload:', error)
     batchUpload.value.error = error.response?.data?.message || '批量上传失败，请重试'
     batchUpload.value.uploading = false
+    uploadProgress.value.isUploading = false
+  }
+}
+
+function startBatchPoll(batchId: string) {
+  if (batchPollTimer) {
+    clearInterval(batchPollTimer)
+  }
+
+  batchPollTimer = window.setInterval(async () => {
+    try {
+      const response = await api.get(`/admin/stories/batch/${batchId}`)
+      const data = response.data.data
+
+      // 更新进度信息
+      batchUpload.value.completed = data.completed || 0
+      batchUpload.value.failed = data.failed || 0
+      batchUpload.value.total = data.total || 0
+      batchUpload.value.items = data.items || []
+
+      // 刷新故事列表
+      await fetchStories()
+
+      // 检查是否完成
+      if (data.status === 'completed') {
+        stopBatchPoll()
+        resetBatchUpload()
+      }
+    } catch (error) {
+      console.error('Poll batch status failed:', error)
+    }
+  }, 2000)
+}
+
+function stopBatchPoll() {
+  if (batchPollTimer) {
+    clearInterval(batchPollTimer)
+    batchPollTimer = null
+  }
+}
+
+function resetBatchUpload() {
+  showBatchUploadModal.value = false
+  showBatchNewCategory.value = false
+  batchNewCategoryName.value = ''
+  batchUpload.value = {
+    category_id: '',
+    videos: [],
+    uploading: false,
+    batch_id: '',
+    total: 0,
+    completed: 0,
+    failed: 0,
+    items: [],
+    error: ''
+  }
+  uploadProgress.value = {
+    isUploading: false,
+    phase: 'uploading',
+    percent: 0,
+    loaded: 0,
+    total: 0,
+    speed: 0,
+    startTime: 0,
+    batchId: ''
+  }
+  if (batchVideoInput.value) {
+    batchVideoInput.value.value = ''
   }
 }
 
@@ -835,6 +979,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAutoRefresh()
+  stopBatchPoll()
 })
 
 // 检查是否有处理中的视频
@@ -866,6 +1011,7 @@ function stopAutoRefresh() {
   display: flex;
   width: 100%;
   min-height: 100vh;
+  background: var(--color-bg-dark);
 }
 
 .main-area {
@@ -879,24 +1025,28 @@ function stopAutoRefresh() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-lg) var(--spacing-xl);
+  padding: 20px 32px;
+  background: var(--color-bg-dark-secondary);
   border-bottom: 1px solid var(--color-border);
 }
 
 .page-title {
   font-size: var(--font-size-2xl);
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--color-text-primary);
 }
 
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: 12px;
 }
 
 .search-input {
-  width: 250px;
-  padding: var(--spacing-sm) var(--spacing-md);
+  width: 280px;
+  padding: 10px 16px;
+  border-radius: var(--radius-lg);
 }
 
 /* 批量操作栏 */
@@ -904,24 +1054,25 @@ function stopAutoRefresh() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-xl);
-  background: var(--color-bg-dark-tertiary);
+  padding: 12px 32px;
+  background: linear-gradient(90deg, rgba(45, 107, 107, 0.1) 0%, rgba(45, 107, 107, 0.05) 100%);
   border-bottom: 1px solid var(--color-border);
 }
 
 .selected-count {
-  color: var(--color-accent);
-  font-weight: 500;
+  color: var(--color-accent-light);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
 }
 
 .batch-buttons {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 8px;
 }
 
 .content {
   flex: 1;
-  padding: var(--spacing-xl);
+  padding: 24px 32px;
   overflow-y: auto;
 }
 
@@ -938,16 +1089,23 @@ function stopAutoRefresh() {
 }
 
 .story-thumb {
-  width: 80px;
-  height: 45px;
+  width: 96px;
+  height: 54px;
   object-fit: cover;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  transition: transform var(--transition-fast);
+}
+
+.story-thumb:hover {
+  transform: scale(1.05);
 }
 
 .thumb-container {
   position: relative;
-  width: 80px;
-  height: 45px;
+  width: 96px;
+  height: 54px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
 .processing-overlay {
@@ -956,8 +1114,9 @@ function stopAutoRefresh() {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.6);
-  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -966,10 +1125,10 @@ function stopAutoRefresh() {
 .spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.2);
   border-top-color: #fff;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -977,24 +1136,27 @@ function stopAutoRefresh() {
 }
 
 .status-badge {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
   border-radius: var(--radius-full);
   font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .status-badge.active {
-  background: rgba(52, 199, 89, 0.2);
+  background: rgba(48, 209, 88, 0.15);
   color: var(--color-success);
 }
 
 .status-badge.inactive {
-  background: rgba(255, 59, 48, 0.2);
+  background: rgba(255, 69, 58, 0.15);
   color: var(--color-error);
 }
 
 .status-badge.processing {
-  background: rgba(255, 159, 10, 0.2);
+  background: rgba(255, 214, 10, 0.15);
   color: var(--color-warning);
 }
 
@@ -1043,53 +1205,80 @@ function stopAutoRefresh() {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .modal {
   background: var(--color-bg-dark-secondary);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
+  border-radius: var(--radius-xl);
+  padding: 32px;
   width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
+  max-width: 520px;
+  max-height: 85vh;
   overflow-y: auto;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+  animation: slideUp 0.3s ease;
 }
 
 .modal-lg {
-  max-width: 700px;
+  max-width: 720px;
 }
 
 .modal-title {
   font-size: var(--font-size-xl);
-  margin-bottom: var(--spacing-lg);
+  font-weight: 700;
+  margin-bottom: 24px;
+  letter-spacing: -0.3px;
 }
 
 .form-group {
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 20px;
 }
 
 .form-group label {
   display: block;
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
-  margin-bottom: var(--spacing-xs);
+  font-weight: 500;
+  margin-bottom: 8px;
 }
 
 .textarea {
   min-height: 100px;
   resize: vertical;
+  border-radius: var(--radius-md);
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--spacing-md);
-  margin-top: var(--spacing-lg);
+  gap: 12px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
 }
 
 .category-select {
@@ -1132,16 +1321,18 @@ function stopAutoRefresh() {
 
 /* Video Upload Area */
 .video-upload-area {
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
+  border: 2px dashed var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: 32px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-normal);
+  background: var(--color-bg-dark-tertiary);
 }
 
 .video-upload-area:hover {
   border-color: var(--color-accent);
-  background: rgba(45, 107, 107, 0.05);
+  background: rgba(45, 107, 107, 0.08);
+  box-shadow: 0 0 0 4px var(--color-accent-glow);
 }
 
 .video-upload-area.has-file {
@@ -1152,35 +1343,39 @@ function stopAutoRefresh() {
 
 /* Batch Upload Area */
 .batch-upload-area {
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
+  border: 2px dashed var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: 32px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-normal);
+  background: var(--color-bg-dark-tertiary);
 }
 
 .batch-upload-area:hover,
 .batch-upload-area.dragging {
   border-color: var(--color-accent);
-  background: rgba(45, 107, 107, 0.1);
+  background: rgba(45, 107, 107, 0.08);
+  box-shadow: 0 0 0 4px var(--color-accent-glow);
 }
 
 .upload-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: 12px;
   color: var(--color-text-secondary);
 }
 
 .upload-placeholder .upload-icon {
-  width: 48px;
-  height: 48px;
-  stroke: var(--color-text-muted);
+  width: 56px;
+  height: 56px;
+  stroke: var(--color-accent);
+  opacity: 0.7;
 }
 
 .upload-placeholder span {
   font-size: var(--font-size-base);
+  font-weight: 500;
 }
 
 .upload-hint {
@@ -1402,5 +1597,110 @@ function stopAutoRefresh() {
 
 .progress-item.failed .item-status {
   color: var(--color-error);
+}
+
+/* 上传进度区域 */
+.upload-progress-section {
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--color-bg-dark-tertiary);
+  border-radius: var(--radius-lg);
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.progress-title {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.progress-percent {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.progress-bar-wrapper {
+  height: 8px;
+  background: var(--color-bg-dark);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.progress-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.batch-status {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.failed-count {
+  color: var(--color-error);
+}
+
+/* 分析状态样式 */
+.analysis-status {
+  display: flex;
+  align-items: center;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.status-indicator.analyzing {
+  background: rgba(90, 200, 250, 0.15);
+  color: #5ac8fa;
+}
+
+.status-indicator.completed {
+  background: rgba(52, 199, 89, 0.15);
+  color: #34c759;
+}
+
+.status-indicator.failed {
+  background: rgba(255, 59, 48, 0.15);
+  color: #ff3b30;
+  cursor: help;
+}
+
+.status-indicator.pending {
+  color: var(--color-text-muted);
+}
+
+.spinner-small {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(90, 200, 250, 0.3);
+  border-top-color: #5ac8fa;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
 }
 </style>

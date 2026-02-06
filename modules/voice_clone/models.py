@@ -28,13 +28,3 @@ class VoiceProfile(BaseModel):
 class VoiceProfileCreate(BaseModel):
     """创建声音档案请求"""
     name: str = Field(..., min_length=1, max_length=50, description="声音名称")
-
-
-class VoiceProfileResponse(BaseModel):
-    """声音档案响应"""
-    id: str
-    name: str
-    voice_id: str
-    reference_audio_url: str
-    preview_audio_url: Optional[str] = None
-    created_at: datetime

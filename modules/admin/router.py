@@ -278,6 +278,12 @@ async def get_user_detail(
     story_jobs = await story_gen_repo.list_jobs_by_user(user_id, page=1, page_size=1)
     story_job_count = story_jobs[1] if story_jobs else 0
 
+    # 获取有声书任务数量
+    from modules.audiobook.service import get_audiobook_service
+    audiobook_service = get_audiobook_service()
+    audiobook_result = await audiobook_service.list_user_jobs(user_id, page=1, page_size=1)
+    audiobook_job_count = audiobook_result.get("total", 0)
+
     return success_response({
         "id": user["id"],
         "email": user["email"],
@@ -291,7 +297,8 @@ async def get_user_detail(
         "stats": {
             "voice_profiles": voice_count,
             "avatar_profiles": avatar_count,
-            "story_jobs": story_job_count
+            "story_jobs": story_job_count,
+            "audiobook_jobs": audiobook_job_count
         }
     })
 
@@ -414,6 +421,39 @@ async def get_user_story_jobs(
         })
 
     return paginate(items, total, page, page_size)
+
+
+@router.get("/users/{user_id}/audiobook-jobs", summary="获取用户有声书任务")
+async def get_user_audiobook_jobs(
+    user_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _=Depends(require_admin)
+):
+    """获取指定用户的有声书任务记录"""
+    from modules.audiobook.service import get_audiobook_service
+
+    service = get_audiobook_service()
+    result = await service.list_user_jobs(user_id, page=page, page_size=page_size)
+
+    items = []
+    for job in result.get("items", []):
+        items.append({
+            "id": str(job.get("_id") or job.get("id")),
+            "story_id": job.get("story_id"),
+            "story_title": job.get("story_title"),
+            "voice_profile_id": job.get("voice_profile_id"),
+            "voice_name": job.get("voice_name"),
+            "status": job.get("status"),
+            "audio_url": job.get("audio_url"),
+            "duration": job.get("duration"),
+            "error": job.get("error"),
+            "is_favorite": job.get("is_favorite", False),
+            "created_at": job["created_at"].isoformat() if job.get("created_at") else None,
+            "completed_at": job["completed_at"].isoformat() if job.get("completed_at") else None
+        })
+
+    return paginate(items, result.get("total", 0), page, page_size)
 
 
 # ========== 分类管理 ==========
@@ -931,6 +971,10 @@ async def list_stories_admin(
     categories = await story_service.category_repo.list_all()
     cat_map = {c["id"]: c["name"] for c in categories}
 
+    # 获取分析队列实例
+    from modules.story.analysis_queue import get_analysis_queue
+    queue = get_analysis_queue()
+
     # 为每个故事添加分类信息
     for item in result["data"]["items"]:
         cat_id = item.get("category_id")
@@ -941,6 +985,8 @@ async def list_stories_admin(
         # 添加状态字段（优先检查处理中状态）
         if item.get("is_processing"):
             item["status"] = "processing"
+            # 添加队列位置
+            item["queue_position"] = queue.get_position(item.get("id"))
         elif item.get("is_published"):
             item["status"] = "active"
         else:
